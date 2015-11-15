@@ -58,7 +58,7 @@ pub fn satisfy<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a, I
 /// assert_eq!(token(p, b'a').unwrap(), b'a');
 /// ```
 #[inline]
-pub fn token<'a, I: 'a + Copy + Eq>(i: Input<'a, I>, t: I) -> SimpleResult<'a, I, I> {
+pub fn token<'a, I: 'a + Copy + PartialEq>(i: Input<'a, I>, t: I) -> SimpleResult<'a, I, I> {
     i.parse(|b| match b.first() {
         None               => incomplete(1),
         Some(&c) if t == c => data(&b[1..], c),
@@ -82,7 +82,7 @@ pub fn token<'a, I: 'a + Copy + Eq>(i: Input<'a, I>, t: I) -> SimpleResult<'a, I
 /// assert_eq!(not_token(p2, b'b').unwrap(), b'a');
 /// ```
 #[inline]
-pub fn not_token<'a, I: 'a + Copy + Eq>(i: Input<'a, I>, t: I) -> SimpleResult<'a, I, I> {
+pub fn not_token<'a, I: 'a + Copy + PartialEq>(i: Input<'a, I>, t: I) -> SimpleResult<'a, I, I> {
     i.parse(|b| match b.first() {
         None               => incomplete(1),
         Some(&c) if t != c => data(&b[1..], c),
@@ -240,7 +240,7 @@ pub fn take_remainder<'a, I: Copy>(i: Input<'a, I>) -> SimpleResult<'a, I, &'a [
 /// assert_eq!(string(p, b"abc").unwrap(), b"abc");
 /// ```
 #[inline]
-pub fn string<'a, 'b, I: Copy + Eq>(i: Input<'a, I>, s: &'b [I]) -> SimpleResult<'a, I, &'a [I]> {
+pub fn string<'a, 'b, I: Copy + PartialEq>(i: Input<'a, I>, s: &'b [I]) -> SimpleResult<'a, I, &'a [I]> {
     i.parse(|b| {
         if s.len() > b.len() {
             return incomplete(s.len() - b.len());
