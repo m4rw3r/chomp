@@ -1,3 +1,35 @@
+/// Macro emulating `do`-notation for the parser monad, automatically threading the linear type.
+/// 
+/// ```
+/// # #[macro_use] extern crate parsed;
+/// # fn main() {
+/// use parsed::{Input, Data, Error};
+/// use parsed::{take_while1, token};
+///
+/// let i = Input::new("martin wernstål\n".as_bytes());
+/// 
+/// #[derive(Debug, Eq, PartialEq)]
+/// struct Name<'a> {
+///     first: &'a [u8],
+///     last:  &'a [u8],
+/// }
+/// 
+/// fn name(i: Input<u8>) -> Data<u8, Name, Error<u8>> {
+///     parse!{i;
+///         let first = take_while1(|c| c != b' ');
+///                     token(b' ');
+///         let last  = take_while1(|c| c != b'\n');
+///
+///         ret Name{
+///             first: first,
+///             last:  last,
+///         }
+///     }
+/// }
+/// 
+/// assert_eq!(name(i).unwrap(), Name{first: b"martin", last: "wernstål".as_bytes()});
+/// # }
+/// ```
 #[macro_export]
 macro_rules! parse {
     // RET_TYPED := '<' $ty ',' $ty '>' $expr
@@ -17,37 +49,41 @@ macro_rules! parse {
     ( @ERR($i:expr); $e:expr ) => { $i.err($e) };
 
     // VAR    := $ident ':' $ty / $pat
-    ( @BIND($i:expr); $v:ident : $v_ty:ty = $($t:tt)* ) => { parse!{ @ACTION($i, $v: $v_ty); $($t)* } };
-    ( @BIND($i:expr); $v:pat              = $($t:tt)* ) => { parse!{ @ACTION($i, $v); $($t)* } };
+    // pattern must be before ident
+    ( @BIND($i:expr); $v:pat              = $($t:tt)* ) => { parse!{ @ACTION($i, $v      ); $($t)* } };
+    ( @BIND($i:expr); $v:ident : $v_ty:ty = $($t:tt)* ) => { parse!{ @ACTION($i, $v:$v_ty); $($t)* } };
 
     // ACTION := INLINE_ACTION / NAMED_ACTION
 
     // INLINE_ACTION := $ident '->' $expr
     // version with expression following, nonterminal:
-    ( @ACTION($i:expr, $($v:tt)+); $v:ident -> $e:expr ; $($t:tt)*) => { parse!{ @CONCAT({ let $v = $i; $e }; $($v)+); $($t)* } };
-    ( @ACTION($i:expr, $($v:tt)+); $v:ident -> $e:expr )            => { { let $v = $i; $e } };
+    ( @ACTION($i:expr, $($v:tt)*); $m:ident -> $e:expr ; $($t:tt)*) => { parse!{ @CONCAT({ let $m = $i; $e }, $($v)*); $($t)* } };
+    // terminal:
+    ( @ACTION($i:expr, $($v:tt)*); $m:ident -> $e:expr )            => { { let $m = $i; $e } };
 
     // NAMED_ACTION  := $ident '(' ($expr ',')* ','? ')'
     // version with expression following, nonterminal:
-    ( @ACTION($i:expr, $($v:tt)+); $f:ident ( $($p:expr),* $(,)*) ; $($t:tt)* ) => { parse!{ @CONCAT($f($i, $($p),*); $($v)+); $($t)* } };
-    ( @ACTION($i:expr, $($v:tt)+); $f:ident ( $($p:expr),* $(,)*) )             => { $f($i, $($p),*) };
+    ( @ACTION($i:expr, $($v:tt)*); $f:ident ( $($p:expr),* $(,)*) ; $($t:tt)* ) => { parse!{ @CONCAT($f($i, $($p),*), $($v)*); $($t)*} };
+    // terminal:
+    ( @ACTION($i:expr, $($v:tt)*); $f:ident ( $($p:expr),* $(,)*) )             => { $f($i, $($p),*) };
 
     // Ties an expression together with the next, using the bind operator
     // invoked from @ACTION and @BIND (via @ACTION)
-    ( @CONCAT($i:expr; _); $($tail:tt)* )         => { $i.bind(|i, _| parse!{ i; $($tail)* }) };
-    ( @CONCAT($i:expr; $($v:tt)+); $($tail:tt)* ) => { $i.bind(|i, $($v)+| parse!{ i; $($tail)* }) };
+    ( @CONCAT($i:expr, _                  ); $($tail:tt)* ) => { $i.bind(|i, _|        parse!{ i; $($tail)* }) };
+    ( @CONCAT($i:expr, $v:pat             ); $($tail:tt)* ) => { $i.bind(|i, $v|       parse!{ i; $($tail)* }) };
+    ( @CONCAT($i:expr, $v:ident : $v_ty:ty); $($tail:tt)* ) => { $i.bind(|i, $v:$v_ty| parse!{ i; $($tail)* }) };
 
     // EXPR := ( BIND ';' / THEN ';' )* (RET / ERR / THEN)
 
     // BIND   := 'let' VAR '=' ACTION
-    ( $i:expr ; let $($tail:tt)+ ) => { parse!{ @BIND($i); $($tail)* } };
+    ( $i:expr ; let $($tail:tt)* ) => { parse!{ @BIND($i); $($tail)* } };
     // RET := 'ret' ( RET_TYPED / RET_PLAIN )
     ( $i:expr ; ret $($tail:tt)+ ) => { parse!{ @RET($i); $($tail)* } };
     // ERR := 'err' ( ERR_TYPED / ERR_PLAIN )
     ( $i:expr ; err $($tail:tt)+ ) => { parse!{ @ERR($i); $($tail)* } };
     // THEN   := ACTION
     // needs to be last since it is the most general
-    ( $i:expr ; $($tail:tt)+ )     => { parse!{ @ACTION($i, _); $($tail)+ } };
+    ( $i:expr ; $($tail:tt)* )     => { parse!{ @ACTION($i, _); $($tail)* } };
 
     // Terminals:
     ( $i:expr ; ) => { $i };
