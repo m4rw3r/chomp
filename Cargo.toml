@@ -1,0 +1,9 @@
+[package]
+name = "parsed"
+version = "0.1.0"
+authors = ["Martin Wernstål <m4rw3r@gmail.com>"]
+
+[features]
+default = ["verbose_error"]
+
+verbose_error = []
