@@ -1,11 +1,11 @@
 //! Basic combinators.
 
-use ::{Data, Input};
+use ::{ParseResult, Input};
 
 use ::iter::{EndState, Iter};
 
 use ::internal::State;
-use ::internal::{DataModify, InputModify};
+use ::internal::{ParseResultModify, InputModify};
 use ::internal::{data, error, incomplete};
 
 use ::std::iter::FromIterator;
@@ -13,13 +13,13 @@ use ::std::iter::FromIterator;
 /// Applies the parser ``p`` exactly ``num`` times, propagating any error or incomplete state.
 /// 
 /// ```
-/// use parsed::{Data, Error, Input, count, token, take_remainder};
+/// use chomp::{ParseResult, Error, Input, count, token, take_remainder};
 /// 
 /// let p1 = Input::new(b"a  ");
 /// let p2 = Input::new(b"aa ");
 /// let p3 = Input::new(b"aaa");
 /// 
-/// fn parse(i: Input<u8>) -> Data<u8, Vec<u8>, Error<u8>> {
+/// fn parse(i: Input<u8>) -> ParseResult<u8, Vec<u8>, Error<u8>> {
 ///     count(i, 2, |i| token(i, b'a'))
 /// }
 /// 
@@ -28,17 +28,17 @@ use ::std::iter::FromIterator;
 /// 
 /// // TODO: Update once a proper way to extract data and remainder has been implemented
 /// // a slightly odd way to obtain the remainder of the input stream, temporary
-/// let d: Data<_, (_, Vec<_>), Error<_>> = parse(p3).bind(|i, d| take_remainder(i).bind(|i, r| i.ret((r, d))));
+/// let d: ParseResult<_, (_, Vec<_>), Error<_>> = parse(p3).bind(|i, d| take_remainder(i).bind(|i, r| i.ret((r, d))));
 /// let (buf, data) = d.unwrap();
 /// 
 /// assert_eq!(buf, b"a");
 /// assert_eq!(data, &[b'a', b'a']);
 /// ```
 #[inline]
-pub fn count<'a, I, T, E, F, U>(i: Input<'a, I>, num: usize, p: F) -> Data<'a, I, T, E>
+pub fn count<'a, I, T, E, F, U>(i: Input<'a, I>, num: usize, p: F) -> ParseResult<'a, I, T, E>
   where I: Copy,
         U: 'a,
-        F: FnMut(Input<'a, I>) -> Data<'a, I, U, E>,
+        F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
         T: FromIterator<U> {
     i.parse(|i| {
         // If we have gotten an item, if this is false after from_iter we have failed
@@ -67,7 +67,7 @@ pub fn count<'a, I, T, E, F, U>(i: Input<'a, I>, num: usize, p: F) -> Data<'a, I
 /// Incomplete state is propagated.
 /// 
 /// ```
-/// use parsed::{Input, option, token};
+/// use chomp::{Input, option, token};
 /// 
 /// let p1 = Input::new(b"abc");
 /// let p2 = Input::new(b"bbc");
@@ -76,9 +76,9 @@ pub fn count<'a, I, T, E, F, U>(i: Input<'a, I>, num: usize, p: F) -> Data<'a, I
 /// assert_eq!(option(p2, |i| token(i, b'a'), b'd').unwrap(), b'd');
 /// ```
 #[inline]
-pub fn option<'a, I, T, E, F>(i: Input<'a, I>, f: F, default: T) -> Data<'a, I, T, E>
+pub fn option<'a, I, T, E, F>(i: Input<'a, I>, f: F, default: T) -> ParseResult<'a, I, T, E>
   where I: 'a + Copy,
-        F: FnOnce(Input<'a, I>) -> Data<'a, I, T, E> {
+        F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E> {
     // TODO: That Input::new should be something related to InputModify
     i.parse(|b| f(Input::new(b)).parse(|s| match s {
         State::Data(b, t)    => data(b, t),
@@ -93,7 +93,7 @@ pub fn option<'a, I, T, E, F>(i: Input<'a, I>, f: F, default: T) -> Data<'a, I, 
 /// Incomplete state is propagated from the first one to report incomplete.
 /// 
 /// ```
-/// use parsed::{Input, Error, or, token};
+/// use chomp::{Input, Error, or, token};
 /// 
 /// let p1 = Input::new(b"abc");
 /// let p2 = Input::new(b"bbc");
@@ -104,9 +104,9 @@ pub fn option<'a, I, T, E, F>(i: Input<'a, I>, f: F, default: T) -> Data<'a, I, 
 /// assert_eq!(or(p3, |i| token(i, b'a'), |i| token(i, b'b')).unwrap_err(), Error::Expected(b'b'));
 /// ```
 #[inline]
-pub fn or<'a, I, T, E, F, G>(i: Input<'a, I>, f: F, g: G) -> Data<'a, I, T, E>
-  where F: FnOnce(Input<'a, I>) -> Data<'a, I, T, E>,
-        G: FnOnce(Input<'a, I>) -> Data<'a, I, T, E> {
+pub fn or<'a, I, T, E, F, G>(i: Input<'a, I>, f: F, g: G) -> ParseResult<'a, I, T, E>
+  where F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E>,
+        G: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E> {
     i.parse(|b| f(Input::new(b)).parse(|s| match s {
         State::Data(b, t)    => data(b, t),
         State::Error(_, _)   => g(Input::new(b)),
@@ -122,11 +122,11 @@ pub fn or<'a, I, T, E, F, G>(i: Input<'a, I>, f: F, g: G) -> Data<'a, I, T, E>
 /// Note: Allocates data.
 /// 
 /// ```
-/// use parsed::{Data, Error, Input, token, many, take_while1};
+/// use chomp::{ParseResult, Error, Input, token, many, take_while1};
 /// 
 /// let p = Input::new(b"a,bc,cd ");
 /// 
-/// let r: Data<_, Vec<&[u8]>, Error<u8>> =
+/// let r: ParseResult<_, Vec<&[u8]>, Error<u8>> =
 ///     many(p, |i| take_while1(i, |c| c != b',' && c != b' ').bind(|i, c|
 ///         token(i, b',').bind(|i, _| i.ret(c))));
 /// let v = r.unwrap();
@@ -136,10 +136,10 @@ pub fn or<'a, I, T, E, F, G>(i: Input<'a, I>, f: F, g: G) -> Data<'a, I, T, E>
 /// assert_eq!(v[1], b"bc");
 /// ```
 #[inline]
-pub fn many<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> Data<'a, I, T, E>
+pub fn many<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
   where I: Copy,
         U: 'a,
-        F: FnMut(Input<'a, I>) -> Data<'a, I, U, E>,
+        F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
         T: FromIterator<U> {
     i.parse(|i| {
         let mut iter = Iter::new(i, f);
@@ -165,12 +165,12 @@ pub fn many<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> Data<'a, I, T, E>
 /// Note: Allocates data.
 /// 
 /// ```
-/// use parsed::{Data, Error, Input, token, many1, take_while1};
+/// use chomp::{ParseResult, Error, Input, token, many1, take_while1};
 ///
 /// let p1 = Input::new(b"a ");
 /// let p2 = Input::new(b"a, ");
 ///
-/// fn parse(i: Input<u8>) -> Data<u8, Vec<&[u8]>, Error<u8>> {
+/// fn parse(i: Input<u8>) -> ParseResult<u8, Vec<&[u8]>, Error<u8>> {
 ///     many1(i, |i| take_while1(i, |c| c != b',' && c != b' ').bind(|i, c|
 ///         token(i, b',').bind(|i, _| i.ret(c))))
 /// }
@@ -179,10 +179,10 @@ pub fn many<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> Data<'a, I, T, E>
 /// assert_eq!(parse(p2).unwrap(), &[b"a"]);
 /// ```
 #[inline]
-pub fn many1<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> Data<'a, I, T, E>
+pub fn many1<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
   where I: Copy,
         U: 'a,
-        F: FnMut(Input<'a, I>) -> Data<'a, I, U, E>,
+        F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
         T: FromIterator<U> {
     i.parse(|i| {
         // If we managed to parse anything
@@ -215,15 +215,15 @@ pub fn many1<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> Data<'a, I, T, E>
 /// ``many`` allocates a separate data structure to contain the data before proceeding.
 /// 
 /// ```
-/// use parsed::{Input, skip_many, token};
+/// use chomp::{Input, skip_many, token};
 /// 
 /// let p = Input::new(b"aaaabc");
 /// 
 /// assert_eq!(skip_many(p, |i| token(i, b'a')).bind(|i, _| token(i, b'b')).unwrap(), b'b');
 /// ```
 #[inline]
-pub fn skip_many<'a, I, T, E, F>(i: Input<'a, I>, mut f: F) -> Data<'a, I, (), E>
-  where T: 'a, F: FnMut(Input<'a, I>) -> Data<'a, I, T, E> {
+pub fn skip_many<'a, I, T, E, F>(i: Input<'a, I>, mut f: F) -> ParseResult<'a, I, (), E>
+  where T: 'a, F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
     i.parse(|mut i| {
         loop {
             match f(Input::new(i)).internal() {

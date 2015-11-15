@@ -2,9 +2,9 @@
 
 use std::marker::PhantomData;
 
-use ::{Data, Input};
+use ::{ParseResult, Input};
 use ::internal::State;
-use ::internal::{DataModify};
+use ::internal::{ParseResultModify};
 
 pub enum EndState<'a, I, E>
   where I: 'a {
@@ -17,7 +17,7 @@ pub struct Iter<'a, I, T, E, F>
   where I: 'a,
         T: 'a,
         E: 'a,
-        F: FnMut(Input<'a, I>) -> Data<'a, I, T, E> {
+        F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
     state:  EndState<'a, I, E>,
     parser: F,
     buf:    &'a [I],
@@ -28,7 +28,7 @@ impl<'a, I, T, E, F> Iter<'a, I, T, E, F>
   where I: 'a,
         T: 'a,
         E: 'a,
-        F: FnMut(Input<'a, I>) -> Data<'a, I, T, E> {
+        F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
     #[inline]
     pub fn new(buffer: &'a [I], parser: F) -> Iter<'a, I, T, E, F> {
         Iter{
@@ -51,7 +51,7 @@ impl<'a, I, T, E, F> Iterator for Iter<'a, I, T, E, F>
   where I: 'a,
         T: 'a,
         E: 'a,
-        F: FnMut(Input<'a, I>) -> Data<'a, I, T, E> {
+        F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
     type Item = T;
 
     #[inline]

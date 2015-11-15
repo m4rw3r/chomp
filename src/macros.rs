@@ -16,10 +16,10 @@
 /// # Example
 /// 
 /// ```
-/// # #[macro_use] extern crate parsed;
+/// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use parsed::{Input, Data, Error};
-/// use parsed::{take_while1, token};
+/// use chomp::{Input, ParseResult, Error};
+/// use chomp::{take_while1, token};
 ///
 /// let i = Input::new("martin wernstål\n".as_bytes());
 /// 
@@ -162,7 +162,7 @@ mod test {
                 Data::Error(i, e) => Data::Error(i, From::from(e)),
             }
         }
-        
+
         fn map_err<F, V>(self, f: F) -> Data<T, V>
           where F: FnOnce(E) -> V {
             match self {

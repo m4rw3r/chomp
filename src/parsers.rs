@@ -1,6 +1,6 @@
 //! Basic parsers.
 
-use ::{Input, Data, Error};
+use ::{Input, SimpleResult};
 use ::err;
 use ::internal::InputModify;
 use ::internal::{data, error, incomplete};
@@ -10,14 +10,14 @@ use ::internal::{data, error, incomplete};
 /// If the buffer length is 0 this parser is considered incomplete.
 ///
 /// ```
-/// use parsed::{Input, any};
+/// use chomp::{Input, any};
 ///
 /// let p = Input::new(b"abc");
 ///
 /// assert_eq!(any(p).unwrap(), b'a');
 /// ```
 #[inline]
-pub fn any<'a, I: 'a + Copy>(i: Input<'a, I>) -> Data<'a, I, I, Error<I>> {
+pub fn any<'a, I: 'a + Copy>(i: Input<'a, I>) -> SimpleResult<'a, I, I> {
     i.parse(|b| match b.first() {
         None     => incomplete(1),
         Some(&c) => data(&b[1..], c),
@@ -30,14 +30,14 @@ pub fn any<'a, I: 'a + Copy>(i: Input<'a, I>) -> Data<'a, I, I, Error<I>> {
 /// If the buffer length is 0 this parser is considered incomplete.
 /// 
 /// ```
-/// use parsed::{Input, satisfy};
+/// use chomp::{Input, satisfy};
 /// 
 /// let p = Input::new(b"abc");
 /// 
 /// assert_eq!(satisfy(p, |c| c == b'a').unwrap(), b'a');
 /// ```
 #[inline]
-pub fn satisfy<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> Data<'a, I, I, Error<I>>
+pub fn satisfy<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a, I, I>
   where F: FnOnce(I) -> bool {
     i.parse(|b| match b.first() {
         None             => incomplete(1),
@@ -51,14 +51,14 @@ pub fn satisfy<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> Data<'a, I, I, Err
 /// If the buffer length is 0 this parser is considered incomplete.
 ///
 /// ```
-/// use parsed::{Input, token};
+/// use chomp::{Input, token};
 ///
 /// let p = Input::new(b"abc");
 ///
 /// assert_eq!(token(p, b'a').unwrap(), b'a');
 /// ```
 #[inline]
-pub fn token<'a, I: 'a + Copy + Eq>(i: Input<'a, I>, t: I) -> Data<'a, I, I, Error<I>> {
+pub fn token<'a, I: 'a + Copy + Eq>(i: Input<'a, I>, t: I) -> SimpleResult<'a, I, I> {
     i.parse(|b| match b.first() {
         None               => incomplete(1),
         Some(&c) if t == c => data(&b[1..], c),
@@ -71,7 +71,7 @@ pub fn token<'a, I: 'a + Copy + Eq>(i: Input<'a, I>, t: I) -> Data<'a, I, I, Err
 /// If the buffer length is 0 this parser is considered incomplete.
 ///
 /// ```
-/// use parsed::{Input, not_token};
+/// use chomp::{Input, not_token};
 ///
 /// let p1 = Input::new(b"abc");
 ///
@@ -82,7 +82,7 @@ pub fn token<'a, I: 'a + Copy + Eq>(i: Input<'a, I>, t: I) -> Data<'a, I, I, Err
 /// assert_eq!(not_token(p2, b'b').unwrap(), b'a');
 /// ```
 #[inline]
-pub fn not_token<'a, I: 'a + Copy + Eq>(i: Input<'a, I>, t: I) -> Data<'a, I, I, Error<I>> {
+pub fn not_token<'a, I: 'a + Copy + Eq>(i: Input<'a, I>, t: I) -> SimpleResult<'a, I, I> {
     i.parse(|b| match b.first() {
         None               => incomplete(1),
         Some(&c) if t != c => data(&b[1..], c),
@@ -96,7 +96,7 @@ pub fn not_token<'a, I: 'a + Copy + Eq>(i: Input<'a, I>, t: I) -> Data<'a, I, I,
 /// This parser is never considered incomplete.
 /// 
 /// ```
-/// use parsed::{Input, peek};
+/// use chomp::{Input, peek};
 /// 
 /// let p1 = Input::new(b"abc");
 /// 
@@ -107,7 +107,7 @@ pub fn not_token<'a, I: 'a + Copy + Eq>(i: Input<'a, I>, t: I) -> Data<'a, I, I,
 /// assert_eq!(peek(p2).unwrap(), None);
 /// ```
 #[inline]
-pub fn peek<'a, I: 'a + Copy>(i: Input<'a, I>) -> Data<'a, I, Option<I>, Error<I>> {
+pub fn peek<'a, I: 'a + Copy>(i: Input<'a, I>) -> SimpleResult<'a, I, Option<I>> {
     i.parse(|b| data(b, b.first().map(|&c| c)))
 }
 
@@ -116,14 +116,14 @@ pub fn peek<'a, I: 'a + Copy>(i: Input<'a, I>) -> Data<'a, I, Option<I>, Error<I
 /// If the buffer length is less than ``num`` this parser is considered incomplete.
 /// 
 /// ```
-/// use parsed::{Input, take};
+/// use chomp::{Input, take};
 /// 
 /// let p = Input::new(b"abcd");
 /// 
 /// assert_eq!(take(p, 3).unwrap(), b"abc");
 /// ```
 #[inline]
-pub fn take<'a, I: 'a + Copy>(i: Input<'a, I>, num: usize) -> Data<'a, I, &'a [I], Error<I>> {
+pub fn take<'a, I: 'a + Copy>(i: Input<'a, I>, num: usize) -> SimpleResult<'a, I, &'a [I]> {
     i.parse(|b| if num <= b.len() {
         data(&b[num..], &b[..num])
     } else {
@@ -137,7 +137,7 @@ pub fn take<'a, I: 'a + Copy>(i: Input<'a, I>, num: usize) -> Data<'a, I, &'a [I
 /// more input which needs to be matched.
 /// 
 /// ```
-/// use parsed::{Input, take_while};
+/// use chomp::{Input, take_while};
 ///
 /// let p = Input::new(b"abcdcba");
 ///
@@ -147,14 +147,14 @@ pub fn take<'a, I: 'a + Copy>(i: Input<'a, I>, num: usize) -> Data<'a, I, &'a [I
 /// Without managing to match anything:
 /// 
 /// ```
-/// use parsed::{Input, take_while};
+/// use chomp::{Input, take_while};
 ///
 /// let p = Input::new(b"abcdcba");
 ///
 /// assert_eq!(take_while(p, |c| c == b'z').unwrap(), b"");
 /// ```
 #[inline]
-pub fn take_while<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> Data<'a, I, &'a [I], Error<I>>
+pub fn take_while<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a, I, &'a [I]>
   where F: Fn(I) -> bool {
     i.parse(|b| match b.iter().map(|c| *c).position(|c| f(c) == false) {
         Some(n) => data(&b[n..], &b[..n]),
@@ -171,14 +171,14 @@ pub fn take_while<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> Data<'a, I, &'a
 /// more input which needs to be matched. If zero items were matched an error will be returned.
 ///
 /// ```
-/// use parsed::{Input, take_while1};
+/// use chomp::{Input, take_while1};
 ///
 /// let p = Input::new(b"abcdcba");
 ///
 /// assert_eq!(take_while1(p, |c| c == b'a' || c == b'b').unwrap(), b"ab");
 /// ```
 #[inline]
-pub fn take_while1<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> Data<'a, I, &'a [I], Error<I>>
+pub fn take_while1<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a, I, &'a [I]>
   where F: Fn(I) -> bool {
     i.parse(|b| match b.iter().map(|c| *c).position(|c| f(c) == false) {
         Some(0) => error(b, err::unexpected()),
@@ -196,14 +196,14 @@ pub fn take_while1<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> Data<'a, I, &'
 /// more input which needs to be matched.
 /// 
 /// ```
-/// use parsed::{Input, take_till};
+/// use chomp::{Input, take_till};
 /// 
 /// let p = Input::new(b"abcdef");
 /// 
 /// assert_eq!(take_till(p, |c| c == b'd').unwrap(), b"abc");
 /// ```
 #[inline]
-pub fn take_till<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> Data<'a, I, &'a [I], Error<I>>
+pub fn take_till<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a, I, &'a [I]>
   where F: Fn(I) -> bool {
     i.parse(|b| match b.iter().map(|c| *c).position(f) {
         Some(n) => data(&b[n..], &b[0..n]),
@@ -216,14 +216,14 @@ pub fn take_till<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> Data<'a, I, &'a 
 /// Matches the remainder of the buffer and returns it, always succeeds.
 /// 
 /// ```
-/// use parsed::{Input, take_remainder};
+/// use chomp::{Input, take_remainder};
 /// 
 /// let p = Input::new(b"abcd");
 /// 
 /// assert_eq!(take_remainder(p).unwrap(), b"abcd");
 /// ```
 #[inline]
-pub fn take_remainder<'a, I: Copy>(i: Input<'a, I>) -> Data<'a, I, &'a [I], Error<I>> {
+pub fn take_remainder<'a, I: Copy>(i: Input<'a, I>) -> SimpleResult<'a, I, &'a [I]> {
     i.parse(|b| data(&b[b.len() -1 ..], b))
 }
 
@@ -233,14 +233,14 @@ pub fn take_remainder<'a, I: Copy>(i: Input<'a, I>) -> Data<'a, I, &'a [I], Erro
 /// incomplete.
 /// 
 /// ```
-/// use parsed::{Input, string};
+/// use chomp::{Input, string};
 /// 
 /// let p = Input::new(b"abcdef");
 /// 
 /// assert_eq!(string(p, b"abc").unwrap(), b"abc");
 /// ```
 #[inline]
-pub fn string<'a, 'b, I: Copy + Eq>(i: Input<'a, I>, s: &'b [I]) -> Data<'a, I, &'a [I], Error<I>> {
+pub fn string<'a, 'b, I: Copy + Eq>(i: Input<'a, I>, s: &'b [I]) -> SimpleResult<'a, I, &'a [I]> {
     i.parse(|b| {
         if s.len() > b.len() {
             return incomplete(s.len() - b.len());
@@ -261,7 +261,7 @@ pub fn string<'a, 'b, I: Copy + Eq>(i: Input<'a, I>, s: &'b [I]) -> Data<'a, I, 
 #[cfg(test)]
 mod test {
     use super::{take_while1, token, take_remainder};
-    use ::{Data, Input, Error};
+    use ::{Input, SimpleResult};
 
     #[test]
     fn parse_decimal() {
@@ -269,7 +269,7 @@ mod test {
             c >= b'0' && c <= b'9'
         }
 
-        fn decimal(i: Input<u8>) -> Data<u8, usize, Error<u8>> {
+        fn decimal(i: Input<u8>) -> SimpleResult<u8, usize> {
             take_while1(i, is_digit).bind(|i, bytes|
                 i.ret(bytes.iter().fold(0, |a, b| a * 10 + (b - b'0') as usize)))
         }
@@ -281,7 +281,7 @@ mod test {
                 decimal(i).bind(|i, frac|
                     i.ret((real, frac)))));
 
-        let d: Data<_, _, Error<_>> = p.bind(|i, num| take_remainder(i).bind(|i, r| i.ret((r, num))));
+        let d: SimpleResult<_, _> = p.bind(|i, num| take_remainder(i).bind(|i, r| i.ret((r, num))));
         let (buf, state) = d.unwrap();
 
         assert_eq!(buf, &[b' ']);

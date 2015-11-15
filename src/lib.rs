@@ -1,8 +1,8 @@
 //! Library providing a parser combinator.
 //!
 //! ```
-//! use parsed::{Input, Data, Error};
-//! use parsed::{take_while1, token};
+//! use chomp::{Input, ParseResult, Error};
+//! use chomp::{take_while1, token};
 //!
 //! let i = Input::new("martin wernstål\n".as_bytes());
 //! 
@@ -12,7 +12,7 @@
 //!     last:  &'a [u8],
 //! }
 //! 
-//! fn name(i: Input<u8>) -> Data<u8, Name, Error<u8>> {
+//! fn name(i: Input<u8>) -> ParseResult<u8, Name, Error<u8>> {
 //!     take_while1(i, |c| c != b' ').bind(|i, first|
 //!         token(i, b' ').bind(|i, _| // skipping this char
 //!             take_while1(i, |c| c != b'\n').bind(|i, last|
@@ -29,12 +29,11 @@ use ::std::fmt;
 #[macro_use]
 mod macros;
 mod iter;
+mod aliases;
 
 pub mod internal;
 pub mod parsers;
 pub mod combinators;
-
-pub use iter::Iter;
 
 pub use combinators::{
     count,
@@ -57,8 +56,12 @@ pub use parsers::{
     take_while1,
     token,
 };
-
+pub use aliases::{
+    U8Result,
+    SimpleResult,
+};
 pub use err::Error;
+pub use iter::Iter;
 
 use internal::State;
 
@@ -74,12 +77,12 @@ impl<'a, I> Input<'a, I> {
     }
 
     /// Returns the value `t` with the input context.
-    pub fn ret<T, E>(self, t: T) -> Data<'a, I, T, E> {
+    pub fn ret<T, E>(self, t: T) -> ParseResult<'a, I, T, E> {
         internal::data(self.0, t)
     }
 
     /// Returns the error value `e` with the input context.
-    pub fn err<T, E>(self, e: E) -> Data<'a, I, T, E> {
+    pub fn err<T, E>(self, e: E) -> ParseResult<'a, I, T, E> {
         internal::error(self.0, e)
     }
 }
@@ -87,39 +90,39 @@ impl<'a, I> Input<'a, I> {
 /// The basic return type of a parser.
 #[must_use]
 #[derive(Debug, Eq, PartialEq)]
-pub struct Data<'a, I: 'a, T: 'a, E: 'a>(State<'a, I, T, E>);
+pub struct ParseResult<'a, I: 'a, T: 'a, E: 'a>(State<'a, I, T, E>);
 
-impl<'a, I, T, E> Data<'a, I, T, E> {
-    pub fn bind<F, U, V = E>(self, f: F) -> Data<'a, I, U, V>
-      where F: FnOnce(Input<'a, I>, T) -> Data<'a, I, U, V>,
+impl<'a, I, T, E> ParseResult<'a, I, T, E> {
+    pub fn bind<F, U, V = E>(self, f: F) -> ParseResult<'a, I, U, V>
+      where F: FnOnce(Input<'a, I>, T) -> ParseResult<'a, I, U, V>,
             V: From<E> {
         match self.0 {
             State::Data(i, t)    => f(Input(i), t).map_err(From::from),
-            State::Error(i, e)   => Data(State::Error(i, From::from(e))),
-            State::Incomplete(n) => Data(State::Incomplete(n)),
+            State::Error(i, e)   => ParseResult(State::Error(i, From::from(e))),
+            State::Incomplete(n) => ParseResult(State::Incomplete(n)),
         }
     }
 
-    pub fn map<U, F>(self, f: F) -> Data<'a, I, U, E>
+    pub fn map<U, F>(self, f: F) -> ParseResult<'a, I, U, E>
       where F: FnOnce(T) -> U {
         match self.0 {
-            State::Data(i, t)    => Data(State::Data(i, f(t))),
-            State::Error(i, e)   => Data(State::Error(i, e)),
-            State::Incomplete(n) => Data(State::Incomplete(n)),
+            State::Data(i, t)    => ParseResult(State::Data(i, f(t))),
+            State::Error(i, e)   => ParseResult(State::Error(i, e)),
+            State::Incomplete(n) => ParseResult(State::Incomplete(n)),
         }
     }
 
-    pub fn map_err<V, F>(self, f: F) -> Data<'a, I, T, V>
+    pub fn map_err<V, F>(self, f: F) -> ParseResult<'a, I, T, V>
       where F: FnOnce(E) -> V {
         match self.0 {
-            State::Data(i, t)    => Data(State::Data(i, t)),
-            State::Error(i, e)   => Data(State::Error(i, f(e))),
-            State::Incomplete(n) => Data(State::Incomplete(n)),
+            State::Data(i, t)    => ParseResult(State::Data(i, t)),
+            State::Error(i, e)   => ParseResult(State::Error(i, f(e))),
+            State::Incomplete(n) => ParseResult(State::Incomplete(n)),
         }
     }
 }
 
-impl<'a, I, T, E: fmt::Debug> Data<'a, I, T, E> {
+impl<'a, I, T, E: fmt::Debug> ParseResult<'a, I, T, E> {
     /// Extracts the contained type if the parser is in a success-state, panics otherwise.
     #[inline]
     pub fn unwrap(self) -> T {
@@ -131,7 +134,7 @@ impl<'a, I, T, E: fmt::Debug> Data<'a, I, T, E> {
     }
 }
 
-impl<'a, I, T: fmt::Debug, E> Data<'a, I, T, E> {
+impl<'a, I, T: fmt::Debug, E> ParseResult<'a, I, T, E> {
     pub fn unwrap_err(self) -> E {
         match self.0 {
             State::Data(_, t)    => panic!("called `Parser::unwrap_err` on a parser in a success state: {:?}", t),
@@ -151,7 +154,7 @@ mod err {
     use std::error;
     use std::fmt;
 
-    use ::Data;
+    use ::ParseResult;
     use ::internal;
 
     #[derive(Debug, Eq, PartialEq)]
@@ -195,7 +198,7 @@ mod err {
 
 
     #[inline(always)]
-    pub fn string<'a, 'b, I, T>(buffer: &'a [I], _offset: usize, expected: &'b [I]) -> Data<'a, I, T, Error<I>>
+    pub fn string<'a, 'b, I, T>(buffer: &'a [I], _offset: usize, expected: &'b [I]) -> ParseResult<'a, I, T, Error<I>>
       where I: Copy {
         internal::error(buffer, Error::String(expected.to_vec()))
     }
@@ -213,7 +216,7 @@ mod err {
 
     use ::std::marker::PhantomData;
 
-    use ::Data;
+    use ::ParseResult;
     use ::internal;
 
     #[derive(Debug, Eq, PartialEq)]
@@ -221,13 +224,13 @@ mod err {
 
     impl<I: fmt::Debug> fmt::Display for Error<I> {
         fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-            write!(f, "generic parse error (parsed was compiled without --feature verbose_error)")
+            write!(f, "generic parse error (chomp was compiled without --feature verbose_error)")
         }
     }
 
     impl<I: any::Any + fmt::Debug> error::Error for Error<I> {
         fn description(&self) -> &str {
-            "generic parse error (parsed was compiled without --feature verbose_error)"
+            "generic parse error (chomp was compiled without --feature verbose_error)"
         }
     }
 
@@ -242,7 +245,7 @@ mod err {
     }
 
     #[inline(always)]
-    pub fn string<'a, 'b, I, T>(buffer: &'a [I], offset: usize, _expected: &'b [I]) -> Data<'a, I, T, Error<I>>
+    pub fn string<'a, 'b, I, T>(buffer: &'a [I], offset: usize, _expected: &'b [I]) -> ParseResult<'a, I, T, Error<I>>
       where I: Copy {
         internal::error(&buffer[offset..], Error(PhantomData))
     }
