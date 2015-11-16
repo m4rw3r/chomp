@@ -46,6 +46,8 @@
 /// 
 /// ## Grammar
 /// 
+/// EBNF using `$ty`, `$expr`, `$ident` and `$pat` for the equivalent Rust macro patterns.
+/// 
 /// ```text
 /// RET_TYPED     = '@' $ty ',' $ty ':' $expr
 /// RET_PLAIN     = $expr
