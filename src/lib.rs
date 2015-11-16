@@ -29,7 +29,6 @@ use ::std::fmt;
 #[macro_use]
 mod macros;
 mod iter;
-mod aliases;
 
 pub mod internal;
 pub mod parsers;
@@ -55,10 +54,6 @@ pub use parsers::{
     take_while,
     take_while1,
     token,
-};
-pub use aliases::{
-    U8Result,
-    SimpleResult,
 };
 pub use err::Error;
 pub use iter::Iter;
@@ -143,6 +138,11 @@ impl<'a, I, T: fmt::Debug, E> ParseResult<'a, I, T, E> {
         }
     }
 }
+
+/// Result for dealing with the basic parsers when parsing a stream of `u8`.
+pub type U8Result<'a, T>        = ParseResult<'a, u8, T, Error<u8>>;
+/// Result returned from the basic parsers.
+pub type SimpleResult<'a, I, T> = ParseResult<'a, I, T, Error<I>>;
 
 #[cfg(feature = "verbose_error")]
 mod err {
