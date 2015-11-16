@@ -67,16 +67,19 @@ pub struct Input<'a, I: 'a>(&'a [I]);
 
 impl<'a, I> Input<'a, I> {
     /// Creates a new input to be passed to parsers and/or combinators.
+    #[inline]
     pub fn new(i: &'a [I]) -> Self {
         Input(i)
     }
 
     /// Returns the value `t` with the input context.
+    #[inline]
     pub fn ret<T, E>(self, t: T) -> ParseResult<'a, I, T, E> {
         internal::data(self.0, t)
     }
 
     /// Returns the error value `e` with the input context.
+    #[inline]
     pub fn err<T, E>(self, e: E) -> ParseResult<'a, I, T, E> {
         internal::error(self.0, e)
     }
@@ -107,6 +110,7 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
         }
     }
 
+    #[inline]
     pub fn map_err<V, F>(self, f: F) -> ParseResult<'a, I, T, V>
       where F: FnOnce(E) -> V {
         match self.0 {
