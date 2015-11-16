@@ -43,4 +43,4 @@ fn f(i: Input<u8>) -> U8Result<(u8, u8, u8)> {
 For more documentation, see the rust-doc output.
 
 ##Contact
-You can contact the author either through an issue here on GitHub, or you can query him at m4r3r on mozilla's irc network.
+You can contact the author either through an issue here on GitHub, or you can query him at m4rw3r on mozilla's irc network.
