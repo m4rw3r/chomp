@@ -29,12 +29,6 @@ struct Header<'a> {
     value: Vec<&'a [u8]>,
 }
 
-/*
-fn is_token(c: u8) -> bool {
-    c < 128 && c > 31 && b"()<>@,;:\\\"/[]?={} \t".iter().position(|&i| i == c).is_none()
-}
-*/
-
 fn is_token(c: u8) -> bool {
     match c {
         128...255 => false,
@@ -73,31 +67,16 @@ fn end_of_line(i: Input<u8>) -> U8Result<u8> {
                token(b'\n');
                ret b'\r'},
           |i| token(i, b'\n'))
-    /*or(i, |i| token(i, b'\r').bind(|i, _| token(i, b'\n').bind(|i, _| i.ret(b'\r'))),
-          |i| token(i, b'\n'))*/
 }
 
 fn http_version(i: Input<u8>) -> U8Result<&[u8]> {
-    /*string(i, b"HTTP/")              . bind(|i, _|
-    take_while1(i, is_http_version))*/
     parse!{i;
         string(b"HTTP/");
         take_while1(is_http_version)
     }
 }
 
-#[inline(always)]
 fn request_line(i: Input<u8>) -> U8Result<Request> {
-    /*take_while1(i, is_token)     . bind(|i, method|
-    take_while1(i, is_space)     . bind(|i, _|
-    take_while1(i, is_not_space) . bind(|i, uri|
-    take_while(i, is_space)      . bind(|i, _|
-    http_version(i)              . bind(|i, version|
-    i                            . ret(Request {
-        method:  method,
-        uri:     uri,
-        version: version,
-    }))))))*/
     parse!{i;
         let method  = take_while1(is_token);
                       take_while1(is_space);
@@ -114,9 +93,6 @@ fn request_line(i: Input<u8>) -> U8Result<Request> {
 }
 
 fn message_header_line(i: Input<u8>) -> U8Result<&[u8]> {
-    /*take_while1(i, is_horizontal_space) . bind(|i, _|
-    take_till(i, is_end_of_line)        . bind(|i, line|
-    end_of_line(i)                      . bind(|i, _| i  . ret(line))))*/
     parse!{i;
                    take_while1(is_horizontal_space);
         let line = take_till(is_end_of_line);
@@ -127,13 +103,6 @@ fn message_header_line(i: Input<u8>) -> U8Result<&[u8]> {
 }
 
 fn message_header(i: Input<u8>) -> U8Result<Header> {
-    /*take_while1(i, is_token)      . bind(|i, name|
-    token(i, b':')                . bind(|i, _|
-    many1(i, message_header_line) . bind(|i, lines|
-    i                             . ret(Header {
-        name:  name,
-        value: lines,
-    }))))*/
     parse!{i;
         let name  = take_while1(is_token);
                     token(b':');
@@ -146,13 +115,7 @@ fn message_header(i: Input<u8>) -> U8Result<Header> {
     }
 }
 
-#[inline(always)]
 fn request(i: Input<u8>) -> U8Result<(Request, Vec<Header>)> {
-    /*request_line(i)         .bind(|i, r|
-    end_of_line(i)          .bind(|i, _|
-    many(i, message_header) .bind(|i, h|
-    end_of_line(i)          .bind(|i, _|
-        i                   .ret((r, h))))))*/
     parse!{i;
         let r = request_line();
                 end_of_line();
@@ -164,6 +127,7 @@ fn request(i: Input<u8>) -> U8Result<(Request, Vec<Header>)> {
 }
 
 fn main() {
+    // TODO: Replace with mmap:ed file instead of reading everything into RAM at once.
     let mut contents: Vec<u8> = Vec::new();
 
     {
