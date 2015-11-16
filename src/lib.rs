@@ -5,13 +5,13 @@
 //! use chomp::{take_while1, token};
 //!
 //! let i = Input::new("martin wernstål\n".as_bytes());
-//! 
+//!
 //! #[derive(Debug, Eq, PartialEq)]
 //! struct Name<'a> {
 //!     first: &'a [u8],
 //!     last:  &'a [u8],
 //! }
-//! 
+//!
 //! fn name(i: Input<u8>) -> ParseResult<u8, Name, Error<u8>> {
 //!     take_while1(i, |c| c != b' ').bind(|i, first|
 //!         token(i, b' ').bind(|i, _| // skipping this char
@@ -21,7 +21,7 @@
 //!                     last:  last,
 //!                 }))))
 //! }
-//! 
+//!
 //! assert_eq!(name(i).unwrap(), Name{first: b"martin", last: "wernstål".as_bytes()});
 //! ```
 use ::std::fmt;
@@ -148,7 +148,7 @@ impl<'a, I, T: fmt::Debug, E> ParseResult<'a, I, T, E> {
 mod err {
     //! This is a private module to contain the more verbose error type as well as adapters for
     //! using it.
-    //! 
+    //!
     //! All adapters are #[inline(always)] and will construct the appropriate error type.
     use std::any;
     use std::error;
@@ -208,7 +208,7 @@ mod err {
 mod err {
     //! This is a private module to contain the smaller error type as well as adapters for using
     //! it.
-    //! 
+    //!
     //! All adapters are #[inline(always)], and will just noop the data.
     use ::std::any;
     use ::std::error;
