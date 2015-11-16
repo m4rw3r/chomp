@@ -254,3 +254,63 @@ mod err {
         internal::error(&buffer[offset..], Error(PhantomData))
     }
 }
+
+#[cfg(test)]
+mod test {
+    use ::{Input, ParseResult};
+    use ::internal::State;
+
+    #[test]
+    fn monad_left_identity() {
+        fn f<I: Copy>(i: Input<I>, n: u32) -> ParseResult<I, u32, ()> {
+            i.ret(n + 1)
+        }
+
+        let m1 = Input(b"test");
+        let m2 = Input(b"test");
+
+        let a = 123;
+        // return a >>= f
+        let lhs = m1.ret(a).bind(f);
+        // f a
+        let rhs = f(m2, a);
+
+        assert_eq!(lhs.0, State::Data(b"test", 124));
+        assert_eq!(rhs.0, State::Data(b"test", 124));
+    }
+
+    #[test]
+    fn monad_right_identity() {
+        let m1 = Input(b"test").ret::<_, ()>(1);
+        let m2 = Input(b"test").ret::<_, ()>(1);
+
+        // m1 >>= ret === m2
+        let lhs = m1.bind::<_, _, ()>(Input::ret);
+        let rhs = m2;
+
+        assert_eq!(lhs.0, State::Data(b"test", 1));
+        assert_eq!(rhs.0, State::Data(b"test", 1));
+    }
+
+    #[test]
+    fn monad_associativity() {
+         fn f<I: Copy>(i: Input<I>, num: u32) -> ParseResult<I, u64, ()> {
+            i.ret((num + 1) as u64)
+        }
+
+        fn g<I: Copy>(i: Input<I>, num: u64) -> ParseResult<I, u64, ()> {
+            i.ret(num * 2)
+        }
+
+        let lhs_m = Input(b"test").ret::<_, ()>(2);
+        let rhs_m = Input(b"test").ret::<_, ()>(2);
+
+        // (m >>= f) >>= g
+        let lhs = lhs_m.bind(f).bind(g);
+        // m >>= (\x -> f x >>= g)
+        let rhs = rhs_m.bind(|i, x| f(i, x).bind(g));
+
+        assert_eq!(lhs.0, State::Data(b"test", 6));
+        assert_eq!(rhs.0, State::Data(b"test", 6));
+    }
+}
