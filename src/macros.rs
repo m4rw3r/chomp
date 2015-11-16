@@ -71,14 +71,12 @@
 #[macro_export]
 macro_rules! parse {
     // RET_TYPED     = '@' $ty ',' $ty ':' $expr
-    // special case for _, since it is not a $ty
     ( @RET($i:expr); @ $t_ty:ty , $e_ty:ty : $e:expr ) => { $i.ret::<$t_ty, $e_ty>($e) };
 
     // RET_PLAIN     = $expr
     ( @RET($i:expr); $e:expr ) => { $i.ret($e) };
 
     // ERR_TYPED     = '@' $ty ',' $ty ':' $expr
-    // special case for _, since it is not a $ty
     ( @ERR($i:expr); @ $t_ty:ty , $e_ty:ty : $e:expr ) => { $i.err::<$t_ty, $e_ty>($e) };
 
     // ERR_PLAIN     = $expr
