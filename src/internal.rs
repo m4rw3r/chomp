@@ -12,7 +12,7 @@ use ::{ParseResult, Input};
 ///
 /// Only used by fundamental parsers and combinators.
 #[must_use]
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum State<'a, I: 'a, T, E>
   where I: 'a,
         T: 'a,

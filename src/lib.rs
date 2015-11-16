@@ -87,7 +87,7 @@ impl<'a, I> Input<'a, I> {
 
 /// The basic return type of a parser.
 #[must_use]
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct ParseResult<'a, I: 'a, T: 'a, E: 'a>(State<'a, I, T, E>);
 
 impl<'a, I, T, E> ParseResult<'a, I, T, E> {
@@ -161,7 +161,7 @@ mod err {
     use ::ParseResult;
     use ::internal;
 
-    #[derive(Debug, Eq, PartialEq)]
+    #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
     pub enum Error<I> {
         Expected(I),
         Unexpected,
@@ -179,8 +179,7 @@ mod err {
         }
     }
 
-    impl<I> error::Error for Error<I>
-      where I: any::Any + fmt::Debug {
+    impl<I: any::Any + fmt::Debug> error::Error for Error<I> {
         fn description(&self) -> &str {
             match *self {
                 Error::Expected(_) => "expected a certain token, received another",
@@ -223,7 +222,7 @@ mod err {
     use ::ParseResult;
     use ::internal;
 
-    #[derive(Debug, Eq, PartialEq)]
+    #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
     pub struct Error<I>(PhantomData<I>);
 
     impl<I: fmt::Debug> fmt::Display for Error<I> {
