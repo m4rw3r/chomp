@@ -35,7 +35,8 @@ pub trait ParseResultModify<'a> {
     /// Modifies the content of ParseResult, without changing its type.
     #[inline(always)]
     fn modify<F>(self, F) -> Self
-      where F: FnOnce(State<'a, Self::Input, Self::Data, Self::Error>) -> ParseResult<'a, Self::Input, Self::Data, Self::Error>,
+      where F: FnOnce(State<'a, Self::Input, Self::Data, Self::Error>)
+                   -> ParseResult<'a, Self::Input, Self::Data, Self::Error>,
             <Self as ParseResultModify<'a>>::Input: 'a,
             <Self as ParseResultModify<'a>>::Data:  'a,
             <Self as ParseResultModify<'a>>::Error: 'a;
@@ -43,7 +44,8 @@ pub trait ParseResultModify<'a> {
     /// Applies the function `f` to the inner `State`, allows modification of data and error types.
     #[inline(always)]
     fn parse<F, T, E>(self, F) -> ParseResult<'a, Self::Input, T, E>
-      where F: FnOnce(State<'a, Self::Input, Self::Data, Self::Error>) -> ParseResult<'a, Self::Input, T, E>,
+      where F: FnOnce(State<'a, Self::Input, Self::Data, Self::Error>)
+                   -> ParseResult<'a, Self::Input, T, E>,
             <Self as ParseResultModify<'a>>::Input: 'a,
             <Self as ParseResultModify<'a>>::Data:  'a,
             <Self as ParseResultModify<'a>>::Error: 'a;
@@ -66,7 +68,8 @@ impl<'a, I, T, E> ParseResultModify<'a> for ParseResult<'a, I, T, E> {
     /// Applies the function `f` to the inner `State` while preserving types.
     #[inline(always)]
     fn modify<F>(self, f: F) -> Self
-      where F: FnOnce(State<'a, Self::Input, Self::Data, Self::Error>) -> ParseResult<'a, Self::Input, Self::Data, Self::Error>,
+      where F: FnOnce(State<'a, Self::Input, Self::Data, Self::Error>)
+                   -> ParseResult<'a, Self::Input, Self::Data, Self::Error>,
             <Self as ParseResultModify<'a>>::Input: 'a,
             <Self as ParseResultModify<'a>>::Data:  'a,
             <Self as ParseResultModify<'a>>::Error: 'a {
@@ -76,7 +79,8 @@ impl<'a, I, T, E> ParseResultModify<'a> for ParseResult<'a, I, T, E> {
     /// Applies the function `f` to the inner `State`, allows modification of data and error types.
     #[inline(always)]
     fn parse<F, U, V>(self, f: F) -> ParseResult<'a, Self::Input, U, V>
-      where F: FnOnce(State<'a, Self::Input, Self::Data, Self::Error>) -> ParseResult<'a, Self::Input, U, V>,
+      where F: FnOnce(State<'a, Self::Input, Self::Data, Self::Error>)
+                   -> ParseResult<'a, Self::Input, U, V>,
             <Self as ParseResultModify<'a>>::Input: 'a,
             <Self as ParseResultModify<'a>>::Data:  'a,
             <Self as ParseResultModify<'a>>::Error: 'a {

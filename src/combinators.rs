@@ -27,8 +27,9 @@ use ::std::iter::FromIterator;
 /// assert_eq!(parse(p2).unwrap(), &[b'a', b'a']);
 ///
 /// // TODO: Update once a proper way to extract data and remainder has been implemented
-/// // a slightly odd way to obtain the remainder of the input stream, temporary
-/// let d: ParseResult<_, (_, Vec<_>), Error<_>> = parse(p3).bind(|i, d| take_remainder(i).bind(|i, r| i.ret((r, d))));
+/// // a slightly odd way to obtain the remainder of the input stream, temporary:
+/// let d: ParseResult<_, (_, Vec<_>), Error<_>> =
+///     parse(p3).bind(|i, d| take_remainder(i).bind(|i, r| i.ret((r, d))));
 /// let (buf, data) = d.unwrap();
 ///
 /// assert_eq!(buf, b"a");
@@ -45,7 +46,9 @@ pub fn count<'a, I, T, E, F, U>(i: Input<'a, I>, num: usize, p: F) -> ParseResul
         let mut count = 0;
         let mut iter  = Iter::new(i, p);
 
-        let result: T      = FromIterator::from_iter(iter.by_ref().take(num).inspect(|_| count = count + 1 ));
+        let result: T      = FromIterator::from_iter(iter.by_ref()
+                                                     .take(num)
+                                                     .inspect(|_| count = count + 1 ));
         let (buffer, last) = iter.end_state();
 
         if count == num {

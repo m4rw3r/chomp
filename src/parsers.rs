@@ -240,7 +240,8 @@ pub fn take_remainder<'a, I: Copy>(i: Input<'a, I>) -> SimpleResult<'a, I, &'a [
 /// assert_eq!(string(p, b"abc").unwrap(), b"abc");
 /// ```
 #[inline]
-pub fn string<'a, 'b, I: Copy + PartialEq>(i: Input<'a, I>, s: &'b [I]) -> SimpleResult<'a, I, &'a [I]> {
+pub fn string<'a, 'b, I: Copy + PartialEq>(i: Input<'a, I>, s: &'b [I])
+    -> SimpleResult<'a, I, &'a [I]> {
     i.parse(|b| {
         if s.len() > b.len() {
             return incomplete(s.len() - b.len());
@@ -281,7 +282,8 @@ mod test {
                 decimal(i).bind(|i, frac|
                     i.ret((real, frac)))));
 
-        let d: SimpleResult<_, _> = p.bind(|i, num| take_remainder(i).bind(|i, r| i.ret((r, num))));
+        let d: SimpleResult<_, _> = p.bind(|i, num| take_remainder(i)
+                                           .bind(|i, r| i.ret((r, num))));
         let (buf, state) = d.unwrap();
 
         assert_eq!(buf, &[b' ']);

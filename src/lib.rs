@@ -264,7 +264,9 @@ impl<'a, I, T, E: fmt::Debug> ParseResult<'a, I, T, E> {
         match self.0 {
             State::Data(_, t)    => t,
             State::Error(_, e)   => panic!("called `ParseResult::unwrap` on an error: {:?}", e),
-            State::Incomplete(n) => panic!("called `ParseResult::unwrap` on an incomplete state (requested {} tokens)", n),
+            State::Incomplete(n) => panic!(
+                "called `ParseResult::unwrap` on an incomplete state (requested {} tokens)",
+                n),
         }
     }
 
@@ -324,9 +326,13 @@ impl<'a, I, T: fmt::Debug, E> ParseResult<'a, I, T, E> {
     #[inline]
     pub fn unwrap_err(self) -> E {
         match self.0 {
-            State::Data(_, t)    => panic!("called `ParseResult::unwrap_err` on a success state: {:?}", t),
+            State::Data(_, t)    => panic!(
+                "called `ParseResult::unwrap_err` on a success state: {:?}",
+                t),
             State::Error(_, e)   => e,
-            State::Incomplete(n) => panic!("called `ParseResult::unwrap_err` on an incomplete state (requested {} tokens)", n),
+            State::Incomplete(n) => panic!(
+                "called `ParseResult::unwrap_err` on an incomplete state (requested {} tokens)",
+                n),
         }
     }
 }
@@ -372,7 +378,8 @@ mod err {
             match *self {
                 Error::Expected(_) => "expected a certain token, received another",
                 Error::Unexpected  => "received an unexpected token",
-                Error::String(_)   => "expected a certain string of tokens, encountered an unexpected token",
+                Error::String(_)   =>
+                    "expected a certain string of tokens, encountered an unexpected token",
             }
         }
     }
@@ -389,7 +396,8 @@ mod err {
 
 
     #[inline(always)]
-    pub fn string<'a, 'b, I, T>(buffer: &'a [I], _offset: usize, expected: &'b [I]) -> ParseResult<'a, I, T, Error<I>>
+    pub fn string<'a, 'b, I, T>(buffer: &'a [I], _offset: usize, expected: &'b [I])
+        -> ParseResult<'a, I, T, Error<I>>
       where I: Copy {
         internal::error(buffer, Error::String(expected.to_vec()))
     }
@@ -436,7 +444,8 @@ mod err {
     }
 
     #[inline(always)]
-    pub fn string<'a, 'b, I, T>(buffer: &'a [I], offset: usize, _expected: &'b [I]) -> ParseResult<'a, I, T, Error<I>>
+    pub fn string<'a, 'b, I, T>(buffer: &'a [I], offset: usize, _expected: &'b [I])
+        -> ParseResult<'a, I, T, Error<I>>
       where I: Copy {
         internal::error(&buffer[offset..], Error(PhantomData))
     }
