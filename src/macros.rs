@@ -74,6 +74,8 @@ macro_rules! parse {
 }
 
 /// Actual implementation of the parse macro, hidden to make the documentation easier to read.
+///
+/// Patterns starting with @ symbolds are internal rules, used by other parts of the macro.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __parse_internal {
@@ -359,5 +361,192 @@ mod test {
         let r = parse!{123; f(); };
 
         assert_eq!(r, 126);
+    }
+
+    #[test]
+    fn action_ret() {
+        fn doit(i: Input, x: i32) -> Data<i32, ()> {
+            assert_eq!(i.0, 123);
+
+            Data::Value(321, x)
+        }
+
+        let i1 = Input(123);
+        let i2 = Input(123);
+
+        let r1: Data<_, ()> = parse!(i1; doit(2); ret 5);
+        let r2              = parse!(i2; doit(2); ret @ _, (): 5);
+
+        assert_eq!(r1, Data::Value(321, 5));
+        assert_eq!(r2, Data::Value(321, 5));
+    }
+
+    #[test]
+    fn action_ret2() {
+        fn doit(i: Input, x: i32) -> Data<i32, ()> {
+            assert_eq!(i.0, 123);
+
+            Data::Value(321, x)
+        }
+        fn something(i: Input, n: u32, x: i32) -> Data<(u32, i32), ()> {
+            assert_eq!(i.0, 321);
+
+            Data::Value(111, (n, x))
+        }
+
+        let i1 = Input(123);
+        let i2 = Input(123);
+
+        let r1: Data<_, ()> = parse!{i1; doit(2); something(4, 5); ret 5};
+        let r2              = parse!{i2; doit(2); something(4, 5); ret @ _, (): 5};
+
+        assert_eq!(r1, Data::Value(111, 5));
+        assert_eq!(r2, Data::Value(111, 5));
+    }
+
+    #[test]
+    fn bind() {
+        fn doit(i: Input, x: i32) -> Data<i32, ()> {
+            assert_eq!(i.0, 123);
+
+            Data::Value(321, x)
+        }
+
+        let i1 = Input(123);
+        let i2 = Input(123);
+
+        let r1: Data<_, ()> = parse!{i1; let n = doit(40); ret n + 2};
+        let r2              = parse!{i2; let n = doit(40); ret @ _, (): n + 2};
+
+        assert_eq!(r1, Data::Value(321, 42));
+        assert_eq!(r2, Data::Value(321, 42));
+    }
+
+    #[test]
+    fn bind2() {
+        fn doit(i: Input, x: i32) -> Data<i32, ()> {
+            assert_eq!(i.0, 123);
+
+            Data::Value(321, x)
+        }
+        fn something(i: Input, n: i32, x: u32) -> Data<i32, ()> {
+            assert_eq!(i.0, 321);
+
+            Data::Value(111, n - x as i32)
+        }
+
+        let i1 = Input(123);
+        let i2 = Input(123);
+
+        let r1: Data<_, ()> = parse!{i1; let n = doit(40); let x = something(n, 4); ret x + 6};
+        let r2              = parse!{i2; let n = doit(40); let x = something(n, 4); ret @ _, (): x + 6};
+
+        assert_eq!(r1, Data::Value(111, 42));
+        assert_eq!(r2, Data::Value(111, 42));
+    }
+
+    #[test]
+    fn bind_then() {
+        fn doit(i: Input, x: i32) -> Data<i32, ()> {
+            assert_eq!(i.0, 111);
+
+            Data::Value(321, x)
+        }
+        fn something(i: Input, n: i32, x: u32) -> Data<i32, ()> {
+            assert_eq!(i.0, 123);
+
+            Data::Value(111, n - x as i32)
+        }
+
+        let i1 = Input(123);
+        let i2 = Input(123);
+
+        let r1: Data<_, ()> = parse!{i1; let x = something(6, 4); doit(x);};
+        let r2              = parse!{i2; let x = something(6, 4); doit(x);};
+
+        assert_eq!(r1, Data::Value(321, 2));
+        assert_eq!(r2, Data::Value(321, 2));
+    }
+
+    #[test]
+    fn bind_then2() {
+        fn doit(i: Input, x: i32) -> Data<i32, ()> {
+            assert_eq!(i.0, 111);
+
+            Data::Value(321, x)
+        }
+        fn something(i: Input, n: i32, x: u32) -> Data<i32, ()> {
+            assert_eq!(i.0, 123);
+
+            Data::Value(111, n - x as i32)
+        }
+
+        let i1 = Input(123);
+        let i2 = Input(123);
+
+        let r1: Data<_, ()> = parse!{i1; let _x = something(6, 4); doit(3);};
+        let r2              = parse!{i2; let _x = something(6, 4); doit(3);};
+
+        assert_eq!(r1, Data::Value(321, 3));
+        assert_eq!(r2, Data::Value(321, 3));
+    }
+
+    #[test]
+    fn bind_type() {
+        fn doit<N>(i: Input, x: N) -> Data<N, ()> {
+            assert_eq!(i.0, 123);
+
+            Data::Value(321, x)
+        }
+
+        let i1 = Input(123);
+        let i2 = Input(123);
+
+        let r1: Data<_, ()> = parse!{i1; let n: u64 = doit(42); ret n};
+        let r2              = parse!{i2; let n: u64 = doit(42); ret @ _, (): n};
+
+        assert_eq!(r1, Data::Value(321, 42u64));
+        assert_eq!(r2, Data::Value(321, 42u64));
+    }
+
+    #[test]
+    fn bind_pattern() {
+        fn something(i: Input, n: u32, x: u32) -> Data<(u32, u32), ()> {
+            assert_eq!(i.0, 123);
+
+            Data::Value(111, (n, x))
+        }
+
+        let i1 = Input(123);
+        let i2 = Input(123);
+
+        let r1: Data<_, ()> = parse!{i1; let (x, y) = something(2, 4); ret x + y};
+        let r2              = parse!{i2; let (x, y) = something(2, 4); ret @ _, (): x + y};
+
+        assert_eq!(r1, Data::Value(111, 6));
+        assert_eq!(r2, Data::Value(111, 6));
+    }
+
+    #[test]
+    fn bind_pattern2() {
+        fn doit(i: Input, x: i32) -> Data<i32, ()> {
+            assert_eq!(i.0, 123);
+
+            Data::Value(321, x)
+        }
+        fn something(i: Input, n: i32, x: u32) -> Data<(i32, u32), ()> {
+            assert_eq!(i.0, 321);
+
+            Data::Value(111, (n, x))
+        }
+
+        let i1 = Input(123);
+        let i2 = Input(123);
+
+        let r1: Data<_, ()> = parse!{i1; let n = doit(40); let (x, y) = something(n, 4); ret x + y as i32};
+        let r2              = parse!{i2; let n = doit(40); let (x, y) = something(n, 4); ret @ _, (): x + y as i32};
+
+        assert_eq!(r1, Data::Value(111, 44));
+        assert_eq!(r2, Data::Value(111, 44));
     }
 }
