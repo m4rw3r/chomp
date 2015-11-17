@@ -1,13 +1,13 @@
 /// Macro emulating `do`-notation for the parser monad, automatically threading the linear type.
 /// 
-/// ```ignore
+/// ```text
 /// parse!{input;
 ///                 parser("parameter");
 ///     let value = other_parser();
 ///     
 ///     ret do_something(value);
 /// }
-/// // equivalent to:
+/// // is equivalent to:
 /// parser(input, "parameter").bind(|i, _|
 ///     other_parser(i).bind(|i, value|
 ///         i.ret(do_something(value))))
