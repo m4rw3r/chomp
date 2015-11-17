@@ -21,7 +21,7 @@
 /// use chomp::{Input, Error};
 /// use chomp::{take_while1, token};
 ///
-/// let i = Input::new("martin wernstål\n".as_bytes());
+/// let i = Input::new("Martin Wernstål\n".as_bytes());
 ///
 /// #[derive(Debug, Eq, PartialEq)]
 /// struct Name<'a> {
@@ -40,7 +40,7 @@
 ///     }
 /// };
 ///
-/// assert_eq!(r.unwrap(), Name{first: b"martin", last: "wernstål".as_bytes()});
+/// assert_eq!(r.unwrap(), Name{first: b"Martin", last: "Wernstål".as_bytes()});
 /// # }
 /// ```
 ///
