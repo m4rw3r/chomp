@@ -467,6 +467,48 @@ mod test {
     }
 
     #[test]
+    fn bind3() {
+        fn doit(i: Input, x: i32) -> Data<i32, u8> {
+            assert_eq!(i.0, 123);
+
+            Data::Value(321, x)
+        }
+
+        let i1 = Input(123);
+        let i2 = Input(123);
+
+        let r1: Data<(), u8> = parse!{i1; let n = doit(40); err n as u8 + 2};
+        let r2               = parse!{i2; let n = doit(40); err @ (), u8: n as u8 + 2};
+
+        assert_eq!(r1, Data::Error(321, 42));
+        assert_eq!(r2, Data::Error(321, 42));
+    }
+
+    #[test]
+    fn bind4() {
+        fn doit(i: Input, x: i32) -> Data<i32, u8> {
+            assert_eq!(i.0, 123);
+
+            Data::Value(321, x)
+        }
+        fn something(i: Input, n: i32, x: u32) -> Data<i32, u8> {
+            assert_eq!(i.0, 321);
+
+            Data::Value(111, n - x as i32)
+        }
+
+        let i1 = Input(123);
+        let i2 = Input(123);
+
+        let r1: Data<(), u8> = parse!{i1; let n = doit(40); let x = something(n, 4); err x as u8 + 6};
+        let r2               = parse!{i2; let n = doit(40); let x = something(n, 4);
+                                  err @ (), u8: x as u8 + 6};
+
+        assert_eq!(r1, Data::Error(111, 42));
+        assert_eq!(r2, Data::Error(111, 42));
+    }
+
+    #[test]
     fn bind_then() {
         fn doit(i: Input, x: i32) -> Data<i32, ()> {
             assert_eq!(i.0, 111);
@@ -572,4 +614,137 @@ mod test {
         assert_eq!(r1, Data::Value(111, 44));
         assert_eq!(r2, Data::Value(111, 44));
     }
+
+    #[test]
+    fn action_err() {
+        fn doit(i: Input, x: i32) -> Data<i32, u8> {
+            assert_eq!(i.0, 123);
+
+            Data::Value(321, x)
+        }
+
+        let i1 = Input(123);
+        let i2 = Input(123);
+
+        let r1: Data<(), u8> = parse!(i1; doit(2); err 5);
+        let r2               = parse!(i2; doit(2); err @ (), u8: 5);
+
+        assert_eq!(r1, Data::Error(321, 5));
+        assert_eq!(r2, Data::Error(321, 5));
+    }
+
+    #[test]
+    fn action_err2() {
+        fn doit(i: Input, x: i32) -> Data<i32, u8> {
+            assert_eq!(i.0, 123);
+
+            Data::Value(321, x)
+        }
+        fn something(i: Input, n: u32, x: i32) -> Data<(u32, i32), u8> {
+            assert_eq!(i.0, 321);
+
+            Data::Value(111, (n, x))
+        }
+
+        let i1 = Input(123);
+        let i2 = Input(123);
+
+        let r1: Data<(), u8> = parse!{i1; doit(2); something(4, 5); err 5};
+        let r2               = parse!{i2; doit(2); something(4, 5); err @ (), u8: 5};
+
+        assert_eq!(r1, Data::Error(111, 5));
+        assert_eq!(r2, Data::Error(111, 5));
+    }
+
+    #[test]
+    fn inline_action() {
+        let i = Input(123);
+
+        let r = parse!{i;
+            s -> {
+                // Essentially just Input(123).ret(23):
+                assert_eq!(s, Input(123));
+
+                s.ret::<_, ()>(23)
+            }
+        };
+
+        assert_eq!(r, Data::Value(123, 23));
+    }
+
+    #[test]
+    fn inline_action2() {
+        fn doit(i: Input) -> Data<u32, ()> {
+            assert_eq!(i, Input(123));
+
+            Data::Value(321, 2)
+        }
+
+        let i = Input(123);
+
+        let r = parse!{i;
+            doit();
+            s -> {
+                // Essentially just Input(123).ret(23):
+                assert_eq!(s, Input(321));
+
+                s.ret::<_, ()>(23)
+            }
+        };
+
+        assert_eq!(r, Data::Value(321, 23));
+    }
+
+    #[test]
+    fn inline_action3() {
+        let i = Input(123);
+
+        let r = parse!{i;
+            s -> s.ret::<u8, ()>(23)
+        };
+
+        assert_eq!(r, Data::Value(123, 23));
+    }
+
+    #[test]
+    fn inline_action_bind() {
+        let i = Input(123);
+
+        let r = parse!{i;
+            let v = s -> {
+                assert_eq!(s, Input(123));
+
+                s.ret(23)
+            };
+            ret @ u32, (): v + 2
+        };
+
+        assert_eq!(r, Data::Value(123, 25));
+    }
+
+    #[test]
+    fn inline_action_bind2() {
+        fn doit(i: Input) -> Data<u32, ()> {
+            assert_eq!(i, Input(123));
+
+            Data::Value(321, 2)
+        }
+
+        let i = Input(123);
+
+        let r = parse!{i;
+            let n = doit();
+            let v = s -> {
+                assert_eq!(n, 2);
+                assert_eq!(s, Input(321));
+
+                s.ret(23 + n)
+            };
+            ret @ u32, (): v + 3
+        };
+
+        assert_eq!(r, Data::Value(321, 28));
+    }
+
+    // TODO: Compilefail tests for trailing bind
 }
