@@ -1,6 +1,6 @@
 /// Macro emulating `do`-notation for the parser monad, automatically threading the linear type.
 ///
-/// ```text
+/// ```ignore
 /// parse!{input;
 ///                 parser("parameter");
 ///     let value = other_parser();
