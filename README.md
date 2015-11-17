@@ -1,5 +1,8 @@
 # Chomp
 
+[![Build Status](https://travis-ci.org/m4rw3r/chomp.svg)](https://travis-ci.org/m4rw3r/chomp)
+[![Documentation](https://img.shields.io/badge/rustdoc-documentation-blue.svg)](http://m4rw3r.github.io/chomp)
+
 Chomp is a fast parser combinator designed to work on stable Rust.
 
 ## Example
@@ -34,5 +37,3 @@ fn main() {
      assert_eq!(r.unwrap(), Name{first: b"martin", last: "wernstål".as_bytes()});
 }
 ```
-
-## [Documentation](http://m4rw3r.github.io/chomp/chomp/index.html)
