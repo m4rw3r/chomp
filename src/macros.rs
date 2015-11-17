@@ -482,8 +482,8 @@ mod test {
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<_, ()> = parse!{i1; let x = something(6, 4); doit(x);};
-        let r2              = parse!{i2; let x = something(6, 4); doit(x);};
+        let r1: Data<_, ()> = parse!{i1; let x = something(6, 4); doit(x)};
+        let r2              = parse!{i2; let x = something(6, 4); doit(x)};
 
         assert_eq!(r1, Data::Value(321, 2));
         assert_eq!(r2, Data::Value(321, 2));
@@ -505,8 +505,8 @@ mod test {
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<_, ()> = parse!{i1; let _x = something(6, 4); doit(3);};
-        let r2              = parse!{i2; let _x = something(6, 4); doit(3);};
+        let r1: Data<_, ()> = parse!{i1; let _x = something(6, 4); doit(3)};
+        let r2              = parse!{i2; let _x = something(6, 4); doit(3)};
 
         assert_eq!(r1, Data::Value(321, 3));
         assert_eq!(r2, Data::Value(321, 3));
