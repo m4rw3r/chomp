@@ -1,5 +1,9 @@
-# Chomp: A Parser Combinator Library
-Chomp is an alternative parser combinator library for the Rust programming language. It was written as the culmination of the experiments detailed in these blog posts:
+# Chomp
+
+[![Build Status](https://travis-ci.org/m4rw3r/chomp.svg)](https://travis-ci.org/m4rw3r/chomp)
+[![Documentation](https://img.shields.io/badge/rustdoc-documentation-blue.svg)](http://m4rw3r.github.io/chomp)
+
+Chomp is a fast parser combinator designed to work on stable Rust. It was written as the culmination of the experiments detailed in these blog posts:
 * [Part 1](http://m4rw3r.github.io/parser-combinator-experiments-rust/)
 * [Part 2](http://m4rw3r.github.io/parser-combinator-experiments-errors)
 * [Part 3](http://m4rw3r.github.io/parser-combinator-experiments-part-3)
@@ -42,5 +46,40 @@ fn f(i: Input<u8>) -> U8Result<(u8, u8, u8)> {
 
 For more documentation, see the rust-doc output.
 
+
+## Example
+
+```rust
+#[macro_use]
+extern crate chomp;
+
+use chomp::{Input, ParseResult, Error};
+use chomp::{take_while1, token};
+
+#[derive(Debug, Eq, PartialEq)]
+struct Name<'a> {
+    first: &'a [u8],
+    last:  &'a [u8],
+}
+
+fn main() {
+    let i = Input::new("martin wernstål\n".as_bytes());
+
+    let r = parse!{i;
+        let first = take_while1(|c| c != b' ');
+                    token(b' ');
+        let last  = take_while1(|c| c != b'\n');
+
+        ret @ _, Error<_>: Name{
+            first: first,
+            last:  last,
+        }
+    };
+
+     assert_eq!(r.unwrap(), Name{first: b"martin", last: "wernstål".as_bytes()});
+}
+```
+
 ##Contact
 You can contact the author either through an issue here on GitHub, or you can query him at m4rw3r on mozilla's irc network.
+```

@@ -1,13 +1,13 @@
 /// Macro emulating `do`-notation for the parser monad, automatically threading the linear type.
-///
-/// ```ignore
+/// 
+/// ```text
 /// parse!{input;
 ///                 parser("parameter");
 ///     let value = other_parser();
 ///
 ///     ret do_something(value);
 /// }
-/// // equivalent to:
+/// // is equivalent to:
 /// parser(input, "parameter").bind(|i, _|
 ///     other_parser(i).bind(|i, value|
 ///         i.ret(do_something(value))))
@@ -45,7 +45,9 @@
 /// ```
 ///
 /// ## Grammar
-///
+/// 
+/// EBNF using `$ty`, `$expr`, `$ident` and `$pat` for the equivalent Rust macro patterns.
+/// 
 /// ```text
 /// RET_TYPED     = '@' $ty ',' $ty ':' $expr
 /// RET_PLAIN     = $expr
@@ -68,15 +70,20 @@
 /// ```
 #[macro_export]
 macro_rules! parse {
+    ( $($t:tt)* ) => { __parse_internal!{ $($t)* } };
+}
+
+/// Actual implementation of the parse macro, hidden to make the documentation easier to read.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __parse_internal {
     // RET_TYPED     = '@' $ty ',' $ty ':' $expr
-    // special case for _, since it is not a $ty
     ( @RET($i:expr); @ $t_ty:ty , $e_ty:ty : $e:expr ) => { $i.ret::<$t_ty, $e_ty>($e) };
 
     // RET_PLAIN     = $expr
     ( @RET($i:expr); $e:expr ) => { $i.ret($e) };
 
     // ERR_TYPED     = '@' $ty ',' $ty ':' $expr
-    // special case for _, since it is not a $ty
     ( @ERR($i:expr); @ $t_ty:ty , $e_ty:ty : $e:expr ) => { $i.err::<$t_ty, $e_ty>($e) };
 
     // ERR_PLAIN     = $expr
@@ -84,20 +91,20 @@ macro_rules! parse {
 
     // VAR           = $ident ':' $ty | $pat
     // pattern must be before ident
-    ( @BIND($i:expr); $v:pat              = $($t:tt)* ) => { parse!{ @ACTION($i, $v      ); $($t)* } };
-    ( @BIND($i:expr); $v:ident : $v_ty:ty = $($t:tt)* ) => { parse!{ @ACTION($i, $v:$v_ty); $($t)* } };
+    ( @BIND($i:expr); $v:pat              = $($t:tt)* ) => { __parse_internal!{ @ACTION($i, $v      ); $($t)* } };
+    ( @BIND($i:expr); $v:ident : $v_ty:ty = $($t:tt)* ) => { __parse_internal!{ @ACTION($i, $v:$v_ty); $($t)* } };
 
     // ACTION        = INLINE_ACTION | NAMED_ACTION
 
     // INLINE_ACTION = $ident '->' $expr
     // version with expression following, nonterminal:
-    ( @ACTION($i:expr, $($v:tt)*); $m:ident -> $e:expr ; $($t:tt)*) => { parse!{ @CONCAT({ let $m = $i; $e }, $($v)*); $($t)* } };
+    ( @ACTION($i:expr, $($v:tt)*); $m:ident -> $e:expr ; $($t:tt)*) => { __parse_internal!{ @CONCAT({ let $m = $i; $e }, $($v)*); $($t)* } };
     // terminal:
     ( @ACTION($i:expr, $($v:tt)*); $m:ident -> $e:expr )            => { { let $m = $i; $e } };
 
     // NAMED_ACTION  = $ident '(' ($expr ',')* ','? ')'
     // version with expression following, nonterminal:
-    ( @ACTION($i:expr, $($v:tt)*); $f:ident ( $($p:expr),* $(,)*) ; $($t:tt)* ) => { parse!{ @CONCAT($f($i, $($p),*), $($v)*); $($t)*} };
+    ( @ACTION($i:expr, $($v:tt)*); $f:ident ( $($p:expr),* $(,)*) ; $($t:tt)* ) => { __parse_internal!{ @CONCAT($f($i, $($p),*), $($v)*); $($t)*} };
     // terminal:
     ( @ACTION($i:expr, $($v:tt)*); $f:ident ( $($p:expr),* $(,)*) )             => { $f($i, $($p),*) };
 
@@ -107,24 +114,24 @@ macro_rules! parse {
     // an additional three variants are needed to handle tailing semicolons, if there is nothing
     // else to expand, do not use bind
     ( @CONCAT($i:expr, _                  );              ) => { $i };
-    ( @CONCAT($i:expr, _                  ); $($tail:tt)+ ) => { $i.bind(|i, _|        parse!{ i; $($tail)* }) };
+    ( @CONCAT($i:expr, _                  ); $($tail:tt)+ ) => { $i.bind(|i, _|        __parse_internal!{ i; $($tail)* }) };
     ( @CONCAT($i:expr, $v:pat             );              ) => { $i };
-    ( @CONCAT($i:expr, $v:pat             ); $($tail:tt)+ ) => { $i.bind(|i, $v|       parse!{ i; $($tail)* }) };
+    ( @CONCAT($i:expr, $v:pat             ); $($tail:tt)+ ) => { $i.bind(|i, $v|       __parse_internal!{ i; $($tail)* }) };
     ( @CONCAT($i:expr, $v:ident : $v_ty:ty);              ) => { $i };
-    ( @CONCAT($i:expr, $v:ident : $v_ty:ty); $($tail:tt)+ ) => { $i.bind(|i, $v:$v_ty| parse!{ i; $($tail)* }) };
+    ( @CONCAT($i:expr, $v:ident : $v_ty:ty); $($tail:tt)+ ) => { $i.bind(|i, $v:$v_ty| __parse_internal!{ i; $($tail)* }) };
 
     // EXPR          = ( BIND ';' | THEN ';' )* (RET | ERR | THEN)
     // TODO: Any way to prevent BIND from being the last?
 
     // BIND          = 'let' VAR '=' ACTION
-    ( $i:expr ; let $($tail:tt)* ) => { parse!{ @BIND($i); $($tail)+ } };
+    ( $i:expr ; let $($tail:tt)* ) => { __parse_internal!{ @BIND($i); $($tail)+ } };
     // RET           = 'ret' ( RET_TYPED | RET_PLAIN )
-    ( $i:expr ; ret $($tail:tt)+ ) => { parse!{ @RET($i); $($tail)+ } };
+    ( $i:expr ; ret $($tail:tt)+ ) => { __parse_internal!{ @RET($i); $($tail)+ } };
     // ERR           = 'err' ( ERR_TYPED | ERR_PLAIN )
-    ( $i:expr ; err $($tail:tt)+ ) => { parse!{ @ERR($i); $($tail)+ } };
+    ( $i:expr ; err $($tail:tt)+ ) => { __parse_internal!{ @ERR($i); $($tail)+ } };
     // THEN          = ACTION
     // needs to be last since it is the most general
-    ( $i:expr ; $($tail:tt)+ )     => { parse!{ @ACTION($i, _); $($tail)+ } };
+    ( $i:expr ; $($tail:tt)+ )     => { __parse_internal!{ @ACTION($i, _); $($tail)+ } };
 
     // Terminals:
     ( $i:expr ; ) => { $i };

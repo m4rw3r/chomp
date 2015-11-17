@@ -64,7 +64,7 @@ pub fn count<'a, I, T, E, F, U>(i: Input<'a, I>, num: usize, p: F) -> ParseResul
 /// Tries the parser ``f``, on success it yields the parsed value, on failure ``default`` will be
 /// yielded instead.
 /// 
-/// Incomplete state is propagated.
+/// Incomplete state is propagated. Backtracks on error.
 /// 
 /// ```
 /// use chomp::{Input, option, token};
