@@ -18,7 +18,7 @@
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use chomp::{Input, ParseResult, Error};
+/// use chomp::{Input, Error};
 /// use chomp::{take_while1, token};
 ///
 /// let i = Input::new("martin wernstål\n".as_bytes());
