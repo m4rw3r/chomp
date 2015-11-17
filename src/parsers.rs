@@ -28,12 +28,12 @@ pub fn any<'a, I: 'a + Copy>(i: Input<'a, I>) -> SimpleResult<'a, I, I> {
 /// fails.
 ///
 /// If the buffer length is 0 this parser is considered incomplete.
-/// 
+///
 /// ```
 /// use chomp::{Input, satisfy};
-/// 
+///
 /// let p = Input::new(b"abc");
-/// 
+///
 /// assert_eq!(satisfy(p, |c| c == b'a').unwrap(), b'a');
 /// ```
 #[inline]
@@ -92,18 +92,18 @@ pub fn not_token<'a, I: 'a + Copy + PartialEq>(i: Input<'a, I>, t: I) -> SimpleR
 
 /// Matches any item but does not consume it, on success it gives ``Some`` but if no input remains
 /// ``None`` is produced.
-/// 
+///
 /// This parser is never considered incomplete.
-/// 
+///
 /// ```
 /// use chomp::{Input, peek};
-/// 
+///
 /// let p1 = Input::new(b"abc");
-/// 
+///
 /// assert_eq!(peek(p1).unwrap(), Some(b'a'));
-/// 
+///
 /// let p2 = Input::new(b"");
-/// 
+///
 /// assert_eq!(peek(p2).unwrap(), None);
 /// ```
 #[inline]
@@ -112,14 +112,14 @@ pub fn peek<'a, I: 'a + Copy>(i: Input<'a, I>) -> SimpleResult<'a, I, Option<I>>
 }
 
 /// Matches ``num`` items no matter what they are, returning a slice of the matched items.
-/// 
+///
 /// If the buffer length is less than ``num`` this parser is considered incomplete.
-/// 
+///
 /// ```
 /// use chomp::{Input, take};
-/// 
+///
 /// let p = Input::new(b"abcd");
-/// 
+///
 /// assert_eq!(take(p, 3).unwrap(), b"abc");
 /// ```
 #[inline]
@@ -132,10 +132,10 @@ pub fn take<'a, I: 'a + Copy>(i: Input<'a, I>, num: usize) -> SimpleResult<'a, I
 }
 
 /// Matches all items while ``f`` returns false, returns a slice of all the matched items.
-/// 
+///
 /// If no failure can be found the parser will be considered to be incomplete as there might be
 /// more input which needs to be matched.
-/// 
+///
 /// ```
 /// use chomp::{Input, take_while};
 ///
@@ -143,9 +143,9 @@ pub fn take<'a, I: 'a + Copy>(i: Input<'a, I>, num: usize) -> SimpleResult<'a, I
 ///
 /// assert_eq!(take_while(p, |c| c == b'a' || c == b'b').unwrap(), b"ab");
 /// ```
-/// 
+///
 /// Without managing to match anything:
-/// 
+///
 /// ```
 /// use chomp::{Input, take_while};
 ///
@@ -166,7 +166,7 @@ pub fn take_while<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a
 
 /// Matches all items while ``f`` returns true, if at least one item matched this parser succeeds
 /// and returns a slice of all the matched items.
-/// 
+///
 /// If no failure can be found the parser will be considered to be incomplete as there might be
 /// more input which needs to be matched. If zero items were matched an error will be returned.
 ///
@@ -191,15 +191,15 @@ pub fn take_while1<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'
 
 /// Matches all items until ``f`` returns true, all items to that point will be returned as a slice
 /// upon success.
-/// 
+///
 /// If no failure can be found the parser will be considered to be incomplete as there might be
 /// more input which needs to be matched.
-/// 
+///
 /// ```
 /// use chomp::{Input, take_till};
-/// 
+///
 /// let p = Input::new(b"abcdef");
-/// 
+///
 /// assert_eq!(take_till(p, |c| c == b'd').unwrap(), b"abc");
 /// ```
 #[inline]
@@ -214,12 +214,12 @@ pub fn take_till<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a,
 }
 
 /// Matches the remainder of the buffer and returns it, always succeeds.
-/// 
+///
 /// ```
 /// use chomp::{Input, take_remainder};
-/// 
+///
 /// let p = Input::new(b"abcd");
-/// 
+///
 /// assert_eq!(take_remainder(p).unwrap(), b"abcd");
 /// ```
 #[inline]
@@ -228,15 +228,15 @@ pub fn take_remainder<'a, I: Copy>(i: Input<'a, I>) -> SimpleResult<'a, I, &'a [
 }
 
 /// Matches the given slice against the parser, returning the matched slice upon success.
-/// 
+///
 /// If the length of the contained data is shorter than the given slice this parser is considered
 /// incomplete.
-/// 
+///
 /// ```
 /// use chomp::{Input, string};
-/// 
+///
 /// let p = Input::new(b"abcdef");
-/// 
+///
 /// assert_eq!(string(p, b"abc").unwrap(), b"abc");
 /// ```
 #[inline]

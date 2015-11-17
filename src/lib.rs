@@ -86,11 +86,11 @@ impl<'a, I> Input<'a, I> {
 }
 
 /// The basic return type of a parser.
-/// 
+///
 /// This type satisfies a variant of the ``Monad`` typeclass. Due to the limitations of Rust's
 /// return types closures cannot be returned without boxing which has an unacceptable performance
 /// impact.
-/// 
+///
 /// To get around this issue and still provide a simple to use and safe (as in hard to accidentally
 /// violate the monad laws or the assumptions taken by the parser type) an `Input` wrapper is
 /// provided which ensures that the parser state is carried properly through every call to `bind`.
@@ -98,9 +98,9 @@ impl<'a, I> Input<'a, I> {
 /// annotation ``#[must_use]``).
 ///
 /// Do-notation is provided by the macro ``parse!``.
-/// 
+///
 /// # Equivalence with Haskell's ``Monad`` typeclass:
-/// 
+///
 /// ```text
 /// f >>= g   ≡  f(m).bind(g)
 /// f >> g    ≡  f(m).then(g)
@@ -109,7 +109,7 @@ impl<'a, I> Input<'a, I> {
 /// ```
 ///
 /// It also satisfies the monad laws:
-/// 
+///
 /// ```text
 /// return a >>= f   ≡  f a
 /// m >>= return     ≡  m
@@ -122,41 +122,41 @@ pub struct ParseResult<'a, I: 'a, T: 'a, E: 'a>(State<'a, I, T, E>);
 impl<'a, I, T, E> ParseResult<'a, I, T, E> {
     /// Sequentially composes the result with a parse action ``f``, passing any produced value as
     /// the second parameter.
-    /// 
+    ///
     /// The first parameter to the supplied function ``f`` is the parser state (``Input``). This
     /// state is then passed on to other parsers or used to return a value or an error.
-    /// 
+    ///
     /// # Automatic conversion of ``E``
-    /// 
+    ///
     /// The error value ``E`` will automatically be converted using the ``From`` trait to the
     /// desired type. The downside with this using the current stable version of Rust (1.4) is that
     /// the type inferrence will currently not use the default value for the generic ``V`` and will
     /// therefore require extra type hint for the error.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```
     /// use chomp::{Input, Error};
-    /// 
+    ///
     /// let p = Input::new(b"test").ret("data".to_owned());
     /// // Explicitly state the error type
     /// let r = p.bind::<_, _, ()>(|i, x| i.ret(x + " here!"));
-    /// 
+    ///
     /// assert_eq!(r.unwrap(), "data here!");
     /// ```
-    /// 
+    ///
     /// Using a function which wraps the expression will both make it easier to compose and also
     /// provides the type-hint for the error in the function signature:
-    /// 
+    ///
     /// ```
     /// use chomp::{Input, ParseResult};
-    /// 
+    ///
     /// fn parser(i: Input<u8>, n: i32) -> ParseResult<u8, i32, ()> {
     ///     i.ret(n + 10)
     /// }
-    /// 
+    ///
     /// let p = Input::new(b"test").ret(23);
-    /// 
+    ///
     /// assert_eq!(p.bind(parser).unwrap(), 33);
     /// ```
     #[inline]
@@ -171,28 +171,28 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
     }
 
     /// Sequentially composes the result with a parse action ``f``, discarding any produced value.
-    /// 
+    ///
     /// The first parameter to the supplied function ``f`` is the parser state (``Input``). This
     /// state is then passed on to other parsers or used to return a value or an error.
     ///
     /// # Relation to ``bind``
-    /// 
+    ///
     /// ```text
     /// ParseResult::then(g)  ≡  ParseResult::bind(|i, _| g(i))
     /// ```
-    /// 
+    ///
     /// # Example
-    /// 
+    ///
     /// ```
     /// use chomp::{Input, U8Result};
-    /// 
+    ///
     /// fn g(i: Input<u8>) -> U8Result<&'static str> {
     ///     i.ret("testing!")
     /// }
-    /// 
+    ///
     /// let p1 = Input::new(b"data").ret("initial state");
     /// let p2 = Input::new(b"data").ret("initial state");
-    /// 
+    ///
     /// assert_eq!(p1.bind(|i, _| g(i)).unwrap(), "testing!");
     /// assert_eq!(p2.then(g).unwrap(), "testing!");
     /// ```
@@ -226,36 +226,36 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
 
 impl<'a, I, T, E: fmt::Debug> ParseResult<'a, I, T, E> {
     /// Unwraps a parse result, yielding the content of the success-state.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// Panics if the parse result is in an error-state or if the parsing is incomplete. Will
     /// provide a panic message based on the value of the error.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```
     /// use chomp::{Input, token};
-    /// 
+    ///
     /// let r = token(Input::new(b"a"), b'a');
-    /// 
+    ///
     /// assert_eq!(r.unwrap(), b'a');
     /// ```
-    /// 
+    ///
     /// ```{.should_panic}
     /// use chomp::{Input, token};
-    /// 
+    ///
     /// let r = token(Input::new(b"a"), b'b');
-    /// 
+    ///
     /// // Panics with "called `ParseResult::unwrap` on an error: Expected (98)"
     /// assert_eq!(r.unwrap(), b'a');
     /// ```
-    /// 
+    ///
     /// ```{.should_panic}
     /// use chomp::{Input, take_while};
-    /// 
+    ///
     /// let r = take_while(Input::new(b"a"), |c| c == b'a');
-    /// 
+    ///
     /// // Panics with "called `ParseResult::unwrap` on an incomplete state (requested 1 tokens)"
     /// assert_eq!(r.unwrap(), b"a");
     /// ```
@@ -269,19 +269,19 @@ impl<'a, I, T, E: fmt::Debug> ParseResult<'a, I, T, E> {
     }
 
     /// Unwraps a parse result, yielding the contents of the success state.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// Panics if the parse result is in an error-state or if the parsing is incomplete. Will
     /// provide a panic message based on the supplied message and the value of the error.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```{.should_panic}
     /// use chomp::{Input, token};
-    /// 
+    ///
     /// let r = token(Input::new(b"a"), b'b');
-    /// 
+    ///
     /// // Panics with "Wanted character b: Expected(98)"
     /// assert_eq!(r.expect("Wanted character b"), b'a');
     /// ```
@@ -297,27 +297,27 @@ impl<'a, I, T, E: fmt::Debug> ParseResult<'a, I, T, E> {
 
 impl<'a, I, T: fmt::Debug, E> ParseResult<'a, I, T, E> {
     /// Unwraps a parse result, yielding the contents of the error state.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// Panics if the parse result is in a success-state or if the parsing is incomplete. Will
     /// provide a panic message based on the value of the success or incomplete state.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```
     /// use chomp::{Error, Input, token};
-    /// 
+    ///
     /// let r = token(Input::new(b"a"), b'b');
-    /// 
+    ///
     /// assert_eq!(r.unwrap_err(), Error::Expected(98));
     /// ```
-    /// 
+    ///
     /// ```{.should_panic}
     /// use chomp::{Error, Input, token};
-    /// 
+    ///
     /// let r = token(Input::new(b"a"), b'a');
-    /// 
+    ///
     /// // Panics with "called `ParseResult::unwrap_err` on a success state: 97"
     /// assert_eq!(r.unwrap_err(), Error::Expected(98));
     /// ```
@@ -340,7 +340,7 @@ pub type SimpleResult<'a, I, T> = ParseResult<'a, I, T, Error<I>>;
 mod err {
     //! This is a private module to contain the more verbose error type as well as adapters for
     //! using it.
-    //! 
+    //!
     //! All adapters are #[inline(always)] and will construct the appropriate error type.
     use std::any;
     use std::error;
@@ -399,7 +399,7 @@ mod err {
 mod err {
     //! This is a private module to contain the smaller error type as well as adapters for using
     //! it.
-    //! 
+    //!
     //! All adapters are #[inline(always)], and will just noop the data.
     use ::std::any;
     use ::std::error;

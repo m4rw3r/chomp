@@ -1,5 +1,5 @@
 //! Module used to construct fundamental parsers and combinators.
-//! 
+//!
 //! # Internal
 //!
 //! Only used by fundamental parsers and combinators.
@@ -23,7 +23,7 @@ pub enum State<'a, I: 'a, T, E>
 }
 
 /// Internal trait for modifying `ParseResult`.
-/// 
+///
 /// # Internal
 ///
 /// Only used by fundamental parsers and combinators.
@@ -54,7 +54,7 @@ pub trait ParseResultModify<'a> {
 }
 
 /// Implementation of internal trait used as a building block for combinators.
-/// 
+///
 /// # Internal
 ///
 /// Only used by fundamental parsers and combinators.
@@ -91,7 +91,7 @@ impl<'a, I, T, E> ParseResultModify<'a> for ParseResult<'a, I, T, E> {
 }
 
 /// Trait for modifying `Input`.
-/// 
+///
 /// # Internal
 ///
 /// Only used by fundamental parsers and combinators.
@@ -112,7 +112,7 @@ pub trait InputModify<'a> {
 }
 
 /// Implementation of internal trait used to build parsers and combinators.
-/// 
+///
 /// # Internal
 ///
 /// Only used by fundamental parsers and combinators.
@@ -135,7 +135,7 @@ impl<'a, I> InputModify<'a> for Input<'a, I> {
 }
 
 /// Creates a data-carrying value from an input slice and a data value.
-/// 
+///
 /// # Internal
 ///
 /// Only used by fundamental parsers and combinators.
@@ -145,7 +145,7 @@ pub fn data<'a, I, T, E>(i: &'a [I], t: T) -> ParseResult<'a, I, T, E> {
 }
 
 /// Creates an error value from an input slice and an error value.
-/// 
+///
 /// # Internal
 ///
 /// Only used by fundamental parsers and combinators.
@@ -156,7 +156,7 @@ pub fn error<'a, I, T, E>(i: &'a [I], e: E) -> ParseResult<'a, I, T, E> {
 
 /// Notifies the combinator that a parser has reached the end of the currently supplied slice but
 /// requires more data.
-/// 
+///
 /// # Internal
 ///
 /// Only used by fundamental parsers and combinators.

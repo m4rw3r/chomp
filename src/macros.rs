@@ -1,10 +1,10 @@
 /// Macro emulating `do`-notation for the parser monad, automatically threading the linear type.
-/// 
+///
 /// ```text
 /// parse!{input;
 ///                 parser("parameter");
 ///     let value = other_parser();
-///     
+///
 ///     ret do_something(value);
 /// }
 /// // is equivalent to:
@@ -12,9 +12,9 @@
 ///     other_parser(i).bind(|i, value|
 ///         i.ret(do_something(value))))
 /// ```
-/// 
+///
 /// # Example
-/// 
+///
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
@@ -22,13 +22,13 @@
 /// use chomp::{take_while1, token};
 ///
 /// let i = Input::new("martin wernstål\n".as_bytes());
-/// 
+///
 /// #[derive(Debug, Eq, PartialEq)]
 /// struct Name<'a> {
 ///     first: &'a [u8],
 ///     last:  &'a [u8],
 /// }
-/// 
+///
 /// let r = parse!{i;
 ///     let first = take_while1(|c| c != b' ');
 ///                 token(b' ');
@@ -39,15 +39,15 @@
 ///         last:  last,
 ///     }
 /// };
-/// 
+///
 /// assert_eq!(r.unwrap(), Name{first: b"martin", last: "wernstål".as_bytes()});
 /// # }
 /// ```
-/// 
+///
 /// ## Grammar
-/// 
+///
 /// EBNF using `$ty`, `$expr`, `$ident` and `$pat` for the equivalent Rust macro patterns.
-/// 
+///
 /// ```text
 /// RET_TYPED     = '@' $ty ',' $ty ':' $expr
 /// RET_PLAIN     = $expr
@@ -59,13 +59,13 @@
 /// ACTION        = INLINE_ACTION | NAMED_ACTION
 /// INLINE_ACTION = $ident '->' $expr
 /// NAMED_ACTION  = $ident '(' ($expr ',')* ','? ')'
-/// 
+///
 /// BIND          = 'let' VAR '=' ACTION
 /// THEN          = ACTION
 ///
 /// RET           = 'ret' ( RET_TYPED | RET_PLAIN )
 /// ERR           = 'err' ( ERR_TYPED | ERR_PLAIN )
-/// 
+///
 /// EXPR          = ( BIND ';' | THEN ';' )* (RET | ERR | THEN)
 /// ```
 #[macro_export]
