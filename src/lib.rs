@@ -24,7 +24,7 @@
 //! 
 //! assert_eq!(name(i).unwrap(), Name{first: b"martin", last: "wernstål".as_bytes()});
 //! ```
-use ::std::fmt;
+use std::fmt;
 
 #[macro_use]
 mod macros;
@@ -352,8 +352,8 @@ mod err {
     use std::error;
     use std::fmt;
 
-    use ::ParseResult;
-    use ::internal;
+    use ParseResult;
+    use internal::error;
 
     #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
     pub enum Error<I> {
@@ -399,7 +399,7 @@ mod err {
     pub fn string<'a, 'b, I, T>(buffer: &'a [I], _offset: usize, expected: &'b [I])
         -> ParseResult<'a, I, T, Error<I>>
       where I: Copy {
-        internal::error(buffer, Error::String(expected.to_vec()))
+        error(buffer, Error::String(expected.to_vec()))
     }
 }
 
@@ -409,14 +409,14 @@ mod err {
     //! it.
     //!
     //! All adapters are #[inline(always)], and will just noop the data.
-    use ::std::any;
-    use ::std::error;
-    use ::std::fmt;
+    use std::any;
+    use std::error;
+    use std::fmt;
 
-    use ::std::marker::PhantomData;
+    use std::marker::PhantomData;
 
-    use ::ParseResult;
-    use ::internal;
+    use ParseResult;
+    use internal::error;
 
     #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
     pub struct Error<I>(PhantomData<I>);
@@ -447,14 +447,14 @@ mod err {
     pub fn string<'a, 'b, I, T>(buffer: &'a [I], offset: usize, _expected: &'b [I])
         -> ParseResult<'a, I, T, Error<I>>
       where I: Copy {
-        internal::error(&buffer[offset..], Error(PhantomData))
+        error(&buffer[offset..], Error(PhantomData))
     }
 }
 
 #[cfg(test)]
 mod test {
-    use ::{Input, ParseResult};
-    use ::internal::State;
+    use {Input, ParseResult};
+    use internal::State;
 
     #[test]
     fn monad_left_identity() {

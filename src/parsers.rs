@@ -1,9 +1,9 @@
 //! Basic parsers.
 
-use ::{Input, SimpleResult};
-use ::err;
-use ::internal::InputModify;
-use ::internal::{data, error, incomplete};
+use {Input, SimpleResult};
+use err;
+use internal::InputModify;
+use internal::{data, error, incomplete};
 
 /// Matches any item, returning it if present.
 ///
@@ -262,7 +262,7 @@ pub fn string<'a, 'b, I: Copy + PartialEq>(i: Input<'a, I>, s: &'b [I])
 #[cfg(test)]
 mod test {
     use super::{take_while1, token, take_remainder};
-    use ::{Input, SimpleResult};
+    use {Input, SimpleResult};
 
     #[test]
     fn parse_decimal() {

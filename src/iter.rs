@@ -2,9 +2,9 @@
 
 use std::marker::PhantomData;
 
-use ::{ParseResult, Input};
-use ::internal::State;
-use ::internal::{ParseResultModify};
+use {ParseResult, Input};
+use internal::State;
+use internal::{ParseResultModify};
 
 pub enum EndState<'a, I, E>
   where I: 'a {

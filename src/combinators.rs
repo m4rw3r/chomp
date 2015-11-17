@@ -1,14 +1,14 @@
 //! Basic combinators.
 
-use ::{ParseResult, Input};
+use {ParseResult, Input};
 
-use ::iter::{EndState, Iter};
+use iter::{EndState, Iter};
 
-use ::internal::State;
-use ::internal::{ParseResultModify, InputModify};
-use ::internal::{data, error, incomplete};
+use internal::State;
+use internal::{ParseResultModify, InputModify};
+use internal::{data, error, incomplete};
 
-use ::std::iter::FromIterator;
+use std::iter::FromIterator;
 
 /// Applies the parser ``p`` exactly ``num`` times, propagating any error or incomplete state.
 ///

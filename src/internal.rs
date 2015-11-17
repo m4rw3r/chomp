@@ -4,7 +4,7 @@
 //!
 //! Only used by fundamental parsers and combinators.
 
-use ::{ParseResult, Input};
+use {ParseResult, Input};
 
 /// Internal inner type containing the parse-state.
 ///
