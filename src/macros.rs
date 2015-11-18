@@ -160,6 +160,30 @@ macro_rules! __parse_internal {
     ( $i:expr )   => { $i };
 }
 
+/// Macro wrapping an invocation to ``parse!`` in a closure, useful for creating parsers inline.
+///
+/// This makes it easier to eg. implement branching in the same ``parse!`` block:
+///
+/// ```
+/// # #[macro_use] extern crate chomp;
+/// # fn main() {
+/// use chomp::{Input};
+/// use chomp::{or, string};
+///
+/// let i = Input::new(b"ac");
+///
+/// let r = parse!{i;
+///   or(parser!{string(b"ab")},
+///      parser!{string(b"ac")})};
+///
+/// assert_eq!(r.unwrap(), b"ac");
+/// # }
+/// ```
+#[macro_export]
+macro_rules! parser {
+    ( $($t:tt)* ) => { |i| parse!{i; $($t)* } }
+}
+
 #[cfg(test)]
 mod test {
     /// Simplified implementation of the emulated monad using linear types.
