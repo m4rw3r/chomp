@@ -45,7 +45,7 @@
 //!
 //! # Usage
 //!
-//! Chomp's functionality is split between three modules.
+//! Chomp's functionality is split between three modules:
 //!
 //! * `parsers` contains the basic parsers used to parse streams of input.
 //! * `combinators` contains functions which take parsers and return new ones.
@@ -53,7 +53,7 @@
 //!   is far more involved than using the pre-existing parsers, but is sometimes unavoidable.
 //!
 //! A parser is, at its simplest, a function that takes a slice of input and returns a
-//! `ParserResult<'a, I, T, E>`, where I, T, and E are the input, output, and error types,
+//! `ParserResult<'a, I, T, E>`, where `I`, `T`, and `E` are the input, output, and error types,
 //! respectively. Parsers are usually parameterized over values or other parsers as well, so these
 //! appear as extra arguments in the parsing function. As an example, here is the signature of the
 //! `token` parser, which matches a particular input.
@@ -93,12 +93,12 @@
 //! # fn main() {
 //! # use chomp::{Input, satisfy};
 //! # let r = parse!{Input::new(b"h");
-//!    satisfy(|c| {
-//!        match c {
-//!            b'c' | b'h' | b'a' | b'r' => true,
-//!            _ => false,
-//!        }
-//!    })
+//! satisfy(|c| {
+//!     match c {
+//!         b'c' | b'h' | b'a' | b'r' => true,
+//!         _ => false,
+//!     }
+//! })
 //! # };
 //! # assert_eq!(r.unwrap(), b'h');
 //! # }
@@ -125,7 +125,7 @@
 //! * Return a datatype at the end, which may be the result of any arbitrary computation over the
 //! intermediate results.
 //!
-//! In other words, just as a normal Rust function usually looks something like
+//! In other words, just as a normal Rust function usually looks something like this:
 //!
 //! ```
 //! # fn launch_missiles() {}
@@ -137,7 +137,7 @@
 //! }
 //! ```
 //!
-//! A Chomp parser looks something like
+//! A Chomp parser with a similar structure looks like this:
 //!
 //! ```
 //! # #[macro_use] extern crate chomp;
