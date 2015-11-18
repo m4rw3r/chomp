@@ -41,12 +41,12 @@
 //!
 //! A parser is, at its simplest, a function that takes a slice of input and returns a `ParserResult<'a, I, T, E>`, where I, T, and E are the input, output, and error types, respectively. Parsers are usually parameterized over values or other parsers as well, so these appear as extra arguments in the parsing function. As an example, here is the signature of the `token` parser, which matches a particular input.
 //!
-//! ```
+//! ```ignore
 //! fn token<'a, I: 'a + Copy + Eq>(i: Input<'a, I>, t: I) -> SimpleResult<'a, I, I> {...}
 //! ```
 //!
 //!   Notice that the first argument is an `Input<'a, I>`, and the second argument is some `I`. `Input<'a,I>` is just a datatype over the current state of the parser and a slice of input `I`, and prevents the parser writer from accidentally mutating the state of the parser. Later, when we introduce the `parse!` macro, we will see that using a parser in this macro just means supplying all of the arguments but the input, as so:
-//! ```
+//! ```ignore
 //! token(b'T');
 //! ```
 //! Note that you cannot do this outside of the `parse!` macro.
@@ -54,7 +54,7 @@
 //!
 //!    A very useful parser is the `satisfy` parser:
 //!
-//! ```
+//! ```ignore
 //! fn satisfy<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a, I, I>
 //!    where F: FnOnce(I) -> bool { ... }
 //! ```
@@ -62,18 +62,25 @@
 //! Besides the input state, satisfy's only parameter is a predicate function and will succeed only if the next piece of input satisfies the supplied predicate. Here's an example that might be used in the `parse!` macro.
 //!
 //! ```
+//! # #[macro_use] extern crate chomp;
+//! # fn main() {
+//! # use chomp::{Input, satisfy};
+//! # let r = parse!{Input::new(b"h");
 //!    satisfy(|c| {
 //!        match c {
 //!            b'c' | b'h' | b'a' | b'r' => true,
 //!            _ => false,
 //!        }
-//!    });
+//!    })
+//! # };
+//! # assert_eq!(r.unwrap(), b'h');
+//! # }
 //! ```
 //!    This parser will only succeed if the character is one of the characters in "char".
 //!
 //!    Lastly, here is the parser combinator `count`, which will attempt to run a parser a number of times on its input.
 //!
-//! ```
+//! ```ignore
 //! pub fn count<'a, I, T, E, F, U>(i: Input<'a, I>, num: usize, p: F) -> ParseResult<'a, I, T, E>
 //!   where I: Copy,
 //!         U: 'a,
@@ -90,6 +97,7 @@
 //! In other words, just as a normal Rust function usually looks something like
 //!
 //! ```
+//! # fn launch_missiles() {}
 //! fn f() -> (u8, u8, u8) {
 //!     let a = 3;
 //!     let b = 3;
@@ -101,14 +109,20 @@
 //! A Chomp parser looks something like
 //!
 //! ```
-//! fn f<'a>(i: Input<'a, u8>) -> SimpleResult<'a, I, (u8, u8, u8)> {
+//! # #[macro_use] extern crate chomp;
+//! # use chomp::{Input, string, token, SimpleResult};
+//! fn f<'a>(i: Input<'a, u8>) -> SimpleResult<'a, u8, (u8, u8, u8)> {
 //!     parse!{i;
 //!         let a = token(b'3');
-//!         let b = token(b'3')
+//!         let b = token(b'3');
 //!         string(b"missiles");
 //!         ret (a, b, a + b)
 //!     }
 //! }
+//! # fn main() {
+//! #     let r = f(Input::new(b"33missiles"));
+//! #     assert_eq!(r.unwrap(), (b'3', b'3', b'f')); // b'3' + b'3' == b'f'
+//! # }
 //! ```
 //! Readers familiar with Haskell or F# will recognize this as a "monadic computation" or "computation expression".
 //!
