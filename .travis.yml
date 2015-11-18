@@ -23,7 +23,6 @@ script:
   - |
       travis-cargo build $FEATURES &&
       travis-cargo test  $FEATURES &&
-      travis-cargo bench $FEATURES &&
       travis-cargo --only stable doc
 
 after_success:
