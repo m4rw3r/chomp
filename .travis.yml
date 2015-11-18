@@ -6,23 +6,28 @@ rust:
   - beta
   - nightly
 
+env:
+  - FEATURES=""
+  - FEATURES="--no-default-features"
+
 matrix:
   allow_failures:
     - rust: nightly
 
 before_script:
-  # Path for software installed by pip:
+  - pip install 'travis-cargo<0.2' --user
+  - export TRAVIS_CARGO_NIGHTLY_FEATURE=nightly_test
   - export PATH=$HOME/.local/bin:$PATH
 
-after_success: |
-  [ $TRAVIS_BRANCH = master ] &&
-  [ $TRAVIS_PULL_REQUEST = false ] &&
-  [ $TRAVIS_RUST_VERSION = stable ] &&
-  cargo doc &&
-  echo "<meta http-equiv=refresh content=0;url=`echo $TRAVIS_REPO_SLUG | cut -d '/' -f 2`/index.html>" > target/doc/index.html &&
-  pip install ghp-import --user `whoami` &&
-  ghp-import -n target/doc &&
-  git push -fq https://${GH_TOKEN}@github.com/${TRAVIS_REPO_SLUG}.git gh-pages
+script:
+  - |
+      travis-cargo build $FEATURES &&
+      travis-cargo test  $FEATURES &&
+      travis-cargo bench $FEATURES &&
+      travis-cargo --only stable doc
+
+after_success:
+  - [ $TRAVIS_BRANCH = master ] && travis-cargo --only stable doc-upload
 
 env:
   global:
