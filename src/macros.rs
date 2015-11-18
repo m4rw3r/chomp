@@ -97,16 +97,20 @@ macro_rules! __parse_internal {
 
     // VAR           = $ident ':' $ty | $pat
     // pattern must be before ident
+    // @ACTION_NONTERM will intentionally fail if there are no more tokens following the bind
     ( @BIND($i:expr); $v:pat              = $($t:tt)* ) =>
-        { __parse_internal!{ @ACTION($i, $v      ); $($t)* } };
+        { __parse_internal!{ @ACTION_NONTERM($i, $v      ); $($t)* } };
     ( @BIND($i:expr); $v:ident : $v_ty:ty = $($t:tt)* ) =>
-        { __parse_internal!{ @ACTION($i, $v:$v_ty); $($t)* } };
+        { __parse_internal!{ @ACTION_NONTERM($i, $v:$v_ty); $($t)* } };
 
     // ACTION        = INLINE_ACTION | NAMED_ACTION
 
     // INLINE_ACTION = $ident '->' $expr
     // version with expression following, nonterminal:
     ( @ACTION($i:expr, $($v:tt)*); $m:ident -> $e:expr ; $($t:tt)*) =>
+        { __parse_internal!{ @CONCAT({ let $m = $i; $e }, $($v)*); $($t)* } };
+    // intentionally fail if there are no more tokens
+    ( @ACTION_NONTERM($i:expr, $($v:tt)*); $m:ident -> $e:expr ; $($t:tt)*) =>
         { __parse_internal!{ @CONCAT({ let $m = $i; $e }, $($v)*); $($t)* } };
     // terminal:
     ( @ACTION($i:expr, $($v:tt)*); $m:ident -> $e:expr ) =>
@@ -115,6 +119,9 @@ macro_rules! __parse_internal {
     // NAMED_ACTION  = $ident '(' ($expr ',')* ','? ')'
     // version with expression following, nonterminal:
     ( @ACTION($i:expr, $($v:tt)*); $f:ident ( $($p:expr),* $(,)*) ; $($t:tt)* ) =>
+        { __parse_internal!{ @CONCAT($f($i, $($p),*), $($v)*); $($t)*} };
+    // intentionally fail if there are no more tokens
+    ( @ACTION_NONTERM($i:expr, $($v:tt)*); $f:ident ( $($p:expr),* $(,)*) ; $($t:tt)* ) =>
         { __parse_internal!{ @CONCAT($f($i, $($p),*), $($v)*); $($t)*} };
     // terminal:
     ( @ACTION($i:expr, $($v:tt)*); $f:ident ( $($p:expr),* $(,)*) ) =>
