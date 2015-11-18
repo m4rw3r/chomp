@@ -224,7 +224,11 @@ pub fn take_till<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a,
 /// ```
 #[inline]
 pub fn take_remainder<'a, I: Copy>(i: Input<'a, I>) -> SimpleResult<'a, I, &'a [I]> {
-    i.parse(|b| data(&b[b.len() -1 ..], b))
+    // Last slice and we have just read everything of it, replace with zero-sized slice:
+    //
+    // Hack to avoid branch and overflow, does not matter where this zero-sized slice is
+    // allocated
+    i.parse(|b| data(&b[..0], b))
 }
 
 /// Matches the given slice against the parser, returning the matched slice upon success.
@@ -288,5 +292,14 @@ mod test {
 
         assert_eq!(buf, &[b' ']);
         assert_eq!(state, (123, 4567));
+    }
+
+    #[test]
+    fn parse_remainder_empty() {
+        let i = Input::new(b"");
+
+        let r = take_remainder(i);
+
+        assert_eq!(r.unwrap(), b"" as &[u8]);
     }
 }
