@@ -100,8 +100,7 @@ impl<'a, I, T, E> ParseResultModify<'a> for ParseResult<'a, I, T, E> {
 ///
 /// Only used by fundamental parsers and combinators.
 pub mod input {
-    pub const DEFAULT: u32      = 0;
-    pub const END_OF_INPUT: u32 = 1;
+    pub use input::{DEFAULT, END_OF_INPUT, new};
 }
 
 /// Trait for modifying `Input`.
@@ -148,22 +147,6 @@ pub trait InputModify<'a> {
       where F: Fn(&'a [Self::Type]) -> &'a [Self::Type],
           <Self as InputModify<'a>>::Type: 'a;
 
-    /// Creates a data-carrying value from an input slice and a data value.
-    ///
-    /// # Internal
-    ///
-    /// Only used by fundamental parsers and combinators.
-    #[inline(always)]
-    fn data<T, E>(self, T) -> ParseResult<'a, Self::Type, T, E>;
-
-    /// Creates an error value from an input slice and an error value.
-    ///
-    /// # Internal
-    ///
-    /// Only used by fundamental parsers and combinators.
-    #[inline(always)]
-    fn error<T, E>(self, E) -> ParseResult<'a, Self::Type, T, E>;
-
     /// Notifies the combinator that a parser has reached the end of the currently supplied slice but
     /// requires more data.
     ///
@@ -180,78 +163,4 @@ pub trait InputModify<'a> {
     /// Only used by fundamental parsers and combinators.
     #[inline(always)]
     fn is_last_slice(&self) -> bool;
-}
-
-/// Implementation of internal trait used to build parsers and combinators.
-///
-/// # Internal
-///
-/// Only used by fundamental parsers and combinators.
-impl<'a, I> InputModify<'a> for Input<'a, I> {
-    type Type = I;
-
-    /// Creates a clone of the instance.
-    #[inline(always)]
-    fn clone_input(&self) -> Self {
-        Input(self.0, self.1)
-    }
-
-    #[inline(always)]
-    fn buffer(&self) -> &'a [Self::Type]
-      where <Self as InputModify<'a>>::Type: 'a {
-        self.1
-    }
-
-    /// Modifies the inner data without leaving the `Input` context.
-    #[inline(always)]
-    fn replace(self, b: &'a [Self::Type]) -> Self
-      where <Self as InputModify<'a>>::Type: 'a {
-        Input(self.0, b)
-    }
-
-    /// Modifies the inner data without leaving the `Input` context.
-    #[inline(always)]
-    fn modify<F>(self, f: F) -> Self
-      where F: Fn(&'a [Self::Type]) -> &'a [Self::Type],
-          <Self as InputModify<'a>>::Type: 'a {
-        Input(self.0, f(self.1))
-    }
-
-    /// Creates a data-carrying value from an input slice and a data value.
-    ///
-    /// # Internal
-    ///
-    /// Only used by fundamental parsers and combinators.
-    #[inline(always)]
-    // TODO: Remove; use ret instead
-    fn data<T, E>(self, t: T) -> ParseResult<'a, Self::Type, T, E> {
-        ParseResult(State::Data(self, t))
-    }
-
-    /// Creates an error value from an input slice and an error value.
-    ///
-    /// # Internal
-    ///
-    /// Only used by fundamental parsers and combinators.
-    #[inline(always)]
-    // TODO: Remove; use err instead
-    fn error<T, E>(self, e: E) -> ParseResult<'a, Self::Type, T, E> {
-        ParseResult(State::Error(self.1, e))
-    }
-
-    /// Notifies the combinator that a parser has reached the end of the currently supplied slice but
-    /// requires more data.
-    ///
-    /// # Internal
-    ///
-    /// Only used by fundamental parsers and combinators.
-    #[inline(always)]
-    fn incomplete<T, E>(self, n: usize) -> ParseResult<'a, Self::Type, T, E> {
-        ParseResult(State::Incomplete(n))
-    }
-
-    #[inline(always)]
-    fn is_last_slice(&self) -> bool {
-        self.0 & input::END_OF_INPUT == input::END_OF_INPUT
-    }
 }

@@ -177,6 +177,7 @@ use ::std::fmt;
 #[macro_use]
 mod macros;
 mod iter;
+mod input;
 
 pub mod internal;
 pub mod parsers;
@@ -206,35 +207,9 @@ pub use parsers::{
 };
 pub use err::Error;
 pub use iter::Iter;
+pub use input::Input;
 
 use internal::State;
-use internal::InputModify;
-
-/// Linear type containing the parser state, this type is threaded though `bind`.
-#[must_use]
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct Input<'a, I: 'a>(u32, &'a [I]);
-
-impl<'a, I> Input<'a, I> {
-    // TODO: Remove, use parse_slice instead
-    pub fn new(b: &'a [I]) -> Self {
-        use internal::input::END_OF_INPUT;
-
-        Input(END_OF_INPUT, b)
-    }
-
-    /// Returns the value `t` with the input context.
-    #[inline]
-    pub fn ret<T, E>(self, t: T) -> ParseResult<'a, I, T, E> {
-        InputModify::data(self, t)
-    }
-
-    /// Returns the error value `e` with the input context.
-    #[inline]
-    pub fn err<T, E>(self, e: E) -> ParseResult<'a, I, T, E> {
-        InputModify::error(self, e)
-    }
-}
 
 /// The basic return type of a parser.
 ///
@@ -504,7 +479,6 @@ mod err {
     use std::fmt;
 
     use {Input, ParseResult};
-    use internal::InputModify;
 
     #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
     pub enum Error<I> {
@@ -550,7 +524,7 @@ mod err {
     pub fn string<'a, 'b, I, T>(i: Input<'a, I>, _offset: usize, expected: &'b [I])
         -> ParseResult<'a, I, T, Error<I>>
       where I: Copy {
-        i.error(Error::String(expected.to_vec()))
+        i.err(Error::String(expected.to_vec()))
     }
 }
 
@@ -600,13 +574,14 @@ mod err {
         use internal::InputModify;
         let b = i.buffer();
 
-        i.replace(&b[offset..]).error(Error(PhantomData))
+        i.replace(&b[offset..]).err(Error(PhantomData))
     }
 }
 
 #[cfg(test)]
 mod test {
     use {Input, ParseResult};
+    use input;
     use internal::State;
     use internal::input::END_OF_INPUT;
 
@@ -616,8 +591,8 @@ mod test {
             i.ret(n + 1)
         }
 
-        let m1 = Input(END_OF_INPUT, b"test");
-        let m2 = Input(END_OF_INPUT, b"test");
+        let m1 = input::new(END_OF_INPUT, b"test");
+        let m2 = input::new(END_OF_INPUT, b"test");
 
         let a = 123;
         // return a >>= f
@@ -625,21 +600,21 @@ mod test {
         // f a
         let rhs = f(m2, a);
 
-        assert_eq!(lhs.0, State::Data(Input(END_OF_INPUT, b"test"), 124));
-        assert_eq!(rhs.0, State::Data(Input(END_OF_INPUT, b"test"), 124));
+        assert_eq!(lhs.0, State::Data(input::new(END_OF_INPUT, b"test"), 124));
+        assert_eq!(rhs.0, State::Data(input::new(END_OF_INPUT, b"test"), 124));
     }
 
     #[test]
     fn monad_right_identity() {
-        let m1 = Input(END_OF_INPUT, b"test").ret::<_, ()>(1);
-        let m2 = Input(END_OF_INPUT, b"test").ret::<_, ()>(1);
+        let m1 = input::new(END_OF_INPUT, b"test").ret::<_, ()>(1);
+        let m2 = input::new(END_OF_INPUT, b"test").ret::<_, ()>(1);
 
         // m1 >>= ret === m2
         let lhs = m1.bind::<_, _, ()>(Input::ret);
         let rhs = m2;
 
-        assert_eq!(lhs.0, State::Data(Input(END_OF_INPUT, b"test"), 1));
-        assert_eq!(rhs.0, State::Data(Input(END_OF_INPUT, b"test"), 1));
+        assert_eq!(lhs.0, State::Data(input::new(END_OF_INPUT, b"test"), 1));
+        assert_eq!(rhs.0, State::Data(input::new(END_OF_INPUT, b"test"), 1));
     }
 
     #[test]
@@ -652,15 +627,15 @@ mod test {
             i.ret(num * 2)
         }
 
-        let lhs_m = Input(END_OF_INPUT, b"test").ret::<_, ()>(2);
-        let rhs_m = Input(END_OF_INPUT, b"test").ret::<_, ()>(2);
+        let lhs_m = input::new(END_OF_INPUT, b"test").ret::<_, ()>(2);
+        let rhs_m = input::new(END_OF_INPUT, b"test").ret::<_, ()>(2);
 
         // (m >>= f) >>= g
         let lhs = lhs_m.bind(f).bind(g);
         // m >>= (\x -> f x >>= g)
         let rhs = rhs_m.bind(|i, x| f(i, x).bind(g));
 
-        assert_eq!(lhs.0, State::Data(Input(END_OF_INPUT, b"test"), 6));
-        assert_eq!(rhs.0, State::Data(Input(END_OF_INPUT, b"test"), 6));
+        assert_eq!(lhs.0, State::Data(input::new(END_OF_INPUT, b"test"), 6));
+        assert_eq!(rhs.0, State::Data(input::new(END_OF_INPUT, b"test"), 6));
     }
 }

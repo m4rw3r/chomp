@@ -51,7 +51,7 @@ pub fn count<'a, I, T, E, F, U>(i: Input<'a, I>, num: usize, p: F) -> ParseResul
     let (buffer, last) = iter.end_state();
 
     if count == num {
-        buffer.data(result)
+        buffer.ret(result)
     } else {
         // Can only be less than num here since take() limits it.
         // Just propagate the last state from the iterator.
@@ -82,7 +82,7 @@ pub fn option<'a, I, T, E, F>(i: Input<'a, I>, f: F, default: T) -> ParseResult<
         F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E> {
     f(i.clone_input()).parse(|s| match s {
         State::Data(b, d)    => b.ret(d),
-        State::Error(_, _)   => i.data(default),
+        State::Error(_, _)   => i.ret(default),
         State::Incomplete(n) => i.incomplete(n),
     })
 }
@@ -148,10 +148,10 @@ pub fn many<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E
     match iter.end_state() {
         // Ok, last parser failed, we have iterated all.
         // Return remainder of buffer and the collected result
-        (s, EndState::Error(_, _))   => s.data(result),
+        (s, EndState::Error(_, _))   => s.ret(result),
         // Nested parser incomplete, propagate
         (s, EndState::Incomplete(n)) => if s.buffer().len() == 0 && s.is_last_slice() {
-            s.data(result)
+            s.ret(result)
         } else {
             s.incomplete(n)
         },
@@ -195,15 +195,15 @@ pub fn many1<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, 
 
     if !item {
         match iter.end_state() {
-            (s, EndState::Error(b, e))   => s.replace(b).error(e),
+            (s, EndState::Error(b, e))   => s.replace(b).err(e),
             (s, EndState::Incomplete(n)) => s.incomplete(n),
         }
     } else {
         match iter.end_state() {
-            (s, EndState::Error(_, _))   => s.data(result),
+            (s, EndState::Error(_, _))   => s.ret(result),
             // TODO: Indicate potentially more than 1?
             (s, EndState::Incomplete(n)) => if s.buffer().len() == 0 && s.is_last_slice() {
-                s.data(result)
+                s.ret(result)
             } else {
                 s.incomplete(n)
             },
@@ -236,5 +236,5 @@ pub fn skip_many<'a, I, T, E, F>(mut i: Input<'a, I>, mut f: F) -> ParseResult<'
         }
     }
 
-    i.data(())
+    i.ret(())
 }
