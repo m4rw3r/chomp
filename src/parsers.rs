@@ -3,7 +3,6 @@
 use {Input, SimpleResult};
 use err;
 use internal::InputModify;
-use internal::{data, error, incomplete};
 
 /// Matches any item, returning it if present.
 ///
@@ -18,10 +17,10 @@ use internal::{data, error, incomplete};
 /// ```
 #[inline]
 pub fn any<'a, I: 'a + Copy>(i: Input<'a, I>) -> SimpleResult<'a, I, I> {
-    i.parse(|b| match b.first() {
-        None     => incomplete(1),
-        Some(&c) => data(&b[1..], c),
-    })
+    match i.buffer().first() {
+        None     => i.incomplete(1),
+        Some(&c) => i.modify(|b| &b[1..]).data(c),
+    }
 }
 
 /// Matches an item using ``f``, the item is returned if ``f`` yields true, otherwise this parser
@@ -39,11 +38,11 @@ pub fn any<'a, I: 'a + Copy>(i: Input<'a, I>) -> SimpleResult<'a, I, I> {
 #[inline]
 pub fn satisfy<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a, I, I>
   where F: FnOnce(I) -> bool {
-    i.parse(|b| match b.first() {
-        None             => incomplete(1),
-        Some(&c) if f(c) => data(&b[1..], c),
-        Some(_)          => error(b, err::unexpected()),
-    })
+    match i.buffer().first() {
+        None             => i.incomplete(1),
+        Some(&c) if f(c) => i.modify(|b| &b[1..]).data(c),
+        Some(_)          => i.error(err::unexpected()),
+    }
 }
 
 /// Matches a single token, returning the match on success.
@@ -59,11 +58,11 @@ pub fn satisfy<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a, I
 /// ```
 #[inline]
 pub fn token<'a, I: 'a + Copy + PartialEq>(i: Input<'a, I>, t: I) -> SimpleResult<'a, I, I> {
-    i.parse(|b| match b.first() {
-        None               => incomplete(1),
-        Some(&c) if t == c => data(&b[1..], c),
-        Some(_)            => error(b, err::expected(t)),
-    })
+    match i.buffer().first() {
+        None               => i.incomplete(1),
+        Some(&c) if t == c => i.modify(|b| &b[1..]).data(c),
+        Some(_)            => i.error(err::expected(t)),
+    }
 }
 
 /// Matches a single token as long as it is not equal to `t`, returning the match on success.
@@ -83,11 +82,11 @@ pub fn token<'a, I: 'a + Copy + PartialEq>(i: Input<'a, I>, t: I) -> SimpleResul
 /// ```
 #[inline]
 pub fn not_token<'a, I: 'a + Copy + PartialEq>(i: Input<'a, I>, t: I) -> SimpleResult<'a, I, I> {
-    i.parse(|b| match b.first() {
-        None               => incomplete(1),
-        Some(&c) if t != c => data(&b[1..], c),
-        Some(_)            => error(b, err::unexpected()),
-    })
+    match i.buffer().first() {
+        None               => i.incomplete(1),
+        Some(&c) if t != c => i.modify(|b| &b[1..]).data(c),
+        Some(_)            => i.error(err::unexpected()),
+    }
 }
 
 /// Matches any item but does not consume it, on success it gives ``Some`` but if no input remains
@@ -108,7 +107,9 @@ pub fn not_token<'a, I: 'a + Copy + PartialEq>(i: Input<'a, I>, t: I) -> SimpleR
 /// ```
 #[inline]
 pub fn peek<'a, I: 'a + Copy>(i: Input<'a, I>) -> SimpleResult<'a, I, Option<I>> {
-    i.parse(|b| data(b, b.first().map(|&c| c)))
+    let d = i.buffer().first().map(|&c| c);
+
+    i.data(d)
 }
 
 /// Matches ``num`` items no matter what they are, returning a slice of the matched items.
@@ -124,11 +125,13 @@ pub fn peek<'a, I: 'a + Copy>(i: Input<'a, I>) -> SimpleResult<'a, I, Option<I>>
 /// ```
 #[inline]
 pub fn take<'a, I: 'a + Copy>(i: Input<'a, I>, num: usize) -> SimpleResult<'a, I, &'a [I]> {
-    i.parse(|b| if num <= b.len() {
-        data(&b[num..], &b[..num])
+    let b = i.buffer();
+
+    if num <= b.len() {
+        i.replace(&b[num..]).data(&b[..num])
     } else {
-        incomplete(num)
-    })
+        i.incomplete(num)
+    }
 }
 
 /// Matches all items while ``f`` returns false, returns a slice of all the matched items.
@@ -156,12 +159,21 @@ pub fn take<'a, I: 'a + Copy>(i: Input<'a, I>, num: usize) -> SimpleResult<'a, I
 #[inline]
 pub fn take_while<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a, I, &'a [I]>
   where F: Fn(I) -> bool {
-    i.parse(|b| match b.iter().map(|c| *c).position(|c| f(c) == false) {
-        Some(n) => data(&b[n..], &b[..n]),
+    let b = i.buffer();
+
+    match b.iter().map(|c| *c).position(|c| f(c) == false) {
+        Some(n) => i.replace(&b[n..]).data(&b[..n]),
         // TODO: Should this following 1 be something else, seeing as take_while1 is potentially
         // infinite?
-        None    => incomplete(1),
-    })
+        None    => if i.is_last_slice() {
+            // Last slice and we have just read everything of it, replace with zero-sized slice:
+            // Hack to avoid branch and overflow, does not matter where this zero-sized slice is
+            // allocated
+            i.replace(&b[..0]).data(b)
+        } else {
+            i.incomplete(1)
+        },
+    }
 }
 
 /// Matches all items while ``f`` returns true, if at least one item matched this parser succeeds
@@ -180,13 +192,22 @@ pub fn take_while<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a
 #[inline]
 pub fn take_while1<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a, I, &'a [I]>
   where F: Fn(I) -> bool {
-    i.parse(|b| match b.iter().map(|c| *c).position(|c| f(c) == false) {
-        Some(0) => error(b, err::unexpected()),
-        Some(n) => data(&b[n..], &b[..n]),
+    let b = i.buffer();
+
+    match b.iter().map(|c| *c).position(|c| f(c) == false) {
+        Some(0) => i.error(err::unexpected()),
+        Some(n) => i.replace(&b[n..]).data(&b[..n]),
         // TODO: Should this following 1 be something else, seeing as take_while1 is potentially
         // infinite?
-        None    => incomplete(1),
-    })
+        None    => if i.is_last_slice() {
+            // Last slice and we have just read everything of it, replace with zero-sized slice:
+            // Hack to avoid branch and overflow, does not matter where this zero-sized slice is
+            // allocated
+            i.replace(&b[..0]).data(b)
+        } else {
+            i.incomplete(1)
+        },
+    }
 }
 
 /// Matches all items until ``f`` returns true, all items to that point will be returned as a slice
@@ -205,12 +226,14 @@ pub fn take_while1<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'
 #[inline]
 pub fn take_till<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a, I, &'a [I]>
   where F: Fn(I) -> bool {
-    i.parse(|b| match b.iter().map(|c| *c).position(f) {
-        Some(n) => data(&b[n..], &b[0..n]),
+    let b = i.buffer();
+
+    match b.iter().map(|c| *c).position(f) {
+        Some(n) => i.replace(&b[n..]).data(&b[0..n]),
         // TODO: Should this following 1 be something else, seeing as take_while1 is potentially
         // infinite?
-        None    => incomplete(1),
-    })
+        None    => i.incomplete(1),
+    }
 }
 
 /// Matches the remainder of the buffer and returns it, always succeeds.
@@ -224,11 +247,12 @@ pub fn take_till<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a,
 /// ```
 #[inline]
 pub fn take_remainder<'a, I: Copy>(i: Input<'a, I>) -> SimpleResult<'a, I, &'a [I]> {
+    let b = i.buffer();
     // Last slice and we have just read everything of it, replace with zero-sized slice:
     //
     // Hack to avoid branch and overflow, does not matter where this zero-sized slice is
     // allocated
-    i.parse(|b| data(&b[..0], b))
+    i.replace(&b[..0]).data(b)
 }
 
 /// Matches the given slice against the parser, returning the matched slice upon success.
@@ -246,21 +270,41 @@ pub fn take_remainder<'a, I: Copy>(i: Input<'a, I>) -> SimpleResult<'a, I, &'a [
 #[inline]
 pub fn string<'a, 'b, I: Copy + PartialEq>(i: Input<'a, I>, s: &'b [I])
     -> SimpleResult<'a, I, &'a [I]> {
-    i.parse(|b| {
-        if s.len() > b.len() {
-            return incomplete(s.len() - b.len());
+    let b = i.buffer();
+
+    if s.len() > b.len() {
+        return i.incomplete(s.len() - b.len());
+    }
+
+    let d = &b[..s.len()];
+
+    for j in 0..s.len() {
+        if s[j] != d[j] {
+            return err::string(i, j, s);
         }
+    }
 
-        let d = &b[..s.len()];
+    i.replace(&b[s.len()..]).data(d)
+}
 
-        for i in 0..s.len() {
-            if s[i] != d[i] {
-                return err::string(b, i, s);
-            }
-        }
-
-        data(&b[s.len()..], d)
-    })
+/// Matches the end of the input.
+///
+/// ```
+/// use chomp::{Input, token, eof};
+///
+/// let i = Input::new(b"a");
+///
+/// let r = token(i, b'a').bind(|i, _| eof(i));
+///
+/// assert_eq!(r.unwrap(), ());
+/// ```
+#[inline]
+pub fn eof<I>(i: Input<I>) -> SimpleResult<I, ()> {
+    if i.buffer().len() == 0 && i.is_last_slice() {
+        i.ret(())
+    } else {
+        i.err(err::unexpected())
+    }
 }
 
 #[cfg(test)]

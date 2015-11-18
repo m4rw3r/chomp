@@ -192,6 +192,7 @@ pub use combinators::{
 };
 pub use parsers::{
     any,
+    eof,
     not_token,
     peek,
     satisfy,
@@ -207,29 +208,31 @@ pub use err::Error;
 pub use iter::Iter;
 
 use internal::State;
+use internal::InputModify;
 
 /// Linear type containing the parser state, this type is threaded though `bind`.
 #[must_use]
-#[derive(Debug, Eq, PartialEq)]
-pub struct Input<'a, I: 'a>(&'a [I]);
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct Input<'a, I: 'a>(u32, &'a [I]);
 
 impl<'a, I> Input<'a, I> {
-    /// Creates a new input to be passed to parsers and/or combinators.
-    #[inline]
-    pub fn new(i: &'a [I]) -> Self {
-        Input(i)
+    // TODO: Remove, use parse_slice instead
+    pub fn new(b: &'a [I]) -> Self {
+        use internal::input::END_OF_INPUT;
+
+        Input(END_OF_INPUT, b)
     }
 
     /// Returns the value `t` with the input context.
     #[inline]
     pub fn ret<T, E>(self, t: T) -> ParseResult<'a, I, T, E> {
-        internal::data(self.0, t)
+        InputModify::data(self, t)
     }
 
     /// Returns the error value `e` with the input context.
     #[inline]
     pub fn err<T, E>(self, e: E) -> ParseResult<'a, I, T, E> {
-        internal::error(self.0, e)
+        InputModify::error(self, e)
     }
 }
 
@@ -312,7 +315,7 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
       where F: FnOnce(Input<'a, I>, T) -> ParseResult<'a, I, U, V>,
             V: From<E> {
         match self.0 {
-            State::Data(i, t)    => f(Input(i), t).map_err(From::from),
+            State::Data(i, t) => f(i, t).map_err(From::from),
             State::Error(i, e)   => ParseResult(State::Error(i, From::from(e))),
             State::Incomplete(n) => ParseResult(State::Incomplete(n)),
         }
@@ -355,7 +358,7 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
     pub fn map<U, F>(self, f: F) -> ParseResult<'a, I, U, E>
       where F: FnOnce(T) -> U {
         match self.0 {
-            State::Data(i, t)    => ParseResult(State::Data(i, f(t))),
+            State::Data(i, t) => ParseResult(State::Data(i, f(t))),
             State::Error(i, e)   => ParseResult(State::Error(i, e)),
             State::Incomplete(n) => ParseResult(State::Incomplete(n)),
         }
@@ -365,7 +368,7 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
     pub fn map_err<V, F>(self, f: F) -> ParseResult<'a, I, T, V>
       where F: FnOnce(E) -> V {
         match self.0 {
-            State::Data(i, t)    => ParseResult(State::Data(i, t)),
+            State::Data(i, t) => ParseResult(State::Data(i, t)),
             State::Error(i, e)   => ParseResult(State::Error(i, f(e))),
             State::Incomplete(n) => ParseResult(State::Incomplete(n)),
         }
@@ -400,9 +403,9 @@ impl<'a, I, T, E: fmt::Debug> ParseResult<'a, I, T, E> {
     /// ```
     ///
     /// ```{.should_panic}
-    /// use chomp::{Input, take_while};
+    /// use chomp::{Input, take};
     ///
-    /// let r = take_while(Input::new(b"a"), |c| c == b'a');
+    /// let r = take(Input::new(b"a"), 2);
     ///
     /// // Panics with "called `ParseResult::unwrap` on an incomplete state (requested 1 tokens)"
     /// assert_eq!(r.unwrap(), b"a");
@@ -500,8 +503,8 @@ mod err {
     use std::error;
     use std::fmt;
 
-    use ParseResult;
-    use internal::error;
+    use {Input, ParseResult};
+    use internal::InputModify;
 
     #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
     pub enum Error<I> {
@@ -544,10 +547,10 @@ mod err {
 
 
     #[inline(always)]
-    pub fn string<'a, 'b, I, T>(buffer: &'a [I], _offset: usize, expected: &'b [I])
+    pub fn string<'a, 'b, I, T>(i: Input<'a, I>, _offset: usize, expected: &'b [I])
         -> ParseResult<'a, I, T, Error<I>>
       where I: Copy {
-        error(buffer, Error::String(expected.to_vec()))
+        i.error(Error::String(expected.to_vec()))
     }
 }
 
@@ -563,8 +566,7 @@ mod err {
 
     use std::marker::PhantomData;
 
-    use ParseResult;
-    use internal::error;
+    use {Input, ParseResult};
 
     #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
     pub struct Error<I>(PhantomData<I>);
@@ -592,10 +594,13 @@ mod err {
     }
 
     #[inline(always)]
-    pub fn string<'a, 'b, I, T>(buffer: &'a [I], offset: usize, _expected: &'b [I])
+    pub fn string<'a, 'b, I, T>(i: Input<'a, I>, offset: usize, _expected: &'b [I])
         -> ParseResult<'a, I, T, Error<I>>
       where I: Copy {
-        error(&buffer[offset..], Error(PhantomData))
+        use internal::InputModify;
+        let b = i.buffer();
+
+        i.replace(&b[offset..]).error(Error(PhantomData))
     }
 }
 
@@ -603,6 +608,7 @@ mod err {
 mod test {
     use {Input, ParseResult};
     use internal::State;
+    use internal::input::END_OF_INPUT;
 
     #[test]
     fn monad_left_identity() {
@@ -610,8 +616,8 @@ mod test {
             i.ret(n + 1)
         }
 
-        let m1 = Input(b"test");
-        let m2 = Input(b"test");
+        let m1 = Input(END_OF_INPUT, b"test");
+        let m2 = Input(END_OF_INPUT, b"test");
 
         let a = 123;
         // return a >>= f
@@ -619,21 +625,21 @@ mod test {
         // f a
         let rhs = f(m2, a);
 
-        assert_eq!(lhs.0, State::Data(b"test", 124));
-        assert_eq!(rhs.0, State::Data(b"test", 124));
+        assert_eq!(lhs.0, State::Data(Input(END_OF_INPUT, b"test"), 124));
+        assert_eq!(rhs.0, State::Data(Input(END_OF_INPUT, b"test"), 124));
     }
 
     #[test]
     fn monad_right_identity() {
-        let m1 = Input(b"test").ret::<_, ()>(1);
-        let m2 = Input(b"test").ret::<_, ()>(1);
+        let m1 = Input(END_OF_INPUT, b"test").ret::<_, ()>(1);
+        let m2 = Input(END_OF_INPUT, b"test").ret::<_, ()>(1);
 
         // m1 >>= ret === m2
         let lhs = m1.bind::<_, _, ()>(Input::ret);
         let rhs = m2;
 
-        assert_eq!(lhs.0, State::Data(b"test", 1));
-        assert_eq!(rhs.0, State::Data(b"test", 1));
+        assert_eq!(lhs.0, State::Data(Input(END_OF_INPUT, b"test"), 1));
+        assert_eq!(rhs.0, State::Data(Input(END_OF_INPUT, b"test"), 1));
     }
 
     #[test]
@@ -646,15 +652,15 @@ mod test {
             i.ret(num * 2)
         }
 
-        let lhs_m = Input(b"test").ret::<_, ()>(2);
-        let rhs_m = Input(b"test").ret::<_, ()>(2);
+        let lhs_m = Input(END_OF_INPUT, b"test").ret::<_, ()>(2);
+        let rhs_m = Input(END_OF_INPUT, b"test").ret::<_, ()>(2);
 
         // (m >>= f) >>= g
         let lhs = lhs_m.bind(f).bind(g);
         // m >>= (\x -> f x >>= g)
         let rhs = rhs_m.bind(|i, x| f(i, x).bind(g));
 
-        assert_eq!(lhs.0, State::Data(b"test", 6));
-        assert_eq!(rhs.0, State::Data(b"test", 6));
+        assert_eq!(lhs.0, State::Data(Input(END_OF_INPUT, b"test"), 6));
+        assert_eq!(rhs.0, State::Data(Input(END_OF_INPUT, b"test"), 6));
     }
 }

@@ -1,14 +1,14 @@
 //! Basic combinators.
 
+use std::iter::FromIterator;
+
 use {ParseResult, Input};
 
 use iter::{EndState, Iter};
 
 use internal::State;
 use internal::{ParseResultModify, InputModify};
-use internal::{data, error, incomplete};
 
-use std::iter::FromIterator;
 
 /// Applies the parser ``p`` exactly ``num`` times, propagating any error or incomplete state.
 ///
@@ -41,27 +41,25 @@ pub fn count<'a, I, T, E, F, U>(i: Input<'a, I>, num: usize, p: F) -> ParseResul
         U: 'a,
         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
         T: FromIterator<U> {
-    i.parse(|i| {
-        // If we have gotten an item, if this is false after from_iter we have failed
-        let mut count = 0;
-        let mut iter  = Iter::new(i, p);
+    // If we have gotten an item, if this is false after from_iter we have failed
+    let mut count = 0;
+    let mut iter  = Iter::new(i, p);
 
-        let result: T      = FromIterator::from_iter(iter.by_ref()
-                                                     .take(num)
-                                                     .inspect(|_| count = count + 1 ));
-        let (buffer, last) = iter.end_state();
+    let result: T      = FromIterator::from_iter(iter.by_ref()
+                                                 .take(num)
+                                                 .inspect(|_| count = count + 1 ));
+    let (buffer, last) = iter.end_state();
 
-        if count == num {
-            data(buffer, result)
-        } else {
-            // Can only be less than num here since take() limits it.
-            // Just propagate the last state from the iterator.
-            match last {
-                EndState::Incomplete(n) => incomplete(n),
-                EndState::Error(b, e)   => error(b, e),
-            }
+    if count == num {
+        buffer.data(result)
+    } else {
+        // Can only be less than num here since take() limits it.
+        // Just propagate the last state from the iterator.
+        match last {
+            EndState::Incomplete(n) => buffer.incomplete(n),
+            EndState::Error(b, e)     => buffer.replace(b).err(e),
         }
-    })
+    }
 }
 
 /// Tries the parser ``f``, on success it yields the parsed value, on failure ``default`` will be
@@ -82,12 +80,11 @@ pub fn count<'a, I, T, E, F, U>(i: Input<'a, I>, num: usize, p: F) -> ParseResul
 pub fn option<'a, I, T, E, F>(i: Input<'a, I>, f: F, default: T) -> ParseResult<'a, I, T, E>
   where I: 'a + Copy,
         F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E> {
-    // TODO: That Input::new should be something related to InputModify
-    i.parse(|b| f(Input::new(b)).parse(|s| match s {
-        State::Data(b, t)    => data(b, t),
-        State::Error(_, _)   => data(b, default),
-        State::Incomplete(n) => incomplete(n),
-    }))
+    f(i.clone_input()).parse(|s| match s {
+        State::Data(b, d)    => b.ret(d),
+        State::Error(_, _)   => i.data(default),
+        State::Incomplete(n) => i.incomplete(n),
+    })
 }
 
 /// Tries to match the parser ``f``, if ``f`` fails it tries ``g``. Returns the success value of
@@ -110,11 +107,11 @@ pub fn option<'a, I, T, E, F>(i: Input<'a, I>, f: F, default: T) -> ParseResult<
 pub fn or<'a, I, T, E, F, G>(i: Input<'a, I>, f: F, g: G) -> ParseResult<'a, I, T, E>
   where F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E>,
         G: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E> {
-    i.parse(|b| f(Input::new(b)).parse(|s| match s {
-        State::Data(b, t)    => data(b, t),
-        State::Error(_, _)   => g(Input::new(b)),
-        State::Incomplete(n) => incomplete(n),
-    }))
+    f(i.clone_input()).parse(|s| match s {
+        State::Data(b, d)    => b.ret(d),
+        State::Error(_, _)   => g(i),
+        State::Incomplete(n) => i.incomplete(n),
+    })
 }
 
 /// Parses many instances of ``f`` until it does no longer match, returning all matches.
@@ -144,19 +141,21 @@ pub fn many<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E
         U: 'a,
         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
         T: FromIterator<U> {
-    i.parse(|i| {
-        let mut iter = Iter::new(i, f);
+    let mut iter = Iter::new(i, f);
 
-        let result: T = FromIterator::from_iter(iter.by_ref());
+    let result: T = FromIterator::from_iter(iter.by_ref());
 
-        match iter.end_state() {
-            // Ok, last parser failed, we have iterated all.
-            // Return remainder of buffer and the collected result
-            (b, EndState::Error(_, _))   => data(b, result),
-            // Nested parser incomplete, propagate
-            (_, EndState::Incomplete(n)) => incomplete(n),
-        }
-    })
+    match iter.end_state() {
+        // Ok, last parser failed, we have iterated all.
+        // Return remainder of buffer and the collected result
+        (s, EndState::Error(_, _))   => s.data(result),
+        // Nested parser incomplete, propagate
+        (s, EndState::Incomplete(n)) => if s.buffer().len() == 0 && s.is_last_slice() {
+            s.data(result)
+        } else {
+            s.incomplete(n)
+        },
+    }
 }
 
 /// Parses at least one instance of ``f`` and continues until it does no longer match,
@@ -187,27 +186,29 @@ pub fn many1<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, 
         U: 'a,
         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
         T: FromIterator<U> {
-    i.parse(|i| {
-        // If we managed to parse anything
-        let mut item = false;
-        // If we have gotten an item, if this is false after from_iter we have failed
-        let mut iter = Iter::new(i, f);
+    // If we managed to parse anything
+    let mut item = false;
+    // If we have gotten an item, if this is false after from_iter we have failed
+    let mut iter = Iter::new(i, f);
 
-        let result: T = FromIterator::from_iter(iter.by_ref().inspect(|_| item = true ));
+    let result: T = FromIterator::from_iter(iter.by_ref().inspect(|_| item = true ));
 
-        if !item {
-            match iter.end_state() {
-                (_, EndState::Error(b, e))   => error(b, e),
-                (_, EndState::Incomplete(n)) => incomplete(n),
-            }
-        } else {
-            match iter.end_state() {
-                (b, EndState::Error(_, _))   => data(b, result),
-                // TODO: Indicate potentially more than 1?
-                (_, EndState::Incomplete(n)) => incomplete(n),
-            }
+    if !item {
+        match iter.end_state() {
+            (s, EndState::Error(b, e))   => s.replace(b).error(e),
+            (s, EndState::Incomplete(n)) => s.incomplete(n),
         }
-    })
+    } else {
+        match iter.end_state() {
+            (s, EndState::Error(_, _))   => s.data(result),
+            // TODO: Indicate potentially more than 1?
+            (s, EndState::Incomplete(n)) => if s.buffer().len() == 0 && s.is_last_slice() {
+                s.data(result)
+            } else {
+                s.incomplete(n)
+            },
+        }
+    }
 }
 
 /// Runs the given parser until it fails, discarding matched input.
@@ -225,17 +226,15 @@ pub fn many1<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, 
 /// assert_eq!(skip_many(p, |i| token(i, b'a')).bind(|i, _| token(i, b'b')).unwrap(), b'b');
 /// ```
 #[inline]
-pub fn skip_many<'a, I, T, E, F>(i: Input<'a, I>, mut f: F) -> ParseResult<'a, I, (), E>
+pub fn skip_many<'a, I, T, E, F>(mut i: Input<'a, I>, mut f: F) -> ParseResult<'a, I, (), E>
   where T: 'a, F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
-    i.parse(|mut i| {
-        loop {
-            match f(Input::new(i)).internal() {
-                State::Data(b, _)    => i = b,
-                State::Error(_, _)   => break,
-                State::Incomplete(n) => return incomplete(n)
-            }
+    loop {
+        match f(i.clone_input()).internal() {
+            State::Data(b, _)    => i = b,
+            State::Error(_, _)   => break,
+            State::Incomplete(n) => return i.incomplete(n),
         }
+    }
 
-        data(i, ())
-    })
+    i.data(())
 }
