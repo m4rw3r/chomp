@@ -150,7 +150,11 @@ pub fn many<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E
         // Return remainder of buffer and the collected result
         (s, EndState::Error(_, _))   => s.data(result),
         // Nested parser incomplete, propagate
-        (s, EndState::Incomplete(n)) => s.incomplete(n),
+        (s, EndState::Incomplete(n)) => if s.buffer().len() == 0 && s.is_last_slice() {
+            s.data(result)
+        } else {
+            s.incomplete(n)
+        },
     }
 }
 
@@ -198,7 +202,11 @@ pub fn many1<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, 
         match iter.end_state() {
             (s, EndState::Error(_, _))   => s.data(result),
             // TODO: Indicate potentially more than 1?
-            (s, EndState::Incomplete(n)) => s.incomplete(n),
+            (s, EndState::Incomplete(n)) => if s.buffer().len() == 0 && s.is_last_slice() {
+                s.data(result)
+            } else {
+                s.incomplete(n)
+            },
         }
     }
 }
