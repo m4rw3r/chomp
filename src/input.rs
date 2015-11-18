@@ -2,7 +2,9 @@ use ParseResult;
 use internal::State;
 use internal::InputModify;
 
+/// Default (empty) input state.
 pub const DEFAULT: u32      = 0;
+/// If set the current slice of input is the last one.
 pub const END_OF_INPUT: u32 = 1;
 
 /// Linear type containing the parser state, this type is threaded though `bind`.
@@ -10,6 +12,11 @@ pub const END_OF_INPUT: u32 = 1;
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Input<'a, I: 'a>(u32, &'a [I]);
 
+/// Creates a new input from the given state and buffer.
+///
+/// # Internal
+///
+/// Only used by fundamental parsers and combinators.
 pub fn new<I>(state: u32, buffer: &[I]) -> Input<I> {
     Input(state, buffer)
 }
@@ -79,6 +86,11 @@ impl<'a, I> InputModify<'a> for Input<'a, I> {
         ParseResult(State::Incomplete(n))
     }
 
+    /// Returns true if this is the last input slice available.
+    ///
+    /// # Internal
+    ///
+    /// Only used by fundamental parsers and combinators.
     #[inline(always)]
     fn is_last_slice(&self) -> bool {
         self.0 & END_OF_INPUT == END_OF_INPUT
