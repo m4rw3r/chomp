@@ -8,6 +8,8 @@
 //! # Example
 //!
 //! ```
+//! # #[macro_use] extern crate chomp;
+//! # fn main() {
 //! use chomp::{Input, ParseResult, Error};
 //! use chomp::{take_while1, token};
 //!
@@ -20,16 +22,20 @@
 //! }
 //!
 //! fn name(i: Input<u8>) -> ParseResult<u8, Name, Error<u8>> {
-//!     take_while1(i, |c| c != b' ').bind(|i, first|
-//!         token(i, b' ').bind(|i, _| // skipping this char
-//!             take_while1(i, |c| c != b'\n').bind(|i, last|
-//!                 i.ret(Name{
-//!                     first: first,
-//!                     last:  last,
-//!                 }))))
+//!     parse!{i;
+//!         let first = take_while1(|c| c != b' ');
+//!                     token(b' ');  // skipping this char
+//!         let last  = take_while1(|c| c != b'\n');
+//!
+//!         ret Name{
+//!             first: first,
+//!             last:  last,
+//!         }
+//!     }
 //! }
 //!
 //! assert_eq!(name(i).unwrap(), Name{first: b"martin", last: "wernstål".as_bytes()});
+//! # }
 //! ```
 //!
 //! # Usage
@@ -110,8 +116,8 @@
 //!
 //! ```
 //! # #[macro_use] extern crate chomp;
-//! # use chomp::{Input, string, token, SimpleResult};
-//! fn f<'a>(i: Input<'a, u8>) -> SimpleResult<'a, u8, (u8, u8, u8)> {
+//! # use chomp::{Input, string, token, U8Result};
+//! fn f(i: Input<u8>) -> U8Result<(u8, u8, u8)> {
 //!     parse!{i;
 //!         let a = token(b'3');
 //!         let b = token(b'3');

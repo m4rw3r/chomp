@@ -22,7 +22,7 @@ The input type is almost never manually manipulated. Rather, one uses parsers fr
 * Return a composite datastructure using the previous results at the end of the computation.
 
 In other words, just as a normal Rust function usually looks something like
-```
+```rust
 fn f() -> (u8, u8, u8) {
     let a = 3;
     let b = 3;
@@ -33,11 +33,11 @@ fn f() -> (u8, u8, u8) {
 
 A Chomp parser looks something like
 
-```
+```rust
 fn f(i: Input<u8>) -> U8Result<(u8, u8, u8)> {
     parse!{i;
-        let a = 3;
-        let b = 3;
+        let a = token(3);
+        let b = token(3);
         string(b"missiles");
         ret (a, b, a + b);
     }
