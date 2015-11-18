@@ -138,7 +138,7 @@ fn main() {
         let _ = file.read_to_end(&mut contents).unwrap();
     }
 
-    let i = Iter::new(&contents, request);
+    let i = Iter::new(Input::new(&contents), request);
 
     println!("num: {}", i.count());
 }

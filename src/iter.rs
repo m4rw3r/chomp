@@ -4,7 +4,7 @@ use std::marker::PhantomData;
 
 use {ParseResult, Input};
 use internal::State;
-use internal::{ParseResultModify};
+use internal::{InputModify, ParseResultModify};
 
 pub enum EndState<'a, I, E>
   where I: 'a {
@@ -20,7 +20,7 @@ pub struct Iter<'a, I, T, E, F>
         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
     state:  EndState<'a, I, E>,
     parser: F,
-    buf:    &'a [I],
+    buf:    Input<'a, I>,
     _t:     PhantomData<T>,
 }
 
@@ -30,7 +30,7 @@ impl<'a, I, T, E, F> Iter<'a, I, T, E, F>
         E: 'a,
         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
     #[inline]
-    pub fn new(buffer: &'a [I], parser: F) -> Iter<'a, I, T, E, F> {
+    pub fn new(buffer: Input<'a, I>, parser: F) -> Iter<'a, I, T, E, F> {
         Iter{
             state:  EndState::Incomplete(0),
             parser: parser,
@@ -42,7 +42,7 @@ impl<'a, I, T, E, F> Iter<'a, I, T, E, F>
     /// Destructures the iterator returning the position just after the last successful parse as
     /// well as the state of the last attempt to parse data.
     #[inline]
-    pub fn end_state(self) -> (&'a [I], EndState<'a, I, E>) {
+    pub fn end_state(self) -> (Input<'a, I>, EndState<'a, I, E>) {
         (self.buf, self.state)
     }
 }
@@ -56,7 +56,7 @@ impl<'a, I, T, E, F> Iterator for Iter<'a, I, T, E, F>
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        match (self.parser)(Input::new(self.buf)).internal() {
+        match (self.parser)(self.buf.clone_input()).internal() {
             State::Data(b, v) => {
                 self.buf = b;
 
