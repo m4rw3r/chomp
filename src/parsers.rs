@@ -165,7 +165,14 @@ pub fn take_while<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a
         Some(n) => i.replace(&b[n..]).data(&b[..n]),
         // TODO: Should this following 1 be something else, seeing as take_while1 is potentially
         // infinite?
-        None    => i.incomplete(1),
+        None    => if i.is_last_slice() {
+            // Last slice and we have just read everything of it, replace with zero-sized slice:
+            // Hack to avoid branch and overflow, does not matter where this zero-sized slice is
+            // allocated
+            i.replace(&b[..0]).data(b)
+        } else {
+            i.incomplete(1)
+        },
     }
 }
 
@@ -192,7 +199,14 @@ pub fn take_while1<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'
         Some(n) => i.replace(&b[n..]).data(&b[..n]),
         // TODO: Should this following 1 be something else, seeing as take_while1 is potentially
         // infinite?
-        None    => i.incomplete(1),
+        None    => if i.is_last_slice() {
+            // Last slice and we have just read everything of it, replace with zero-sized slice:
+            // Hack to avoid branch and overflow, does not matter where this zero-sized slice is
+            // allocated
+            i.replace(&b[..0]).data(b)
+        } else {
+            i.incomplete(1)
+        },
     }
 }
 
