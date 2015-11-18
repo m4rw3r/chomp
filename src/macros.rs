@@ -398,13 +398,13 @@ mod test {
 
     #[test]
     fn tailing_semicolon() {
-        fn f(n: u32) -> u32 {
-            n + 3
+        fn f(n: Input) -> Data<u32, ()> {
+            n.ret(3)
         }
 
-        let r = parse!{123; f(); };
+        let r = parse!{Input(123); f(); };
 
-        assert_eq!(r, 126);
+        assert_eq!(r, Data::Value(123, 3));
     }
 
     #[test]
