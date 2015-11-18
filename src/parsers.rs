@@ -287,6 +287,26 @@ pub fn string<'a, 'b, I: Copy + PartialEq>(i: Input<'a, I>, s: &'b [I])
     i.replace(&b[s.len()..]).data(d)
 }
 
+/// Matches the end of the input.
+///
+/// ```
+/// use chomp::{Input, token, eof};
+///
+/// let i = Input::new(b"a");
+///
+/// let r = token(i, b'a').bind(|i, _| eof(i));
+///
+/// assert_eq!(r.unwrap(), ());
+/// ```
+#[inline]
+pub fn eof<I>(i: Input<I>) -> SimpleResult<I, ()> {
+    if i.buffer().len() == 0 && i.is_last_slice() {
+        i.ret(())
+    } else {
+        i.err(err::unexpected())
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::{take_while1, token, take_remainder};

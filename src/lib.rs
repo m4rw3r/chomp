@@ -192,6 +192,7 @@ pub use combinators::{
 };
 pub use parsers::{
     any,
+    eof,
     not_token,
     peek,
     satisfy,
