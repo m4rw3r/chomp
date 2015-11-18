@@ -27,7 +27,8 @@ script:
       travis-cargo --only stable doc
 
 after_success:
-  - [ $TRAVIS_BRANCH = master ] && travis-cargo --only stable doc-upload
+  - |
+    [ $TRAVIS_BRANCH = master ] && travis-cargo --only stable doc-upload
 
 env:
   global:
