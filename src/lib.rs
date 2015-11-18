@@ -402,9 +402,9 @@ impl<'a, I, T, E: fmt::Debug> ParseResult<'a, I, T, E> {
     /// ```
     ///
     /// ```{.should_panic}
-    /// use chomp::{Input, take_while};
+    /// use chomp::{Input, take};
     ///
-    /// let r = take_while(Input::new(b"a"), |c| c == b'a');
+    /// let r = take(Input::new(b"a"), 2);
     ///
     /// // Panics with "called `ParseResult::unwrap` on an incomplete state (requested 1 tokens)"
     /// assert_eq!(r.unwrap(), b"a");
