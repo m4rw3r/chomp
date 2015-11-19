@@ -347,6 +347,31 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
             State::Incomplete(n) => ParseResult(State::Incomplete(n)),
         }
     }
+
+    /// Calls the function `f` with a reference of the contained data if the parser is in a success
+    /// state.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use chomp::{Input, take_while};
+    ///
+    /// let i = Input::new(b"test ");
+    ///
+    /// let r = take_while(i, |c| c != b' ').inspect(|b| {
+    ///     println!("{:?}", b);
+    /// });
+    /// ```
+    #[inline]
+    pub fn inspect<F>(self, f: F) -> ParseResult<'a, I, T, E>
+      where F: FnOnce(&T) {
+        match &self.0 {
+            &State::Data(_, ref t) => f(&t),
+            _                      => {}
+        }
+
+        self
+    }
 }
 
 impl<'a, I, T, E: fmt::Debug> ParseResult<'a, I, T, E> {
@@ -636,5 +661,20 @@ mod test {
 
         assert_eq!(lhs.0, State::Data(input::new(END_OF_INPUT, b"test"), 6));
         assert_eq!(rhs.0, State::Data(input::new(END_OF_INPUT, b"test"), 6));
+    }
+
+    #[test]
+    fn parse_result_inspect() {
+        use {Input, take_while};
+
+        let mut n = 0;
+        let i     = Input::new(b"test ");
+
+        let r = take_while(i, |c| c != b' ').inspect(|_| {
+            n = n + 1;
+        });
+
+        assert_eq!(r.unwrap(), b"test");
+        assert_eq!(n, 1);
     }
 }
