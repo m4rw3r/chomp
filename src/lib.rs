@@ -329,6 +329,19 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
         self.bind(|i, _| f(i))
     }
 
+    /// Applies the function `f` on the contained data if the parser is in a success state.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use chomp::{Input, any};
+    ///
+    /// let i = Input::new(b"abc");
+    ///
+    /// let r = any(i).map(|c| c + 12);
+    ///
+    /// assert_eq!(r.unwrap(), b'm');
+    /// ```
     #[inline]
     pub fn map<U, F>(self, f: F) -> ParseResult<'a, I, U, E>
       where F: FnOnce(T) -> U {
@@ -339,6 +352,20 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
         }
     }
 
+    /// Applies the function `f` on the contained error if the parser is in an error state.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use chomp::Input;
+    ///
+    /// let i = Input::new(b"foo");
+    ///
+    /// let r = i.err::<(), _>("this is")
+    ///          .map_err(|e| e.to_owned() + " an error");
+    ///
+    /// assert_eq!(r.unwrap_err(), "this is an error");
+    /// ```
     #[inline]
     pub fn map_err<V, F>(self, f: F) -> ParseResult<'a, I, T, V>
       where F: FnOnce(E) -> V {
@@ -357,10 +384,10 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
     /// ```
     /// use chomp::{Input, take_while};
     ///
-    /// let i = Input::new(b"test ");
+    /// let i = Input::new(b"test and more");
     ///
     /// let r = take_while(i, |c| c != b' ').inspect(|b| {
-    ///     println!("{:?}", b);
+    ///     println!("{:?}", b); // Prints "test"
     /// });
     /// ```
     #[inline]
