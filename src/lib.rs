@@ -172,12 +172,15 @@
 //!
 //! The entire grammar for the macro is listed elsewhere in this documentation.
 
-use ::std::fmt;
+extern crate conv;
+
+use std::fmt;
 
 #[macro_use]
 mod macros;
 mod input;
 
+pub mod ascii;
 pub mod internal;
 pub mod parsers;
 pub mod combinators;
