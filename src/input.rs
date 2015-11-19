@@ -38,6 +38,33 @@ impl<'a, I> Input<'a, I> {
     pub fn err<T, E>(self, e: E) -> ParseResult<'a, I, T, E> {
         ParseResult(State::Error(self.1, e))
     }
+
+    /// Converts a `Result` into a `ParseResult`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chomp::Input;
+    ///
+    /// let r = Input::new(b"test").from_result::<_, ()>(Ok("foo"));
+    ///
+    /// assert_eq!(r.unwrap(), "foo");
+    /// ```
+    ///
+    /// ```
+    /// use chomp::Input;
+    ///
+    /// let r = Input::new(b"test").from_result::<(), _>(Err("error message"));
+    ///
+    /// assert_eq!(r.unwrap_err(), "error message");
+    /// ```
+    #[inline]
+    pub fn from_result<T, E>(self, r: Result<T, E>) -> ParseResult<'a, I, T, E> {
+        match r {
+            Ok(t)  => ParseResult(State::Data(self, t)),
+            Err(e) => ParseResult(State::Error(self.1, e)),
+        }
+    }
 }
 
 /// Implementation of internal trait used to build parsers and combinators.
