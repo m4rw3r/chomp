@@ -199,7 +199,7 @@ pub fn take_while1<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'
         Some(n) => i.replace(&b[n..]).ret(&b[..n]),
         // TODO: Should this following 1 be something else, seeing as take_while1 is potentially
         // infinite?
-        None    => if i.is_last_slice() {
+        None    => if b.len() > 0 && i.is_last_slice() {
             // Last slice and we have just read everything of it, replace with zero-sized slice:
             // Hack to avoid branch and overflow, does not matter where this zero-sized slice is
             // allocated
@@ -345,5 +345,15 @@ mod test {
         let r = take_remainder(i);
 
         assert_eq!(r.unwrap(), b"" as &[u8]);
+    }
+
+    #[test]
+    #[should_panic]
+    fn take_while1_empty() {
+        let n = Input::new(b"");
+
+        let r = take_while1(n, |_| true);
+
+        assert_eq!(r.unwrap(), b"");
     }
 }
