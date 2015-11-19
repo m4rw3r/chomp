@@ -4,6 +4,8 @@
 //!
 //! Only used by fundamental parsers and combinators.
 
+pub mod iter;
+
 use {ParseResult, Input};
 
 /// Internal inner type containing the parse-state.

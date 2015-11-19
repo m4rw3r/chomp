@@ -4,10 +4,9 @@ use std::iter::FromIterator;
 
 use {ParseResult, Input};
 
-use iter::{EndState, Iter};
-
 use internal::State;
 use internal::{ParseResultModify, InputModify};
+use internal::iter::{EndState, Iter};
 
 
 /// Applies the parser ``p`` exactly ``num`` times, propagating any error or incomplete state.

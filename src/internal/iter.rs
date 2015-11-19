@@ -1,4 +1,7 @@
 //! Internal iterator for applying a parser multiple times on a buffer.
+//!
+//! This iterator also exposes the `State` after iteration which contains the remainder of the
+//! input as well as any error or incomplete state.
 
 use std::marker::PhantomData;
 

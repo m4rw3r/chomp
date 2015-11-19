@@ -176,7 +176,6 @@ use ::std::fmt;
 
 #[macro_use]
 mod macros;
-mod iter;
 mod input;
 
 pub mod internal;
@@ -206,7 +205,7 @@ pub use parsers::{
     token,
 };
 pub use err::Error;
-pub use iter::Iter;
+pub use internal::iter::Iter;
 pub use input::Input;
 
 use internal::State;
