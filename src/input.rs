@@ -1,6 +1,7 @@
 use ParseResult;
 use internal::State;
 use internal::InputModify;
+use parse_result;
 
 /// Default (empty) input state.
 pub const DEFAULT: u32      = 0;
@@ -30,13 +31,13 @@ impl<'a, I> Input<'a, I> {
     /// Returns the value `t` with the input context.
     #[inline]
     pub fn ret<T, E>(self, t: T) -> ParseResult<'a, I, T, E> {
-        ParseResult(State::Data(self, t))
+        parse_result::new(State::Data(self, t))
     }
 
     /// Returns the error value `e` with the input context.
     #[inline]
     pub fn err<T, E>(self, e: E) -> ParseResult<'a, I, T, E> {
-        ParseResult(State::Error(self.1, e))
+        parse_result::new(State::Error(self.1, e))
     }
 
     /// Converts a `Result` into a `ParseResult`.
@@ -61,8 +62,8 @@ impl<'a, I> Input<'a, I> {
     #[inline]
     pub fn from_result<T, E>(self, r: Result<T, E>) -> ParseResult<'a, I, T, E> {
         match r {
-            Ok(t)  => ParseResult(State::Data(self, t)),
-            Err(e) => ParseResult(State::Error(self.1, e)),
+            Ok(t)  => parse_result::new(State::Data(self, t)),
+            Err(e) => parse_result::new(State::Error(self.1, e)),
         }
     }
 }
@@ -110,7 +111,7 @@ impl<'a, I> InputModify<'a> for Input<'a, I> {
     /// Only used by fundamental parsers and combinators.
     #[inline(always)]
     fn incomplete<T, E>(self, n: usize) -> ParseResult<'a, Self::Type, T, E> {
-        ParseResult(State::Incomplete(n))
+        parse_result::new(State::Incomplete(n))
     }
 
     /// Returns true if this is the last input slice available.
