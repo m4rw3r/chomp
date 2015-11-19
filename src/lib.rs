@@ -196,6 +196,7 @@ pub use parsers::{
     not_token,
     peek,
     satisfy,
+    scan,
     string,
     take,
     take_remainder,

@@ -1,5 +1,7 @@
 //! Basic parsers.
 
+use std::mem;
+
 use {Input, SimpleResult};
 use err;
 use internal::InputModify;
@@ -229,6 +231,36 @@ pub fn take_till<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a,
     let b = i.buffer();
 
     match b.iter().map(|c| *c).position(f) {
+        Some(n) => i.replace(&b[n..]).ret(&b[0..n]),
+        // TODO: Should this following 1 be something else, seeing as take_while1 is potentially
+        // infinite?
+        None    => i.incomplete(1),
+    }
+}
+
+/// The predicate consumes and transforms a state argument, this parser will match everything until
+/// the predicate returns `None`.
+///
+/// ```
+/// use chomp::{Input, scan};
+///
+/// let p = Input::new(b"/*test*of*scan*/ foo");
+///
+/// let r = scan(p, false, |s, c| match (s, c) {
+///     (true, b'/') => None,
+///     (_,    b'*') => Some(true),
+///     (_, _)       => Some(false),
+/// });
+///
+/// assert_eq!(r.unwrap(), b"/*test*of*scan*");
+/// ```
+#[inline]
+pub fn scan<'a, I: Copy, S,  F>(i: Input<'a, I>, s: S, mut f: F) -> SimpleResult<'a, I, &'a [I]>
+  where F: FnMut(S, I) -> Option<S> {
+    let b     = i.buffer();
+    let mut state = Some(s);
+
+    match b.iter().position(|&c| { state = f(mem::replace(&mut state, None).unwrap(), c); state.is_none()}) {
         Some(n) => i.replace(&b[n..]).ret(&b[0..n]),
         // TODO: Should this following 1 be something else, seeing as take_while1 is potentially
         // infinite?
