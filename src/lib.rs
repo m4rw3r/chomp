@@ -182,6 +182,7 @@ mod input;
 mod parse_result;
 
 pub mod ascii;
+pub mod buffer;
 pub mod internal;
 pub mod parsers;
 pub mod combinators;
@@ -212,6 +213,11 @@ pub use parsers::{
 pub use err::Error;
 pub use internal::iter::Iter;
 pub use input::Input;
+pub use buffer::{
+    ParseError,
+    IntoSource,
+    Source,
+};
 pub use parse_result::{
     U8Result,
     SimpleResult,
