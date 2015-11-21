@@ -31,22 +31,7 @@ impl<'a, I, E> PartialEq for ParseError<'a, I, E>
     }
 }
 
-/// Runs the provided parser ``p`` on the input slice.
-///
-pub fn parse_slice<'a, I, T, E, P>(i: &'a [I], p: P) -> Result<T, ParseError<'a, I, E>>
-  where P: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E>,
-        T: 'a,
-        E: 'a {
-    use internal::ParseResultModify;
-    use internal::State;
-
-    match p(input::new(input::END_OF_INPUT, i)).internal() {
-        State::Data(_, t)    => Ok(t),
-        State::Error(b, e)   => Err(ParseError::ParseError(b, e)),
-        State::Incomplete(n) => Err(ParseError::Incomplete(n)),
-    }
-}
-
+/// Trait wrapping the state management in reading from a data source while parsing.
 pub trait Source<'a, 'i, I> {
     fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, ParseError<'i, I, E>>
       where F: FnOnce(Input<'i, I>) -> ParseResult<'i, I, T, E>,
@@ -54,6 +39,7 @@ pub trait Source<'a, 'i, I> {
             E: 'i;
 }
 
+/// Trait for conversion into a `Source`.
 pub trait IntoSource<'a, 'i> {
     type Item;
     type Into: Source<'a, 'i, Self::Item>;
