@@ -18,7 +18,9 @@ script:
 
 after_success:
   - |
-    [ $TRAVIS_BRANCH = master ] && travis-cargo --only stable doc-upload
+    [ $TRAVIS_BRANCH = master ] &&
+    [ -z "$FEATURES" ] &&
+    travis-cargo --only stable doc-upload
 
 env:
   matrix:
