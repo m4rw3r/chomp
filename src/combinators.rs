@@ -11,29 +11,31 @@ use internal::iter::{EndState, Iter};
 
 /// Applies the parser ``p`` exactly ``num`` times, propagating any error or incomplete state.
 ///
-/// ```
-/// use chomp::{ParseResult, Error, Input, count, token, take_remainder};
-///
-/// let p1 = Input::new(b"a  ");
-/// let p2 = Input::new(b"aa ");
-/// let p3 = Input::new(b"aaa");
-///
-/// fn parse(i: Input<u8>) -> ParseResult<u8, Vec<u8>, Error<u8>> {
-///     count(i, 2, |i| token(i, b'a'))
-/// }
-///
-/// assert_eq!(parse(p1).unwrap_err(), Error::Expected(b'a'));
-/// assert_eq!(parse(p2).unwrap(), &[b'a', b'a']);
-///
-/// // TODO: Update once a proper way to extract data and remainder has been implemented
-/// // a slightly odd way to obtain the remainder of the input stream, temporary:
-/// let d: ParseResult<_, (_, Vec<_>), Error<_>> =
-///     parse(p3).bind(|i, d| take_remainder(i).bind(|i, r| i.ret((r, d))));
-/// let (buf, data) = d.unwrap();
-///
-/// assert_eq!(buf, b"a");
-/// assert_eq!(data, &[b'a', b'a']);
-/// ```
+#[cfg_attr(feature = "verbose_error", doc = "
+```
+use chomp::{ParseResult, Error, Input, count, token, take_remainder};
+
+let p1 = Input::new(b\"a  \");
+let p2 = Input::new(b\"aa \");
+let p3 = Input::new(b\"aaa\");
+
+fn parse(i: Input<u8>) -> ParseResult<u8, Vec<u8>, Error<u8>> {
+    count(i, 2, |i| token(i, b'a'))
+}
+
+assert_eq!(parse(p1).unwrap_err(), Error::Expected(b'a'));
+assert_eq!(parse(p2).unwrap(), &[b'a', b'a']);
+
+// TODO: Update once a proper way to extract data and remainder has been implemented
+// a slightly odd way to obtain the remainder of the input stream, temporary:
+let d: ParseResult<_, (_, Vec<_>), Error<_>> =
+    parse(p3).bind(|i, d| take_remainder(i).bind(|i, r| i.ret((r, d))));
+let (buf, data) = d.unwrap();
+
+assert_eq!(buf, b\"a\");
+assert_eq!(data, &[b'a', b'a']);
+```
+")]
 #[inline]
 pub fn count<'a, I, T, E, F, U>(i: Input<'a, I>, num: usize, p: F) -> ParseResult<'a, I, T, E>
   where I: Copy,
@@ -91,17 +93,19 @@ pub fn option<'a, I, T, E, F>(i: Input<'a, I>, f: F, default: T) -> ParseResult<
 ///
 /// Incomplete state is propagated from the first one to report incomplete.
 ///
-/// ```
-/// use chomp::{Input, Error, or, token};
-///
-/// let p1 = Input::new(b"abc");
-/// let p2 = Input::new(b"bbc");
-/// let p3 = Input::new(b"cbc");
-///
-/// assert_eq!(or(p1, |i| token(i, b'a'), |i| token(i, b'b')).unwrap(), b'a');
-/// assert_eq!(or(p2, |i| token(i, b'a'), |i| token(i, b'b')).unwrap(), b'b');
-/// assert_eq!(or(p3, |i| token(i, b'a'), |i| token(i, b'b')).unwrap_err(), Error::Expected(b'b'));
-/// ```
+#[cfg_attr(feature = "verbose_error", doc = "
+```
+use chomp::{Input, Error, or, token};
+
+let p1 = Input::new(b\"abc\");
+let p2 = Input::new(b\"bbc\");
+let p3 = Input::new(b\"cbc\");
+
+assert_eq!(or(p1, |i| token(i, b'a'), |i| token(i, b'b')).unwrap(), b'a');
+assert_eq!(or(p2, |i| token(i, b'a'), |i| token(i, b'b')).unwrap(), b'b');
+assert_eq!(or(p3, |i| token(i, b'a'), |i| token(i, b'b')).unwrap_err(), Error::Expected(b'b'));
+```
+")]
 #[inline]
 pub fn or<'a, I, T, E, F, G>(i: Input<'a, I>, f: F, g: G) -> ParseResult<'a, I, T, E>
   where F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E>,
@@ -165,20 +169,22 @@ pub fn many<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E
 ///
 /// Note: Allocates data.
 ///
-/// ```
-/// use chomp::{ParseResult, Error, Input, token, many1, take_while1};
-///
-/// let p1 = Input::new(b"a ");
-/// let p2 = Input::new(b"a, ");
-///
-/// fn parse(i: Input<u8>) -> ParseResult<u8, Vec<&[u8]>, Error<u8>> {
-///     many1(i, |i| take_while1(i, |c| c != b',' && c != b' ').bind(|i, c|
-///         token(i, b',').bind(|i, _| i.ret(c))))
-/// }
-///
-/// assert_eq!(parse(p1).unwrap_err(), Error::Expected(b','));
-/// assert_eq!(parse(p2).unwrap(), &[b"a"]);
-/// ```
+#[cfg_attr(feature = "verbose_error", doc = "
+```
+use chomp::{ParseResult, Error, Input, token, many1, take_while1};
+
+let p1 = Input::new(b\"a \");
+let p2 = Input::new(b\"a, \");
+
+fn parse(i: Input<u8>) -> ParseResult<u8, Vec<&[u8]>, Error<u8>> {
+    many1(i, |i| take_while1(i, |c| c != b',' && c != b' ').bind(|i, c|
+        token(i, b',').bind(|i, _| i.ret(c))))
+}
+
+assert_eq!(parse(p1).unwrap_err(), Error::Expected(b','));
+assert_eq!(parse(p2).unwrap(), &[b\"a\"]);
+```
+")]
 #[inline]
 pub fn many1<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
   where I: Copy,
