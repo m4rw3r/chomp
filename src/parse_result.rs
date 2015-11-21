@@ -44,7 +44,7 @@ pub type SimpleResult<'a, I, T> = ParseResult<'a, I, T, Error<I>>;
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct ParseResult<'a, I: 'a, T: 'a, E: 'a>(State<'a, I, T, E>);
 
-pub fn new<'a, I, T, E>(s: State<'a, I, T, E>) -> ParseResult<'a, I, T, E> {
+pub fn new<I, T, E>(s: State<I, T, E>) -> ParseResult<I, T, E> {
     ParseResult(s)
 }
 
@@ -196,9 +196,8 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
     #[inline]
     pub fn inspect<F>(self, f: F) -> ParseResult<'a, I, T, E>
       where F: FnOnce(&T) {
-        match &self.0 {
-            &State::Data(_, ref t) => f(&t),
-            _                      => {}
+        if let State::Data(_, ref t) = self.0 {
+             f(t)
         }
 
         self

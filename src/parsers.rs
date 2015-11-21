@@ -18,7 +18,7 @@ use internal::InputModify;
 /// assert_eq!(any(p).unwrap(), b'a');
 /// ```
 #[inline]
-pub fn any<'a, I: 'a + Copy>(i: Input<'a, I>) -> SimpleResult<'a, I, I> {
+pub fn any<I: Copy>(i: Input<I>) -> SimpleResult<I, I> {
     match i.buffer().first() {
         None     => i.incomplete(1),
         Some(&c) => i.modify(|b| &b[1..]).ret(c),
@@ -38,7 +38,7 @@ pub fn any<'a, I: 'a + Copy>(i: Input<'a, I>) -> SimpleResult<'a, I, I> {
 /// assert_eq!(satisfy(p, |c| c == b'a').unwrap(), b'a');
 /// ```
 #[inline]
-pub fn satisfy<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a, I, I>
+pub fn satisfy<I: Copy, F>(i: Input<I>, f: F) -> SimpleResult<I, I>
   where F: FnOnce(I) -> bool {
     match i.buffer().first() {
         None             => i.incomplete(1),
@@ -59,7 +59,7 @@ pub fn satisfy<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a, I
 /// assert_eq!(token(p, b'a').unwrap(), b'a');
 /// ```
 #[inline]
-pub fn token<'a, I: 'a + Copy + PartialEq>(i: Input<'a, I>, t: I) -> SimpleResult<'a, I, I> {
+pub fn token<I: Copy + PartialEq>(i: Input<I>, t: I) -> SimpleResult<I, I> {
     match i.buffer().first() {
         None               => i.incomplete(1),
         Some(&c) if t == c => i.modify(|b| &b[1..]).ret(c),
@@ -83,7 +83,7 @@ pub fn token<'a, I: 'a + Copy + PartialEq>(i: Input<'a, I>, t: I) -> SimpleResul
 /// assert_eq!(not_token(p2, b'b').unwrap(), b'a');
 /// ```
 #[inline]
-pub fn not_token<'a, I: 'a + Copy + PartialEq>(i: Input<'a, I>, t: I) -> SimpleResult<'a, I, I> {
+pub fn not_token<I: Copy + PartialEq>(i: Input<I>, t: I) -> SimpleResult<I, I> {
     match i.buffer().first() {
         None               => i.incomplete(1),
         Some(&c) if t != c => i.modify(|b| &b[1..]).ret(c),
@@ -108,8 +108,8 @@ pub fn not_token<'a, I: 'a + Copy + PartialEq>(i: Input<'a, I>, t: I) -> SimpleR
 /// assert_eq!(peek(p2).unwrap(), None);
 /// ```
 #[inline]
-pub fn peek<'a, I: 'a + Copy>(i: Input<'a, I>) -> SimpleResult<'a, I, Option<I>> {
-    let d = i.buffer().first().map(|&c| c);
+pub fn peek<I: Copy>(i: Input<I>) -> SimpleResult<I, Option<I>> {
+    let d = i.buffer().first().cloned();
 
     i.ret(d)
 }
@@ -126,7 +126,7 @@ pub fn peek<'a, I: 'a + Copy>(i: Input<'a, I>) -> SimpleResult<'a, I, Option<I>>
 /// assert_eq!(take(p, 3).unwrap(), b"abc");
 /// ```
 #[inline]
-pub fn take<'a, I: 'a + Copy>(i: Input<'a, I>, num: usize) -> SimpleResult<'a, I, &'a [I]> {
+pub fn take<I: Copy>(i: Input<I>, num: usize) -> SimpleResult<I, &[I]> {
     let b = i.buffer();
 
     if num <= b.len() {
@@ -159,11 +159,11 @@ pub fn take<'a, I: 'a + Copy>(i: Input<'a, I>, num: usize) -> SimpleResult<'a, I
 /// assert_eq!(take_while(p, |c| c == b'z').unwrap(), b"");
 /// ```
 #[inline]
-pub fn take_while<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a, I, &'a [I]>
+pub fn take_while<I: Copy, F>(i: Input<I>, f: F) -> SimpleResult<I, &[I]>
   where F: Fn(I) -> bool {
     let b = i.buffer();
 
-    match b.iter().map(|c| *c).position(|c| f(c) == false) {
+    match b.iter().position(|c| f(*c) == false) {
         Some(n) => i.replace(&b[n..]).ret(&b[..n]),
         // TODO: Should this following 1 be something else, seeing as take_while1 is potentially
         // infinite?
@@ -192,11 +192,11 @@ pub fn take_while<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a
 /// assert_eq!(take_while1(p, |c| c == b'a' || c == b'b').unwrap(), b"ab");
 /// ```
 #[inline]
-pub fn take_while1<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a, I, &'a [I]>
+pub fn take_while1<I: Copy, F>(i: Input<I>, f: F) -> SimpleResult<I, &[I]>
   where F: Fn(I) -> bool {
     let b = i.buffer();
 
-    match b.iter().map(|c| *c).position(|c| f(c) == false) {
+    match b.iter().position(|c| f(*c) == false) {
         Some(0) => i.err(err::unexpected()),
         Some(n) => i.replace(&b[n..]).ret(&b[..n]),
         // TODO: Should this following 1 be something else, seeing as take_while1 is potentially
@@ -226,11 +226,11 @@ pub fn take_while1<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'
 /// assert_eq!(take_till(p, |c| c == b'd').unwrap(), b"abc");
 /// ```
 #[inline]
-pub fn take_till<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a, I, &'a [I]>
+pub fn take_till<I: Copy, F>(i: Input<I>, f: F) -> SimpleResult<I, &[I]>
   where F: Fn(I) -> bool {
     let b = i.buffer();
 
-    match b.iter().map(|c| *c).position(f) {
+    match b.iter().cloned().position(f) {
         Some(n) => i.replace(&b[n..]).ret(&b[0..n]),
         // TODO: Should this following 1 be something else, seeing as take_while1 is potentially
         // infinite?
@@ -255,7 +255,7 @@ pub fn take_till<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a,
 /// assert_eq!(r.unwrap(), b"/*test*of*scan*");
 /// ```
 #[inline]
-pub fn scan<'a, I: Copy, S,  F>(i: Input<'a, I>, s: S, mut f: F) -> SimpleResult<'a, I, &'a [I]>
+pub fn scan<I: Copy, S,  F>(i: Input<I>, s: S, mut f: F) -> SimpleResult<I, &[I]>
   where F: FnMut(S, I) -> Option<S> {
     let b     = i.buffer();
     let mut state = Some(s);
@@ -278,7 +278,7 @@ pub fn scan<'a, I: Copy, S,  F>(i: Input<'a, I>, s: S, mut f: F) -> SimpleResult
 /// assert_eq!(take_remainder(p).unwrap(), b"abcd");
 /// ```
 #[inline]
-pub fn take_remainder<'a, I: Copy>(i: Input<'a, I>) -> SimpleResult<'a, I, &'a [I]> {
+pub fn take_remainder<I: Copy>(i: Input<I>) -> SimpleResult<I, &[I]> {
     let b = i.buffer();
     // Last slice and we have just read everything of it, replace with zero-sized slice:
     //
