@@ -16,6 +16,7 @@ pub enum ParseError<'a, I, E>
     ParseError(&'a [I], E),
     Incomplete(usize),
     IoError(io::Error),
+    EndOfInput,
     Retry,
 }
 
@@ -125,8 +126,9 @@ macro_rules! source_for_each {
             loop {
                 match s.parse($parser) {
                     Ok($value) => $body,
-                    Err(ParseError::Retry) => {},
-                    Err(_)                  => break,
+                    Err(ParseError::Retry)      => {},
+                    Err(ParseError::EndOfInput) => break,
+                    Err(e)                      => { println!("{:?}", e); break; },
                 }
             }
         }

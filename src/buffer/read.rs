@@ -20,6 +20,7 @@ bitflags!{
     }
 }
 
+// TODO: More general variants of the buffer
 #[derive(Debug)]
 pub struct Buffer<R: Read> {
     /// Source reader
@@ -149,6 +150,12 @@ impl<'a, R: Read> Source<'a, 'a, u8> for Buffer<R> {
                 Ok(_)    => self.state.remove(END_OF_INPUT),
                 Err(err) => return Err(ParseError::IoError(err)),
             }
+
+            self.state.remove(INCOMPLETE)
+        }
+
+        if self.state.contains(END_OF_INPUT) && self.len() == 0 {
+            return Err(ParseError::EndOfInput);
         }
 
         let input_state = if self.state.contains(END_OF_INPUT) { input::END_OF_INPUT } else { input::DEFAULT };
