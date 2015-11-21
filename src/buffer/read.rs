@@ -136,7 +136,7 @@ impl<R: Read> BufRead for Buffer<R> {
     }
 }
 
-impl<'a, R: Read> Source<'a, u8> for Buffer<R> {
+impl<'a, R: Read> Source<'a, 'a, u8> for Buffer<R> {
     fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, ParseError<'a, u8, E>>
       where F: FnOnce(Input<'a, u8>) -> ParseResult<'a, u8, T, E>,
             T: 'a,

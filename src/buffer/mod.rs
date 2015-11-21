@@ -2,13 +2,13 @@ mod read;
 
 use std::io;
 
-pub use self::read::Buffer;
+use std::marker::PhantomData;
 
-use ParseResult;
-use Input;
+use {ParseResult, Input};
 use internal::input;
-use internal::State;
-use internal::ParseResultModify;
+use internal::{State, ParseResultModify};
+
+pub use self::read::Buffer;
 
 #[derive(Debug)]
 pub enum ParseError<'a, I, E>
@@ -46,18 +46,27 @@ pub fn parse_slice<'a, I, T, E, P>(i: &'a [I], p: P) -> Result<T, ParseError<'a,
     }
 }
 
-pub trait Source<'a, I> {
-    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, ParseError<'a, I, E>>
-      where F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E>,
-            T: 'a,
-            E: 'a;
+pub trait Source<'a, 'i, I> {
+    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, ParseError<'i, I, E>>
+      where F: FnOnce(Input<'i, I>) -> ParseResult<'i, I, T, E>,
+            T: 'i,
+            E: 'i;
 }
 
-pub trait IntoSource<'a> {
+pub trait IntoSource<'a, 'i> {
     type Item;
-    type Into: Source<'a, Self::Item>;
+    type Into: Source<'a, 'i, Self::Item>;
 
     fn into_source(self) -> Self::Into;
+}
+
+impl<'a, 'i, I: 'i> IntoSource<'a, 'i> for &'i [I] {
+    type Item = I;
+    type Into = SliceSource<'a, 'i, I>;
+
+    fn into_source(self) -> SliceSource<'a, 'i, I> {
+        SliceSource(self, PhantomData)
+    }
 }
 
 /// Source implementation for slices.
@@ -67,9 +76,9 @@ pub trait IntoSource<'a> {
 /// # fn main() {
 /// use chomp::{IntoSource, Source, token, take};
 ///
-/// let mut i = b"foo".into_source();
+/// let i = b"foo";
 ///
-/// let r = i.parse(parser!{
+/// let r = i.into_source().parse(parser!{
 ///     token(b'f');
 ///     take(2);
 /// });
@@ -83,9 +92,9 @@ pub trait IntoSource<'a> {
 /// # fn main() {
 /// use chomp::{IntoSource, Source, token, many, take};
 ///
-/// let mut i = b"foofoo".into_source();
+/// let i = b"foofoo";
 ///
-/// let r = i.parse(parser!{many(parser!{
+/// let r = i.into_source().parse(parser!{many(parser!{
 ///     token(b'f');
 ///     take(2);
 /// })});
@@ -93,22 +102,13 @@ pub trait IntoSource<'a> {
 /// assert_eq!(r, Ok(vec![b"oo" as &[u8], b"oo" as &[u8]]));
 /// # }
 /// ```
-impl<'a, I: 'a> IntoSource<'a> for &'a [I] {
-    type Item = I;
-    type Into = SliceSource<'a, I>;
+pub struct SliceSource<'a, 'i, I: 'i>(&'i [I], PhantomData<&'a u8>);
 
-    fn into_source(self) -> SliceSource<'a, I> {
-        SliceSource(self)
-    }
-}
-
-pub struct SliceSource<'a, I: 'a>(&'a [I]);
-
-impl<'a, I> Source<'a, I> for SliceSource<'a, I> {
-    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, ParseError<'a, I, E>>
-      where F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E>,
-            T: 'a,
-            E: 'a {
+impl<'a, 'i, I> Source<'a, 'i, I> for SliceSource<'a, 'i, I> {
+    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, ParseError<'i, I, E>>
+      where F: FnOnce(Input<'i, I>) -> ParseResult<'i, I, T, E>,
+            T: 'i,
+            E: 'i {
         match f(input::new(input::END_OF_INPUT, self.0)).internal() {
             State::Data(_, t)    => Ok(t),
             State::Error(b, e)   => Err(ParseError::ParseError(b, e)),
