@@ -12,8 +12,8 @@ before_script:
 
 script:
   - |
-      travis-cargo build $FEATURES &&
-      travis-cargo test  $FEATURES &&
+      travis-cargo build -- $FEATURES &&
+      travis-cargo test -- $FEATURES &&
       travis-cargo --only stable doc
 
 after_success:
