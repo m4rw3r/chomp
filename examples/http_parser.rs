@@ -1,20 +1,23 @@
 //! http parser comparable to the http-parser found in attoparsec's examples.
-//! 
+//!
 //! Reads data in the following format:
-//! 
+//!
 //! ```text
 //! GET /robot.txt HTTP/1.1
 //! Host: localhost
 //! Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
-//! 
+//!
 //! ```
-use std::fs::File;
-use std::env;
 
 #[macro_use]
 extern crate chomp;
 
+use std::fs::File;
+use std::env;
+
 use chomp::*;
+
+use chomp::buffer::Buffer;
 
 #[derive(Debug)]
 struct Request<'a> {
@@ -127,18 +130,13 @@ fn request(i: Input<u8>) -> U8Result<(Request, Vec<Header>)> {
 }
 
 fn main() {
-    // TODO: Replace with mmap:ed file instead of reading everything into RAM at once.
-    let mut contents: Vec<u8> = Vec::new();
+    let file = File::open(env::args().nth(1).expect("File to read")).ok().expect("Failed to open file");
 
-    {
-        use std::io::Read;
+    let mut i = Buffer::new(file, 1024, 8192);
 
-        let mut file = File::open(env::args().nth(1).expect("File to read")).ok().expect("Failed to open file");
+    let mut n = 0;
 
-        let _ = file.read_to_end(&mut contents).unwrap();
-    }
+    source_for_each!(request; _i in i; n += 1);
 
-    let i = Iter::new(Input::new(&contents), request);
-
-    println!("num: {}", i.count());
+    println!("num: {}", n);
 }
