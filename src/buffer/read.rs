@@ -18,6 +18,7 @@ mod inner {
 
     use std::cell::Cell;
 
+    /// TODO: Tests
     #[derive(Debug, Eq, PartialEq)]
     pub struct Storage {
         buffer:    Vec<u8>,
@@ -168,6 +169,10 @@ impl<R: Read> Buffer<R> {
         self.storage.len()
     }
 
+    pub fn capacity(&self) -> usize {
+        self.storage.capacity()
+    }
+
     /// Borrows the remainder of the buffer.
     pub fn buffer(&self) -> &[u8] {
         &self.storage
@@ -237,6 +242,7 @@ impl<'a, R: Read> Source<'a, 'a, u8> for Buffer<R> {
             },
             State::Error(remainder, err) => {
                 // TODO: Do something neater with the remainder
+                // TODO: Detail this behaviour, maybe make it configurable
                 self.storage.consume(self.storage.len() - remainder.len());
 
                 Err(ParseError::ParseError(remainder, err))
@@ -266,8 +272,15 @@ mod test {
 
     #[test]
     #[should_panic]
-    fn bufsize_lt_chunksize() {
+    fn bufsize_zero() {
         let _ = Buffer::with_size(io::Cursor::new(&b"this is a test"[..]), 0);
+    }
+
+    #[test]
+    fn default_bufsize() {
+        let b = Buffer::new(io::Cursor::new(&b"test"[..]));
+
+        assert_eq!(b.capacity(), super::DEFAULT_BUFFER_SIZE);
     }
 
     #[test]
