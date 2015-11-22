@@ -3,11 +3,15 @@ use std::ptr;
 
 use std::cell::Cell;
 
+/// Trait all parser buffers implement.
+///
+/// Enables the consumer to request specific amounts of data and only consume partial parts of the
+/// buffer.
 pub trait Buffer<I>: ops::Deref<Target=[I]> {
     /// Attempt to fill the buffer using the closure `F`.
     ///
-    /// The successful return from `F` should contain the number of items successfully
-    /// written to the slice.
+    /// The successful return from `F` should contain the number of items successfully written to
+    /// the slice.
     ///
     /// # Notes
     ///
@@ -23,7 +27,7 @@ pub trait Buffer<I>: ops::Deref<Target=[I]> {
     /// Buffer attempts to clear space for additional items.
     fn request_space(&mut self, usize);
 
-    /// Consumes the given amount of bytes, must be less than or equal to len.
+    /// Consumes the given amount of bytes, must be less than or equal to `len()`.
     ///
     /// Does not invalidate any borrow of data from self.
     fn consume(&self, items: usize);
@@ -41,7 +45,9 @@ pub trait Buffer<I>: ops::Deref<Target=[I]> {
 // TODO: Tests
 #[derive(Debug, Eq, PartialEq)]
 pub struct FixedSizeBuffer<I: Default + Clone> {
+    /// Backing memory.
     buffer:    Vec<I>,
+    /// Number of items of `buffer` which contain actual data.
     populated: usize,
     /// The number of bytes from the start of the buffer which are used.
     ///
@@ -79,6 +85,8 @@ impl<I: Default + Clone> Buffer<I> for FixedSizeBuffer<I> {
     fn fill<F, E>(&mut self, f: F) -> Result<usize, E>
       where F: FnOnce(&mut [I]) -> Result<usize, E> {
         f(&mut self.buffer[self.populated..]).map(|n| {
+            debug_assert!(self.populated + n <= self.buffer.len());
+
             self.populated += n;
 
             n
@@ -123,7 +131,9 @@ impl<I: Default + Clone> Buffer<I> for FixedSizeBuffer<I> {
 /// Will not decrease in size.
 // TODO: Tests
 pub struct GrowingBuffer<I> {
+    /// Backing memory.
     buffer:    Vec<I>,
+    /// Number of items of `buffer` which contain actual data.
     populated: usize,
     /// Maximal size of the buffer, 0 means infinity.
     limit:     usize,
@@ -134,10 +144,17 @@ pub struct GrowingBuffer<I> {
 }
 
 impl<I> GrowingBuffer<I> {
+    /// Creates a new unlimited `GrowingBuffer`.
     pub fn new() -> Self {
         Self::with_limit(0)
     }
 
+    /// Creates a new `GrowingBuffer` with the specified limit.
+    ///
+    /// # Note
+    ///
+    /// The actual amount of allocated memory might be larger than the specified limit, depends on
+    /// the allocator.
     pub fn with_limit(limit: usize) -> Self {
         GrowingBuffer {
             buffer:    Vec::new(),
@@ -166,6 +183,8 @@ impl<I> Buffer<I> for GrowingBuffer<I> {
     fn fill<F, E>(&mut self, f: F) -> Result<usize, E>
       where F: FnOnce(&mut [I]) -> Result<usize, E> {
         f(&mut self.buffer[self.populated..]).map(|n| {
+            debug_assert!(self.populated + n <= self.buffer.len());
+
             self.populated += n;
 
             n

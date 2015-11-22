@@ -14,13 +14,21 @@ pub use self::buffer::Buffer;
 pub use self::buffer::FixedSizeBuffer;
 pub use self::buffer::GrowingBuffer;
 
+/// Error type for parsing using the `Source` trait.
 #[derive(Debug)]
 pub enum ParseError<'a, I, E>
   where I: 'a {
+    /// An error occurred in the parser, the given slice indicates the part which failed.
     ParseError(&'a [I], E),
+    /// Parser failed to complete with the available data.
     Incomplete(usize),
+    /// An IO-error occurred while attempting to fill the buffer.
     IoError(io::Error),
+    /// The last parser completed successfully and there is no more input to parse.
     EndOfInput,
+    /// The last parser failed with an incomplete state, fill the buffer and try again.
+    ///
+    /// Filling the buffer is automatic by default.
     Retry,
 }
 
