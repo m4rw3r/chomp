@@ -132,7 +132,7 @@ pub fn take<I: Copy>(i: Input<I>, num: usize) -> SimpleResult<I, &[I]> {
     if num <= b.len() {
         i.replace(&b[num..]).ret(&b[..num])
     } else {
-        i.incomplete(num)
+        i.incomplete(num - b.len())
     }
 }
 
@@ -341,7 +341,10 @@ pub fn eof<I>(i: Input<I>) -> SimpleResult<I, ()> {
 
 #[cfg(test)]
 mod test {
-    use super::{take_while1, token, take_remainder};
+    use internal::input;
+    use internal::ParseResultModify;
+    use internal::State;
+    use super::*;
     use {Input, SimpleResult};
 
     #[test]
@@ -387,5 +390,13 @@ mod test {
         let r = take_while1(n, |_| true);
 
         assert_eq!(r.unwrap(), b"");
+    }
+
+    #[test]
+    fn take_test() {
+        assert_eq!(take(input::new(input::DEFAULT, b"a"), 1).internal(), State::Data(input::new(input::DEFAULT, b""), &b"a"[..]));
+        assert_eq!(take(input::new(input::DEFAULT, b"a"), 2).internal(), State::Incomplete(1));
+        assert_eq!(take(input::new(input::DEFAULT, b"ab"), 1).internal(), State::Data(input::new(input::DEFAULT, b"b"), &b"a"[..]));
+        assert_eq!(take(input::new(input::DEFAULT, b"ab"), 2).internal(), State::Data(input::new(input::DEFAULT, b""), &b"ab"[..]));
     }
 }

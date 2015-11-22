@@ -21,6 +21,7 @@ pub enum State<'a, I: 'a, T, E>
         E: 'a {
     Data(Input<'a, I>, T),
     Error(&'a [I], E),
+    /// The number of additional items requested
     Incomplete(usize),
 }
 
