@@ -3,22 +3,26 @@ use internal::State;
 use internal::InputModify;
 use parse_result;
 
-/// Default (empty) input state.
-pub const DEFAULT: u32      = 0;
-/// If set the current slice of input is the last one.
-pub const END_OF_INPUT: u32 = 1;
+bitflags!{
+    flags InputMode: u32 {
+        /// Default (empty) input state.
+        const DEFAULT      = 0,
+        /// If set the current slice of input is the last one.
+        const END_OF_INPUT = 1,
+    }
+}
 
 /// Linear type containing the parser state, this type is threaded though `bind`.
 #[must_use]
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct Input<'a, I: 'a>(u32, &'a [I]);
+pub struct Input<'a, I: 'a>(InputMode, &'a [I]);
 
 /// Creates a new input from the given state and buffer.
 ///
 /// # Internal
 ///
 /// Only used by fundamental parsers and combinators.
-pub fn new<I>(state: u32, buffer: &[I]) -> Input<I> {
+pub fn new<I>(state: InputMode, buffer: &[I]) -> Input<I> {
     Input(state, buffer)
 }
 
@@ -121,6 +125,6 @@ impl<'a, I> InputModify<'a> for Input<'a, I> {
     /// Only used by fundamental parsers and combinators.
     #[inline(always)]
     fn is_last_slice(&self) -> bool {
-        self.0 & END_OF_INPUT == END_OF_INPUT
+        self.0.contains(END_OF_INPUT)
     }
 }
