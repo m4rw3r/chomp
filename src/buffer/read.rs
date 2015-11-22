@@ -44,7 +44,7 @@ pub struct ReadSource<R: Read, B: Buffer<u8>> {
     state:   BufferState,
 }
 
-impl<R: Read> ReadSource<R, FixedSizeBuffer> {
+impl<R: Read> ReadSource<R, FixedSizeBuffer<u8>> {
     pub fn new(source: R) -> Self {
         Self::with_size(source, DEFAULT_BUFFER_SIZE)
     }

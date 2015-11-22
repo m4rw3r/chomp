@@ -32,8 +32,8 @@ pub trait Buffer<I>: ops::Deref<Target=[I]> {
 
 /// TODO: Tests
 #[derive(Debug, Eq, PartialEq)]
-pub struct FixedSizeBuffer {
-    buffer:    Vec<u8>,
+pub struct FixedSizeBuffer<I: Default + Clone> {
+    buffer:    Vec<I>,
     populated: usize,
     /// The number of bytes from the start of the buffer which are used.
     ///
@@ -41,10 +41,10 @@ pub struct FixedSizeBuffer {
     used:      Cell<usize>,
 }
 
-impl FixedSizeBuffer {
+impl<I: Default + Clone> FixedSizeBuffer<I> {
     pub fn new(size: usize) -> Self {
         FixedSizeBuffer {
-            buffer:    vec![0; size],
+            buffer:    vec![Default::default(); size],
             populated: 0,
             used:      Cell::new(0),
         }
@@ -65,23 +65,23 @@ impl FixedSizeBuffer {
     }
 }
 
-impl ops::Deref for FixedSizeBuffer {
-    type Target = [u8];
+impl<I: Default + Clone> ops::Deref for FixedSizeBuffer<I> {
+    type Target = [I];
 
-    fn deref(&self) -> &[u8] {
+    fn deref(&self) -> &[I] {
         &self.buffer[self.used.get()..self.populated]
     }
 }
 
-impl ops::DerefMut for FixedSizeBuffer {
-    fn deref_mut(&mut self) -> &mut [u8] {
+impl<I: Default + Clone> ops::DerefMut for FixedSizeBuffer<I> {
+    fn deref_mut(&mut self) -> &mut [I] {
         &mut self.buffer[self.used.get()..self.populated]
     }
 }
 
-impl Buffer<u8> for FixedSizeBuffer {
+impl<I: Default + Clone> Buffer<I> for FixedSizeBuffer<I> {
     fn fill<F, E>(&mut self, f: F) -> Result<usize, E>
-      where F: FnOnce(&mut [u8]) -> Result<usize, E> {
+      where F: FnOnce(&mut [I]) -> Result<usize, E> {
         f(&mut self.buffer[self.populated..]).map(|n| {
             self.populated += n;
 
