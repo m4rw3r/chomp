@@ -25,7 +25,9 @@ impl<'a, I, E> PartialEq for ParseError<'a, I, E>
     fn eq(&self, other: &ParseError<'a, I, E>) -> bool {
         match (self, other) {
             (&ParseError::ParseError(ref b1, ref e1), &ParseError::ParseError(ref b2, ref e2)) => b1 == b2 && e1 == e2,
-            (&ParseError::Incomplete(n1), &ParseError::Incomplete(n2))         => n1 == n2,
+            (&ParseError::Incomplete(n1), &ParseError::Incomplete(n2)) => n1 == n2,
+            (&ParseError::EndOfInput, &ParseError::EndOfInput) => true,
+            (&ParseError::Retry, &ParseError::Retry) => true,
             _ => false,
         }
     }
@@ -89,6 +91,7 @@ impl<'a, 'i, I: 'i> IntoSource<'a, 'i> for &'i [I] {
 /// assert_eq!(r, Ok(vec![b"oo" as &[u8], b"oo" as &[u8]]));
 /// # }
 /// ```
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub struct SliceSource<'a, 'i, I: 'i>(&'i [I], PhantomData<&'a u8>);
 
 impl<'a, 'i, I> Source<'a, 'i, I> for SliceSource<'a, 'i, I> {

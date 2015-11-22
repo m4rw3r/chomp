@@ -1,5 +1,6 @@
 use std::iter;
 use std::io;
+use std::cmp;
 
 use std::io::Read;
 use std::io::BufRead;
@@ -12,6 +13,8 @@ use internal::input;
 use internal::State;
 use internal::ParseResultModify;
 use internal::InputModify;
+
+const DEFAULT_BUFFER_SIZE: usize = 6 * 1024;
 
 bitflags!{
     flags BufferState: u64 {
@@ -38,23 +41,26 @@ pub struct Buffer<R: Read> {
 }
 
 impl<R: Read> Buffer<R> {
+    pub fn new(source: R) -> Self {
+        Self::with_size(source, DEFAULT_BUFFER_SIZE)
+    }
+
+    pub fn with_size(source: R, bufsize: usize) -> Self {
+        Self::with_size_and_chunk(source, bufsize, bufsize / 4)
+    }
+
     /// Creates a new buffer with the given ``chunksize`` and ``bufsize``
-    pub fn new(source: R, chunksize: usize, bufsize: usize) -> Self {
-        // TODO: Error
-        assert!(chunksize < bufsize);
-
-        let mut buffer = Vec::with_capacity(bufsize);
-
-        // Fill buffer with zeroes
-        buffer.extend(iter::repeat(0).take(bufsize));
+    pub fn with_size_and_chunk(source: R, bufsize: usize, chunksize: usize) -> Self {
+        assert!(bufsize > 0);
+        assert!(bufsize > chunksize);
 
         Buffer {
             source: source,
-            buffer: buffer,
-            chunk:  chunksize,
+            buffer: iter::repeat(0).take(bufsize).collect(),
+            chunk:  cmp::max(chunksize, 1),
             used:   0,
             size:   0,
-            state:  BufferState::empty(),
+            state:  INCOMPLETE,
         }
     }
 
@@ -97,17 +103,14 @@ impl<R: Read> Buffer<R> {
         self.size - self.used
     }
 
-    /// Returns true if this buffer contains more than the given chunksize.
-    ///
-    /// Checking this after attempting to drain the buffer using ``iter()`` or
-    /// ``iter_buf()`` can indicate the presence of a too long input.
-    pub fn has_chunk(&self) -> bool {
-        self.size - self.used > self.chunk
-    }
-
     /// Borrows the remainder of the buffer.
     pub fn buffer(&self) -> &[u8] {
         &self.buffer[self.used..self.size]
+    }
+
+    /// Resets the buffer state, keeping the current buffer contents and cursor position.
+    pub fn reset(&mut self) {
+        self.state = BufferState::empty();
     }
 }
 
@@ -142,8 +145,6 @@ impl<'a, R: Read> Source<'a, 'a, u8> for Buffer<R> {
       where F: FnOnce(Input<'a, u8>) -> ParseResult<'a, u8, T, E>,
             T: 'a,
             E: 'a {
-        // TODO: Expected end on EOF
-
         if self.state.contains(INCOMPLETE) {
             match self.fill() {
                 Ok(0)    => self.state.insert(END_OF_INPUT),
@@ -165,17 +166,19 @@ impl<'a, R: Read> Source<'a, 'a, u8> for Buffer<R> {
         match f(input::new(input_state, buffer)).internal() {
             State::Data(remainder, data) => {
                 // TODO: Do something neater with the remainder
-                self.used += self.buffer().len() - remainder.buffer().len();
+                self.used += buffer.len() - remainder.buffer().len();
 
                 Ok(data)
             },
             State::Error(remainder, err) => {
                 // TODO: Do something neater with the remainder
-                self.used += self.buffer().len() - remainder.len();
+                self.used += buffer.len() - remainder.len();
 
                 Err(ParseError::ParseError(remainder, err))
             },
             State::Incomplete(n) => if self.state.contains(END_OF_INPUT) {
+                // TODO: Use the number here to at least inform the next read of how much data is
+                // needed.
                 Err(ParseError::Incomplete(n))
             } else {
                 self.state.insert(INCOMPLETE);
@@ -183,5 +186,73 @@ impl<'a, R: Read> Source<'a, 'a, u8> for Buffer<R> {
                 Err(ParseError::Retry)
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::io;
+    use {any, take};
+    use {ParseError, Error, Source};
+
+    use super::*;
+
+    #[test]
+    #[should_panic]
+    fn bufsize_lt_chunksize() {
+        let _ = Buffer::with_size_and_chunk(io::Cursor::new("this is a test"), 64, 128);
+    }
+
+    #[test]
+    fn empty_buf() {
+        let mut n = 0;
+        let mut b = Buffer::new(io::Cursor::new(""));
+
+        let r = b.parse(|i| {
+            n += 1;
+
+            take(i, 1).bind(|i, _| i.ret::<_, Error<_>>(true))
+        });
+
+        assert_eq!(r, Err(ParseError::EndOfInput));
+        assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn fill() {
+        let mut n = 0; // Times it has entered the parsing function
+        let mut m = 0; // Times it has managed to get past the request for data
+        let mut b = Buffer::with_size(io::Cursor::new("test"), 1);
+
+        assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Ok(b't'));
+        assert_eq!(n, 1);
+        assert_eq!(m, 1);
+        assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Err(ParseError::Retry));
+        assert_eq!(n, 2);
+        assert_eq!(m, 1);
+        assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Ok(b'e'));
+        assert_eq!(n, 3);
+        assert_eq!(m, 2);
+        assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Err(ParseError::Retry));
+        assert_eq!(n, 4);
+        assert_eq!(m, 2);
+        assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Ok(b's'));
+        assert_eq!(n, 5);
+        assert_eq!(m, 3);
+        assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Err(ParseError::Retry));
+        assert_eq!(n, 6);
+        assert_eq!(m, 3);
+        assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Ok(b't'));
+        assert_eq!(n, 7);
+        assert_eq!(m, 4);
+        assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Err(ParseError::Retry));
+        assert_eq!(n, 8);
+        assert_eq!(m, 4);
+        assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Err(ParseError::EndOfInput));
+        assert_eq!(n, 8);
+        assert_eq!(m, 4);
+        assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Err(ParseError::EndOfInput));
+        assert_eq!(n, 8);
+        assert_eq!(m, 4);
     }
 }

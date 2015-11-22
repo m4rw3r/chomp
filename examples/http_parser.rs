@@ -132,7 +132,7 @@ fn request(i: Input<u8>) -> U8Result<(Request, Vec<Header>)> {
 fn main() {
     let file = File::open(env::args().nth(1).expect("File to read")).ok().expect("Failed to open file");
 
-    let mut i = Buffer::new(file, 1024, 8192);
+    let mut i = Buffer::new(file);
 
     let mut n = 0;
 
