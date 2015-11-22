@@ -200,13 +200,13 @@ mod test {
     #[test]
     #[should_panic]
     fn bufsize_lt_chunksize() {
-        let _ = Buffer::with_size_and_chunk(io::Cursor::new("this is a test"), 64, 128);
+        let _ = Buffer::with_size_and_chunk(io::Cursor::new(&b"this is a test"[..]), 64, 128);
     }
 
     #[test]
     fn empty_buf() {
         let mut n = 0;
-        let mut b = Buffer::new(io::Cursor::new(""));
+        let mut b = Buffer::new(io::Cursor::new(&b""[..]));
 
         let r = b.parse(|i| {
             n += 1;
@@ -222,7 +222,7 @@ mod test {
     fn fill() {
         let mut n = 0; // Times it has entered the parsing function
         let mut m = 0; // Times it has managed to get past the request for data
-        let mut b = Buffer::with_size(io::Cursor::new("test"), 1);
+        let mut b = Buffer::with_size(io::Cursor::new(&b"test"[..]), 1);
 
         assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Ok(b't'));
         assert_eq!(n, 1);
