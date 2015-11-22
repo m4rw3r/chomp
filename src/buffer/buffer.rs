@@ -1,21 +1,26 @@
 use std::ops;
+use std::ptr;
 
 use std::cell::Cell;
 
 pub trait Buffer<I>: ops::Deref<Target=[I]> {
-    /// Attempts to fill the buffer using the closure `F`, the successful return from `F`
-    /// should contain the number of items successfully written to the slice.
+    /// Attempt to fill the buffer using the closure `F`.
     ///
-    /// # Note
+    /// The successful return from `F` should contain the number of items successfully
+    /// written to the slice.
     ///
-    /// The returned value must *NOT* be larger than the length of the given slice.
+    /// # Notes
     ///
-    /// Return `0` if no more data is available or if the slice is of zero length.
+    /// * The returned value must *NOT* be larger than the length of the given slice.
+    ///
+    /// * Return `0` if no more data is available or if the slice is of zero length.
+    ///
+    /// * The slice might contain uninitialized memory, do not read from the slice.
     fn fill<F, E>(&mut self, f: F) -> Result<usize, E>
       where F: FnOnce(&mut [I]) -> Result<usize, E>;
 
 
-    /// Buffer attempts to clear space.
+    /// Buffer attempts to clear space for additional items.
     fn request_space(&mut self, usize);
 
     /// Consumes the given amount of bytes, must be less than or equal to len.
@@ -30,7 +35,10 @@ pub trait Buffer<I>: ops::Deref<Target=[I]> {
     fn capacity(&self) -> usize;
 }
 
-/// TODO: Tests
+/// A fixed size buffer.
+///
+/// Only allocates when created.
+// TODO: Tests
 #[derive(Debug, Eq, PartialEq)]
 pub struct FixedSizeBuffer<I: Default + Clone> {
     buffer:    Vec<I>,
@@ -43,25 +51,13 @@ pub struct FixedSizeBuffer<I: Default + Clone> {
 
 impl<I: Default + Clone> FixedSizeBuffer<I> {
     pub fn new(size: usize) -> Self {
+        assert!(size > 0);
+
         FixedSizeBuffer {
             buffer:    vec![Default::default(); size],
             populated: 0,
             used:      Cell::new(0),
         }
-    }
-
-    /// Removes used data and moves the unused remainder to the front of self.buffer.
-    pub fn drop_used(&mut self) {
-        use std::ptr;
-
-        assert!(self.populated >= self.used.get());
-
-        unsafe {
-            ptr::copy(self.buffer.as_ptr().offset(self.used.get() as isize), self.buffer.as_mut_ptr(), self.populated - self.used.get());
-        }
-
-        self.populated -= self.used.get();
-        self.used.set(0);
     }
 }
 
@@ -89,8 +85,20 @@ impl<I: Default + Clone> Buffer<I> for FixedSizeBuffer<I> {
         })
     }
 
-    fn request_space(&mut self, _items: usize) {
-        self.drop_used();
+    fn request_space(&mut self, items: usize) {
+        use std::ptr;
+
+        assert!(self.populated >= self.used.get());
+
+        // Only copy if we actually need to free the space
+        if self.buffer.len() - self.populated < items {
+            unsafe {
+                ptr::copy(self.buffer.as_ptr().offset(self.used.get() as isize), self.buffer.as_mut_ptr(), self.populated - self.used.get());
+            }
+
+            self.populated -= self.used.get();
+            self.used.set(0);
+        }
     }
 
     fn consume(&self, items: usize) {
