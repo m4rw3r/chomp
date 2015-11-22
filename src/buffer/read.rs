@@ -46,22 +46,20 @@ pub struct ReadSource<R: Read, B: Buffer<u8>> {
 
 impl<R: Read> ReadSource<R, FixedSizeBuffer<u8>> {
     pub fn new(source: R) -> Self {
-        Self::with_size(source, DEFAULT_BUFFER_SIZE)
-    }
-
-    pub fn with_size(source: R, bufsize: usize) -> Self {
-        assert!(bufsize > 0);
-
-        ReadSource {
-            source:  source,
-            buffer: FixedSizeBuffer::new(bufsize),
-            request: 0,
-            state:   INCOMPLETE | AUTOMATIC_FILL,
-        }
+        Self::with_buffer(source, FixedSizeBuffer::new(DEFAULT_BUFFER_SIZE))
     }
 }
 
 impl<R: Read, B: Buffer<u8>> ReadSource<R, B> {
+    pub fn with_buffer(source: R, buffer: B) -> Self {
+        ReadSource {
+            source:  source,
+            buffer:  buffer,
+            request: 0,
+            state:   INCOMPLETE | AUTOMATIC_FILL,
+        }
+    }
+
     /// Attempts to fill this source so it contains at least ``request`` bytes.
     fn fill_requested(&mut self, request: usize) -> io::Result<usize> {
         // Make sure we actually try to read something in case the buffer is empty
@@ -212,13 +210,18 @@ mod test {
     use std::io;
     use {any, take};
     use {ParseError, Error, Source};
+    use buffer::FixedSizeBuffer;
 
     use super::*;
+
+    fn buf(source: io::Cursor<&[u8]>, buffer_length: usize) -> ReadSource<io::Cursor<&[u8]>, FixedSizeBuffer<u8>> {
+        ReadSource::with_buffer(source, FixedSizeBuffer::new(buffer_length))
+    }
 
     #[test]
     #[should_panic]
     fn bufsize_zero() {
-        let _ = ReadSource::with_size(io::Cursor::new(&b"this is a test"[..]), 0);
+        let _ = buf(io::Cursor::new(&b"this is a test"[..]), 0);
     }
 
     #[test]
@@ -247,7 +250,7 @@ mod test {
     fn fill() {
         let mut n = 0; // Times it has entered the parsing function
         let mut m = 0; // Times it has managed to get past the request for data
-        let mut b = ReadSource::with_size(io::Cursor::new(&b"test"[..]), 1);
+        let mut b = buf(io::Cursor::new(&b"test"[..]), 1);
 
         assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Ok(b't'));
         assert_eq!(n, 1);
@@ -285,7 +288,7 @@ mod test {
     fn fill2() {
         let mut n = 0; // Times it has entered the parsing function
         let mut m = 0; // Times it has managed to get past the request for data
-        let mut b = ReadSource::with_size(io::Cursor::new(&b"test"[..]), 2);
+        let mut b = buf(io::Cursor::new(&b"test"[..]), 2);
 
         assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Ok(b't'));
         assert_eq!(n, 1);
@@ -317,7 +320,7 @@ mod test {
     fn fill3() {
         let mut n = 0; // Times it has entered the parsing function
         let mut m = 0; // Times it has managed to get past the request for data
-        let mut b = ReadSource::with_size(io::Cursor::new(&b"test"[..]), 3);
+        let mut b = buf(io::Cursor::new(&b"test"[..]), 3);
 
         assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Ok(&b"te"[..]));
         assert_eq!(n, 1);
@@ -343,7 +346,7 @@ mod test {
     fn incomplete() {
         let mut n = 0; // Times it has entered the parsing function
         let mut m = 0; // Times it has managed to get past the request for data
-        let mut b = ReadSource::with_size(io::Cursor::new(&b"tes"[..]), 2);
+        let mut b = buf(io::Cursor::new(&b"tes"[..]), 2);
 
         assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Ok(&b"te"[..]));
         assert_eq!(n, 1);
@@ -363,7 +366,7 @@ mod test {
     fn no_autofill() {
         let mut n = 0; // Times it has entered the parsing function
         let mut m = 0; // Times it has managed to get past the request for data
-        let mut b = ReadSource::with_size(io::Cursor::new(&b"test"[..]), 2);
+        let mut b = buf(io::Cursor::new(&b"test"[..]), 2);
 
         b.set_autofill(false);
 
@@ -400,7 +403,7 @@ mod test {
     fn no_autofill_first() {
         let mut n = 0; // Times it has entered the parsing function
         let mut m = 0; // Times it has managed to get past the request for data
-        let mut b = ReadSource::with_size(io::Cursor::new(&b"ab"[..]), 1);
+        let mut b = buf(io::Cursor::new(&b"ab"[..]), 1);
 
         b.set_autofill(false);
 
