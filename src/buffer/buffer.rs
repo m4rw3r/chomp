@@ -115,3 +115,107 @@ impl<I: Default + Clone> Buffer<I> for FixedSizeBuffer<I> {
         self.buffer.len()
     }
 }
+
+/// A buffer which will reallocate to fit the requested amount of data.
+///
+/// # Note:
+///
+/// Will not decrease in size.
+// TODO: Tests
+pub struct GrowingBuffer<I> {
+    buffer:    Vec<I>,
+    populated: usize,
+    /// Maximal size of the buffer, 0 means infinity.
+    limit:     usize,
+    /// The number of bytes from the start of the buffer which are used.
+    ///
+    /// As long as used <= populated it is safe.
+    used:      Cell<usize>,
+}
+
+impl<I> GrowingBuffer<I> {
+    pub fn new() -> Self {
+        Self::with_limit(0)
+    }
+
+    pub fn with_limit(limit: usize) -> Self {
+        GrowingBuffer {
+            buffer:    Vec::new(),
+            populated: 0,
+            limit:     limit,
+            used:      Cell::new(0),
+        }
+    }
+}
+
+impl<I> ops::Deref for GrowingBuffer<I> {
+    type Target = [I];
+
+    fn deref(&self) -> &[I] {
+        &self.buffer[self.used.get()..self.populated]
+    }
+}
+
+impl<I> ops::DerefMut for GrowingBuffer<I> {
+    fn deref_mut(&mut self) -> &mut [I] {
+        &mut self.buffer[self.used.get()..self.populated]
+    }
+}
+
+impl<I> Buffer<I> for GrowingBuffer<I> {
+    fn fill<F, E>(&mut self, f: F) -> Result<usize, E>
+      where F: FnOnce(&mut [I]) -> Result<usize, E> {
+        f(&mut self.buffer[self.populated..]).map(|n| {
+            self.populated += n;
+
+            n
+        })
+    }
+
+    fn request_space(&mut self, items: usize) {
+        // If we are over the limit, refuse
+        if self.limit != 0 && self.buffer.capacity() > self.limit {
+            return;
+        }
+
+        if items + self.len() > self.buffer.capacity() {
+            // We do not have enough space for the new items, reallocate
+            self.buffer.reserve(items);
+
+            let cap = self.buffer.capacity();
+
+            // TODO: Would it be better with a Clone and Default requirement on I?
+            // We set the length here to allow fill() to hand out a slice of uninitialized memory
+            // to be populated.
+            // NOTE: We cannot actually expose this memory to the parser since self.populated will
+            // be the upper limit for the deref to slice.
+            unsafe {
+                self.buffer.set_len(cap);
+            }
+        }
+
+        // Only copy if we actually need to free the space
+        if self.buffer.len() - self.populated < items {
+            unsafe {
+                ptr::copy(self.buffer.as_ptr().offset(self.used.get() as isize), self.buffer.as_mut_ptr(), self.populated - self.used.get());
+            }
+
+            self.populated -= self.used.get();
+            self.used.set(0);
+        }
+    }
+
+    fn consume(&self, items: usize) {
+        debug_assert!(self.used.get() + items <= self.populated);
+
+        self.used.set(self.used.get() + items)
+    }
+
+    fn len(&self) -> usize {
+        self.populated - self.used.get()
+    }
+
+    fn capacity(&self) -> usize {
+        self.buffer.len()
+    }
+}

@@ -12,6 +12,7 @@ use internal::{State, ParseResultModify};
 pub use self::read::ReadSource;
 pub use self::buffer::Buffer;
 pub use self::buffer::FixedSizeBuffer;
+pub use self::buffer::GrowingBuffer;
 
 #[derive(Debug)]
 pub enum ParseError<'a, I, E>
