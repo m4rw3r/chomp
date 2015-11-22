@@ -172,6 +172,8 @@
 //!
 //! The entire grammar for the macro is listed elsewhere in this documentation.
 
+#[macro_use]
+extern crate bitflags;
 extern crate conv;
 
 #[macro_use]
