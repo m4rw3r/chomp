@@ -108,8 +108,14 @@ const DEFAULT_BUFFER_SIZE: usize = 6 * 1024;
 
 bitflags!{
     flags BufferState: u64 {
-        const INCOMPLETE   = 1,
-        const END_OF_INPUT = 2,
+        /// The parser which was last run on the buffer did not manage to complete with the data
+        /// available in the buffer.
+        const INCOMPLETE     = 1,
+        /// The buffer did not manage to read any more data from the underlying `Read`
+        /// implementation.
+        const END_OF_INPUT   = 2,
+        /// `parse()` should attempt to read more data whenever the `INCOMPLETE` flag is set.
+        const AUTOMATIC_FILL = 4,
     }
 }
 
@@ -137,12 +143,12 @@ impl<R: Read> Buffer<R> {
             source:  source,
             storage: Storage::new(bufsize),
             request: 1,
-            state:   INCOMPLETE,
+            state:   INCOMPLETE | AUTOMATIC_FILL,
         }
     }
 
     /// Attempts to fill this buffer so it contains at least ``request`` bytes.
-    pub fn fill(&mut self, request: usize) -> io::Result<usize> {
+    fn fill_requested(&mut self, request: usize) -> io::Result<usize> {
         let mut read = 0;
 
         let mut storage = &mut self.storage;
@@ -161,7 +167,19 @@ impl<R: Read> Buffer<R> {
 
         self.state.remove(INCOMPLETE);
 
+        if read >= request {
+            self.state.remove(END_OF_INPUT);
+        } else {
+            self.state.insert(END_OF_INPUT);
+        }
+
         Ok(read)
+    }
+
+    pub fn fill(&mut self) -> io::Result<usize> {
+        let req = self.request;
+
+        self.fill_requested(req)
     }
 
     /// Returns the number of bytes left in the buffer.
@@ -182,12 +200,22 @@ impl<R: Read> Buffer<R> {
     pub fn reset(&mut self) {
         self.state = BufferState::empty();
     }
+
+    /// Changes the setting automatic fill feature, `true` will make the buffer automatically
+    /// call `fill()` on the next call to `parse()` after a `Retry` was encountered.
+    // TODO: Make a part of the constructor/builder
+    pub fn set_autofill(&mut self, value: bool) {
+        match value {
+            true  => self.state.insert(AUTOMATIC_FILL),
+            false => self.state.remove(AUTOMATIC_FILL),
+        }
+    }
 }
 
 impl<R: Read> Read for Buffer<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if buf.len() > self.len() {
-            try!(self.fill(buf.len()));
+            try!(self.fill_requested(buf.len()));
         }
 
         return (&self.storage[..]).read(buf).map(|n| {
@@ -202,7 +230,7 @@ impl<R: Read> BufRead for Buffer<R> {
     fn fill_buf(&mut self) -> io::Result<&[u8]> {
         let cap = self.storage.capacity();
 
-        try!(self.fill(cap));
+        try!(self.fill_requested(cap));
 
         Ok(self.buffer())
     }
@@ -217,14 +245,10 @@ impl<'a, R: Read> Source<'a, 'a, u8> for Buffer<R> {
       where F: FnOnce(Input<'a, u8>) -> ParseResult<'a, u8, T, E>,
             T: 'a,
             E: 'a {
-        if self.state.contains(INCOMPLETE) {
+        if self.state.contains(INCOMPLETE | AUTOMATIC_FILL) {
             let req = self.request;
 
-            match self.fill(req) {
-                Ok(n) if n >= req => self.state.remove(END_OF_INPUT),
-                Ok(_)             => self.state.insert(END_OF_INPUT),
-                Err(err)          => return Err(ParseError::IoError(err)),
-            }
+            try!(self.fill_requested(req).map_err(ParseError::IoError));
         }
 
         if self.state.contains(END_OF_INPUT) && self.len() == 0 {
@@ -409,5 +433,42 @@ mod test {
         assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Err(ParseError::Incomplete(2)));
         assert_eq!(n, 4);
         assert_eq!(m, 1);
+    }
+
+    #[test]
+    fn no_autofill() {
+        let mut n = 0; // Times it has entered the parsing function
+        let mut m = 0; // Times it has managed to get past the request for data
+        let mut b = Buffer::with_size(io::Cursor::new(&b"test"[..]), 2);
+
+        b.set_autofill(false);
+
+        assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Err(ParseError::Retry));
+        assert_eq!(n, 1);
+        assert_eq!(m, 0);
+
+        assert_eq!(b.fill().unwrap(), 2);
+
+        assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Ok(&b"te"[..]));
+        assert_eq!(n, 2);
+        assert_eq!(m, 1);
+        assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Err(ParseError::Retry));
+        assert_eq!(n, 3);
+        assert_eq!(m, 1);
+
+        assert_eq!(b.fill().unwrap(), 2);
+
+        assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Ok(&b"st"[..]));
+        assert_eq!(n, 4);
+        assert_eq!(m, 2);
+        assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Err(ParseError::Retry));
+        assert_eq!(n, 5);
+        assert_eq!(m, 2);
+
+        assert_eq!(b.fill().unwrap(), 0);
+
+        assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Err(ParseError::EndOfInput));
+        assert_eq!(n, 5);
+        assert_eq!(m, 2);
     }
 }
