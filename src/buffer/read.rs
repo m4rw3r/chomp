@@ -1,4 +1,5 @@
 use std::io;
+use std::cmp;
 
 use std::io::Read;
 use std::io::BufRead;
@@ -142,22 +143,25 @@ impl<R: Read> Buffer<R> {
         Buffer {
             source:  source,
             storage: Storage::new(bufsize),
-            request: 1,
+            request: 0,
             state:   INCOMPLETE | AUTOMATIC_FILL,
         }
     }
 
     /// Attempts to fill this buffer so it contains at least ``request`` bytes.
     fn fill_requested(&mut self, request: usize) -> io::Result<usize> {
+        // Make sure we actually try to read something in case the buffer is empty
+        let _request = cmp::max(1, request);
+
         let mut read = 0;
 
         let mut storage = &mut self.storage;
         let     source  = &mut self.source;
 
-        if storage.len() < request {
+        if storage.len() < _request {
             storage.drop_used();
 
-            while storage.len() < request {
+            while storage.len() < _request {
                 match try!(storage.fill(|b| source.read(b))) {
                     0 => break,
                     n => read = read + n,
@@ -167,7 +171,7 @@ impl<R: Read> Buffer<R> {
 
         self.state.remove(INCOMPLETE);
 
-        if read >= request {
+        if read >= _request {
             self.state.remove(END_OF_INPUT);
         } else {
             self.state.insert(END_OF_INPUT);
@@ -176,6 +180,7 @@ impl<R: Read> Buffer<R> {
         Ok(read)
     }
 
+    /// Attempts to fill the buffer to satisfy the last call to `parse()`.
     pub fn fill(&mut self) -> io::Result<usize> {
         let req = self.request;
 
@@ -469,6 +474,39 @@ mod test {
 
         assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Err(ParseError::EndOfInput));
         assert_eq!(n, 5);
+        assert_eq!(m, 2);
+    }
+
+    #[test]
+    fn no_autofill_first() {
+        let mut n = 0; // Times it has entered the parsing function
+        let mut m = 0; // Times it has managed to get past the request for data
+        let mut b = Buffer::with_size(io::Cursor::new(&b"ab"[..]), 1);
+
+        b.set_autofill(false);
+
+        assert_eq!(b.fill().unwrap(), 1);
+
+        assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Ok(b'a'));
+        assert_eq!(n, 1);
+        assert_eq!(m, 1);
+        assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Err(ParseError::Retry));
+        assert_eq!(n, 2);
+        assert_eq!(m, 1);
+
+        assert_eq!(b.fill().unwrap(), 1);
+
+        assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Ok(b'b'));
+        assert_eq!(n, 3);
+        assert_eq!(m, 2);
+        assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Err(ParseError::Retry));
+        assert_eq!(n, 4);
+        assert_eq!(m, 2);
+
+        assert_eq!(b.fill().unwrap(), 0);
+
+        assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Err(ParseError::EndOfInput));
+        assert_eq!(n, 4);
         assert_eq!(m, 2);
     }
 }
