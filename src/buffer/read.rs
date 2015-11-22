@@ -87,7 +87,7 @@ impl<R: Read, B: Buffer<u8>> ReadSource<R, B> {
 
         self.state.remove(INCOMPLETE);
 
-        if read >= _request {
+        if buffer.len() >= _request {
             self.state.remove(END_OF_INPUT);
         } else {
             self.state.insert(END_OF_INPUT);
@@ -328,11 +328,14 @@ mod test {
         assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Ok(&b"st"[..]));
         assert_eq!(n, 3);
         assert_eq!(m, 2);
-        assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Err(ParseError::EndOfInput));
-        assert_eq!(n, 3);
+        assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Err(ParseError::Retry));
+        assert_eq!(n, 4);
         assert_eq!(m, 2);
         assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Err(ParseError::EndOfInput));
-        assert_eq!(n, 3);
+        assert_eq!(n, 4);
+        assert_eq!(m, 2);
+        assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Err(ParseError::EndOfInput));
+        assert_eq!(n, 4);
         assert_eq!(m, 2);
     }
 
