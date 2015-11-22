@@ -1,6 +1,4 @@
-use std::iter;
 use std::io;
-use std::cmp;
 
 use std::io::Read;
 use std::io::BufRead;
@@ -13,6 +11,97 @@ use internal::input;
 use internal::State;
 use internal::ParseResultModify;
 use internal::InputModify;
+
+mod inner {
+    use std::iter;
+    use std::ops;
+
+    use std::cell::Cell;
+
+    #[derive(Debug, Eq, PartialEq)]
+    pub struct Storage {
+        buffer:    Vec<u8>,
+        populated: usize,
+        /// The number of bytes from the start of the buffer which are used.
+        ///
+        /// As long as used <= populated it is safe.
+        used:      Cell<usize>,
+    }
+
+    impl Storage {
+        pub fn new(size: usize) -> Self {
+            Storage {
+                buffer:    iter::repeat(0).take(size).collect(),
+                populated: 0,
+                used:      Cell::new(0),
+            }
+        }
+
+        /// Removes used data and moves the unused remainder to the front of self.buffer.
+        pub fn drop_used(&mut self) {
+            use std::ptr;
+
+            assert!(self.populated >= self.used.get());
+
+            unsafe {
+                ptr::copy(self.buffer.as_ptr().offset(self.used.get() as isize), self.buffer.as_mut_ptr(), self.populated - self.used.get());
+            }
+
+            self.populated -= self.used.get();
+            self.used.set(0);
+        }
+
+        /// Attempts to fill the buffer using the closure `F`, the successful return from `F`
+        /// should contain the number of bytes successfully written to the slice.
+        ///
+        /// # Note
+        ///
+        /// The returned value must *NOT* be larger than the length of the given slice.
+        pub fn fill<F, E>(&mut self, f: F) -> Result<usize, E>
+          where F: FnOnce(&mut [u8]) -> Result<usize, E> {
+            f(&mut self.buffer[self.populated..]).map(|n| {
+                self.populated += n;
+
+                n
+            })
+        }
+
+        /// Consumes the given amount of bytes, must be less than or equal to len.
+        ///
+        /// Does not invalidate any borrow of data from self.
+        pub fn consume(&self, items: usize) {
+            debug_assert!(self.used.get() + items <= self.populated);
+
+            self.used.set(self.used.get() + items)
+        }
+
+        /// Returns the number of bytes left in the buffer.
+        pub fn len(&self) -> usize {
+            self.populated - self.used.get()
+        }
+
+        /// Returns the maximum amount of data which can be stored
+        pub fn capacity(&self) -> usize {
+            self.buffer.len()
+        }
+    }
+
+    impl ops::Deref for Storage {
+        type Target = [u8];
+
+        fn deref(&self) -> &[u8] {
+            &self.buffer[self.used.get()..self.populated]
+        }
+    }
+
+    impl ops::DerefMut for Storage {
+        fn deref_mut(&mut self) -> &mut [u8] {
+            &mut self.buffer[self.used.get()..self.populated]
+        }
+    }
+}
+
+use self::inner::Storage;
 
 const DEFAULT_BUFFER_SIZE: usize = 6 * 1024;
 
@@ -27,17 +116,12 @@ bitflags!{
 #[derive(Debug)]
 pub struct Buffer<R: Read> {
     /// Source reader
-    source: R,
-    /// Internal buffer
-    buffer: Vec<u8>,
+    source:  R,
+    storage: Storage,
     /// The requested amount of bytes to be available for reading from the buffer
-    chunk:  usize,
-    /// The number of bytes from the start of the buffer which has been consumed
-    used:   usize,
-    /// The number of bytes from the start of the buffer which have been populated
-    size:   usize,
+    request: usize,
     /// Input state, if end has been reached
-    state:  BufferState,
+    state:   BufferState,
 }
 
 impl<R: Read> Buffer<R> {
@@ -46,66 +130,47 @@ impl<R: Read> Buffer<R> {
     }
 
     pub fn with_size(source: R, bufsize: usize) -> Self {
-        Self::with_size_and_chunk(source, bufsize, bufsize / 4)
-    }
-
-    /// Creates a new buffer with the given ``chunksize`` and ``bufsize``
-    pub fn with_size_and_chunk(source: R, bufsize: usize, chunksize: usize) -> Self {
         assert!(bufsize > 0);
-        assert!(bufsize > chunksize);
 
         Buffer {
-            source: source,
-            buffer: iter::repeat(0).take(bufsize).collect(),
-            chunk:  cmp::max(chunksize, 1),
-            used:   0,
-            size:   0,
-            state:  INCOMPLETE,
+            source:  source,
+            storage: Storage::new(bufsize),
+            request: 1,
+            state:   INCOMPLETE,
         }
     }
 
-    /// Removes used data and moves the unused remainder to the front of self.buffer.
-    fn drop_used(&mut self) {
-        use std::ptr;
-
-        assert!(self.size >= self.used);
-
-        unsafe {
-            ptr::copy(self.buffer.as_ptr().offset(self.used as isize), self.buffer.as_mut_ptr(), self.size - self.used);
-        }
-
-        self.size = self.size - self.used;
-        self.used = 0;
-    }
-
-    /// Attempts to fill this buffer so it contains at least ``chunksize`` bytes.
-    pub fn fill(&mut self) -> io::Result<usize> {
+    /// Attempts to fill this buffer so it contains at least ``request`` bytes.
+    pub fn fill(&mut self, request: usize) -> io::Result<usize> {
         let mut read = 0;
 
-        if self.size < self.used + self.chunk {
-            self.drop_used();
-        }
+        let mut storage = &mut self.storage;
+        let     source  = &mut self.source;
 
-        while self.size + read < self.chunk {
-            match try!(self.source.read(&mut self.buffer[self.size + read..])) {
-                0 => break,
-                n => read = read + n,
+        if storage.len() < request {
+            storage.drop_used();
+
+            while storage.len() < request {
+                match try!(storage.fill(|b| source.read(b))) {
+                    0 => break,
+                    n => read = read + n,
+                }
             }
         }
 
-        self.size = self.size + read;
+        self.state.remove(INCOMPLETE);
 
         Ok(read)
     }
 
     /// Returns the number of bytes left in the buffer.
     pub fn len(&self) -> usize {
-        self.size - self.used
+        self.storage.len()
     }
 
     /// Borrows the remainder of the buffer.
     pub fn buffer(&self) -> &[u8] {
-        &self.buffer[self.used..self.size]
+        &self.storage
     }
 
     /// Resets the buffer state, keeping the current buffer contents and cursor position.
@@ -116,12 +181,12 @@ impl<R: Read> Buffer<R> {
 
 impl<R: Read> Read for Buffer<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if buf.len() > self.size - self.used {
-            try!(self.fill());
+        if buf.len() > self.len() {
+            try!(self.fill(buf.len()));
         }
 
-        return (&self.buffer[self.used..self.size]).read(buf).map(|n| {
-            self.used = self.used + n;
+        return (&self.storage[..]).read(buf).map(|n| {
+            self.storage.consume(n);
 
             n
         });
@@ -130,13 +195,15 @@ impl<R: Read> Read for Buffer<R> {
 
 impl<R: Read> BufRead for Buffer<R> {
     fn fill_buf(&mut self) -> io::Result<&[u8]> {
-        try!(self.fill());
+        let cap = self.storage.capacity();
+
+        try!(self.fill(cap));
 
         Ok(self.buffer())
     }
 
     fn consume(&mut self, num: usize) {
-        self.used = self.used + num
+        self.storage.consume(num)
     }
 }
 
@@ -146,13 +213,13 @@ impl<'a, R: Read> Source<'a, 'a, u8> for Buffer<R> {
             T: 'a,
             E: 'a {
         if self.state.contains(INCOMPLETE) {
-            match self.fill() {
-                Ok(0)    => self.state.insert(END_OF_INPUT),
-                Ok(_)    => self.state.remove(END_OF_INPUT),
-                Err(err) => return Err(ParseError::IoError(err)),
-            }
+            let req = self.request;
 
-            self.state.remove(INCOMPLETE)
+            match self.fill(req) {
+                Ok(n) if n >= req => self.state.remove(END_OF_INPUT),
+                Ok(_)             => self.state.insert(END_OF_INPUT),
+                Err(err)          => return Err(ParseError::IoError(err)),
+            }
         }
 
         if self.state.contains(END_OF_INPUT) && self.len() == 0 {
@@ -160,30 +227,30 @@ impl<'a, R: Read> Source<'a, 'a, u8> for Buffer<R> {
         }
 
         let input_state = if self.state.contains(END_OF_INPUT) { input::END_OF_INPUT } else { input::DEFAULT };
-        // Inline version of self.buffer() to satisfy borrowck
-        let buffer      = &self.buffer[self.used..self.size];
 
-        match f(input::new(input_state, buffer)).internal() {
+        match f(input::new(input_state, &self.storage)).internal() {
             State::Data(remainder, data) => {
                 // TODO: Do something neater with the remainder
-                self.used += buffer.len() - remainder.buffer().len();
+                self.storage.consume(self.storage.len() - remainder.buffer().len());
 
                 Ok(data)
             },
             State::Error(remainder, err) => {
                 // TODO: Do something neater with the remainder
-                self.used += buffer.len() - remainder.len();
+                self.storage.consume(self.storage.len() - remainder.len());
 
                 Err(ParseError::ParseError(remainder, err))
             },
-            State::Incomplete(n) => if self.state.contains(END_OF_INPUT) {
-                // TODO: Use the number here to at least inform the next read of how much data is
-                // needed.
-                Err(ParseError::Incomplete(n))
-            } else {
-                self.state.insert(INCOMPLETE);
+            State::Incomplete(n) => {
+                self.request = self.storage.len() + n;
 
-                Err(ParseError::Retry)
+                if self.state.contains(END_OF_INPUT) {
+                    Err(ParseError::Incomplete(self.request))
+                } else {
+                    self.state.insert(INCOMPLETE);
+
+                    Err(ParseError::Retry)
+                }
             },
         }
     }
@@ -200,7 +267,7 @@ mod test {
     #[test]
     #[should_panic]
     fn bufsize_lt_chunksize() {
-        let _ = Buffer::with_size_and_chunk(io::Cursor::new(&b"this is a test"[..]), 64, 128);
+        let _ = Buffer::with_size(io::Cursor::new(&b"this is a test"[..]), 0);
     }
 
     #[test]
@@ -254,5 +321,80 @@ mod test {
         assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Err(ParseError::EndOfInput));
         assert_eq!(n, 8);
         assert_eq!(m, 4);
+    }
+
+    #[test]
+    fn fill2() {
+        let mut n = 0; // Times it has entered the parsing function
+        let mut m = 0; // Times it has managed to get past the request for data
+        let mut b = Buffer::with_size(io::Cursor::new(&b"test"[..]), 2);
+
+        assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Ok(b't'));
+        assert_eq!(n, 1);
+        assert_eq!(m, 1);
+        assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Ok(b'e'));
+        assert_eq!(n, 2);
+        assert_eq!(m, 2);
+        assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Err(ParseError::Retry));
+        assert_eq!(n, 3);
+        assert_eq!(m, 2);
+        assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Ok(b's'));
+        assert_eq!(n, 4);
+        assert_eq!(m, 3);
+        assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Ok(b't'));
+        assert_eq!(n, 5);
+        assert_eq!(m, 4);
+        assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Err(ParseError::Retry));
+        assert_eq!(n, 6);
+        assert_eq!(m, 4);
+        assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Err(ParseError::EndOfInput));
+        assert_eq!(n, 6);
+        assert_eq!(m, 4);
+        assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Err(ParseError::EndOfInput));
+        assert_eq!(n, 6);
+        assert_eq!(m, 4);
+    }
+
+    #[test]
+    fn fill3() {
+        let mut n = 0; // Times it has entered the parsing function
+        let mut m = 0; // Times it has managed to get past the request for data
+        let mut b = Buffer::with_size(io::Cursor::new(&b"test"[..]), 3);
+
+        assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Ok(&b"te"[..]));
+        assert_eq!(n, 1);
+        assert_eq!(m, 1);
+        assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Err(ParseError::Retry));
+        assert_eq!(n, 2);
+        assert_eq!(m, 1);
+        assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Ok(&b"st"[..]));
+        assert_eq!(n, 3);
+        assert_eq!(m, 2);
+        assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Err(ParseError::EndOfInput));
+        assert_eq!(n, 3);
+        assert_eq!(m, 2);
+        assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Err(ParseError::EndOfInput));
+        assert_eq!(n, 3);
+        assert_eq!(m, 2);
+    }
+
+    #[test]
+    fn incomplete() {
+        let mut n = 0; // Times it has entered the parsing function
+        let mut m = 0; // Times it has managed to get past the request for data
+        let mut b = Buffer::with_size(io::Cursor::new(&b"tes"[..]), 2);
+
+        assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Ok(&b"te"[..]));
+        assert_eq!(n, 1);
+        assert_eq!(m, 1);
+        assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Err(ParseError::Retry));
+        assert_eq!(n, 2);
+        assert_eq!(m, 1);
+        assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Err(ParseError::Incomplete(2)));
+        assert_eq!(n, 3);
+        assert_eq!(m, 1);
+        assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Err(ParseError::Incomplete(2)));
+        assert_eq!(n, 4);
+        assert_eq!(m, 1);
     }
 }
