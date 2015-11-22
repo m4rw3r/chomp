@@ -13,97 +13,8 @@ use internal::State;
 use internal::ParseResultModify;
 use internal::InputModify;
 
-mod inner {
-    use std::iter;
-    use std::ops;
-
-    use std::cell::Cell;
-
-    /// TODO: Tests
-    #[derive(Debug, Eq, PartialEq)]
-    pub struct Storage {
-        buffer:    Vec<u8>,
-        populated: usize,
-        /// The number of bytes from the start of the buffer which are used.
-        ///
-        /// As long as used <= populated it is safe.
-        used:      Cell<usize>,
-    }
-
-    impl Storage {
-        pub fn new(size: usize) -> Self {
-            Storage {
-                buffer:    iter::repeat(0).take(size).collect(),
-                populated: 0,
-                used:      Cell::new(0),
-            }
-        }
-
-        /// Removes used data and moves the unused remainder to the front of self.buffer.
-        pub fn drop_used(&mut self) {
-            use std::ptr;
-
-            assert!(self.populated >= self.used.get());
-
-            unsafe {
-                ptr::copy(self.buffer.as_ptr().offset(self.used.get() as isize), self.buffer.as_mut_ptr(), self.populated - self.used.get());
-            }
-
-            self.populated -= self.used.get();
-            self.used.set(0);
-        }
-
-        /// Attempts to fill the buffer using the closure `F`, the successful return from `F`
-        /// should contain the number of bytes successfully written to the slice.
-        ///
-        /// # Note
-        ///
-        /// The returned value must *NOT* be larger than the length of the given slice.
-        pub fn fill<F, E>(&mut self, f: F) -> Result<usize, E>
-          where F: FnOnce(&mut [u8]) -> Result<usize, E> {
-            f(&mut self.buffer[self.populated..]).map(|n| {
-                self.populated += n;
-
-                n
-            })
-        }
-
-        /// Consumes the given amount of bytes, must be less than or equal to len.
-        ///
-        /// Does not invalidate any borrow of data from self.
-        pub fn consume(&self, items: usize) {
-            debug_assert!(self.used.get() + items <= self.populated);
-
-            self.used.set(self.used.get() + items)
-        }
-
-        /// Returns the number of bytes left in the buffer.
-        pub fn len(&self) -> usize {
-            self.populated - self.used.get()
-        }
-
-        /// Returns the maximum amount of data which can be stored
-        pub fn capacity(&self) -> usize {
-            self.buffer.len()
-        }
-    }
-
-    impl ops::Deref for Storage {
-        type Target = [u8];
-
-        fn deref(&self) -> &[u8] {
-            &self.buffer[self.used.get()..self.populated]
-        }
-    }
-
-    impl ops::DerefMut for Storage {
-        fn deref_mut(&mut self) -> &mut [u8] {
-            &mut self.buffer[self.used.get()..self.populated]
-        }
-    }
-}
-
-use self::inner::Storage;
+use buffer::FixedSizeBuffer;
+use buffer::Buffer;
 
 const DEFAULT_BUFFER_SIZE: usize = 6 * 1024;
 
@@ -122,17 +33,18 @@ bitflags!{
 
 // TODO: More general variants of the buffer
 #[derive(Debug)]
-pub struct Buffer<R: Read> {
+pub struct ReadSource<R: Read, B: Buffer<u8>> {
     /// Source reader
     source:  R,
-    storage: Storage,
+    /// Temporary source
+    buffer:  B,
     /// The requested amount of bytes to be available for reading from the buffer
     request: usize,
     /// Input state, if end has been reached
     state:   BufferState,
 }
 
-impl<R: Read> Buffer<R> {
+impl<R: Read> ReadSource<R, FixedSizeBuffer> {
     pub fn new(source: R) -> Self {
         Self::with_size(source, DEFAULT_BUFFER_SIZE)
     }
@@ -140,29 +52,33 @@ impl<R: Read> Buffer<R> {
     pub fn with_size(source: R, bufsize: usize) -> Self {
         assert!(bufsize > 0);
 
-        Buffer {
+        ReadSource {
             source:  source,
-            storage: Storage::new(bufsize),
+            buffer: FixedSizeBuffer::new(bufsize),
             request: 0,
             state:   INCOMPLETE | AUTOMATIC_FILL,
         }
     }
+}
 
-    /// Attempts to fill this buffer so it contains at least ``request`` bytes.
+impl<R: Read, B: Buffer<u8>> ReadSource<R, B> {
+    /// Attempts to fill this source so it contains at least ``request`` bytes.
     fn fill_requested(&mut self, request: usize) -> io::Result<usize> {
         // Make sure we actually try to read something in case the buffer is empty
         let _request = cmp::max(1, request);
 
         let mut read = 0;
 
-        let mut storage = &mut self.storage;
-        let     source  = &mut self.source;
+        let mut buffer = &mut self.buffer;
+        let     source = &mut self.source;
 
-        if storage.len() < _request {
-            storage.drop_used();
+        if buffer.len() < _request {
+            let diff = _request - buffer.len();
 
-            while storage.len() < _request {
-                match try!(storage.fill(|b| source.read(b))) {
+            buffer.request_space(diff);
+
+            while buffer.len() < _request {
+                match try!(buffer.fill(|b| source.read(b))) {
                     0 => break,
                     n => read = read + n,
                 }
@@ -189,16 +105,16 @@ impl<R: Read> Buffer<R> {
 
     /// Returns the number of bytes left in the buffer.
     pub fn len(&self) -> usize {
-        self.storage.len()
+        self.buffer.len()
     }
 
     pub fn capacity(&self) -> usize {
-        self.storage.capacity()
+        self.buffer.capacity()
     }
 
     /// Borrows the remainder of the buffer.
     pub fn buffer(&self) -> &[u8] {
-        &self.storage
+        &self.buffer
     }
 
     /// Resets the buffer state, keeping the current buffer contents and cursor position.
@@ -217,23 +133,23 @@ impl<R: Read> Buffer<R> {
     }
 }
 
-impl<R: Read> Read for Buffer<R> {
+impl<R: Read, B: Buffer<u8>> Read for ReadSource<R, B> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if buf.len() > self.len() {
             try!(self.fill_requested(buf.len()));
         }
 
-        return (&self.storage[..]).read(buf).map(|n| {
-            self.storage.consume(n);
+        return (&self.buffer[..]).read(buf).map(|n| {
+            self.buffer.consume(n);
 
             n
         });
     }
 }
 
-impl<R: Read> BufRead for Buffer<R> {
+impl<R: Read, B: Buffer<u8>> BufRead for ReadSource<R, B> {
     fn fill_buf(&mut self) -> io::Result<&[u8]> {
-        let cap = self.storage.capacity();
+        let cap = self.buffer.capacity();
 
         try!(self.fill_requested(cap));
 
@@ -241,11 +157,11 @@ impl<R: Read> BufRead for Buffer<R> {
     }
 
     fn consume(&mut self, num: usize) {
-        self.storage.consume(num)
+        self.buffer.consume(num)
     }
 }
 
-impl<'a, R: Read> Source<'a, 'a, u8> for Buffer<R> {
+impl<'a, R: Read, B: Buffer<u8>> Source<'a, 'a, u8> for ReadSource<R, B> {
     fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, ParseError<'a, u8, E>>
       where F: FnOnce(Input<'a, u8>) -> ParseResult<'a, u8, T, E>,
             T: 'a,
@@ -262,22 +178,22 @@ impl<'a, R: Read> Source<'a, 'a, u8> for Buffer<R> {
 
         let input_state = if self.state.contains(END_OF_INPUT) { input::END_OF_INPUT } else { input::DEFAULT };
 
-        match f(input::new(input_state, &self.storage)).internal() {
+        match f(input::new(input_state, &self.buffer)).internal() {
             State::Data(remainder, data) => {
                 // TODO: Do something neater with the remainder
-                self.storage.consume(self.storage.len() - remainder.buffer().len());
+                self.buffer.consume(self.buffer.len() - remainder.buffer().len());
 
                 Ok(data)
             },
             State::Error(remainder, err) => {
                 // TODO: Do something neater with the remainder
                 // TODO: Detail this behaviour, maybe make it configurable
-                self.storage.consume(self.storage.len() - remainder.len());
+                self.buffer.consume(self.buffer.len() - remainder.len());
 
                 Err(ParseError::ParseError(remainder, err))
             },
             State::Incomplete(n) => {
-                self.request = self.storage.len() + n;
+                self.request = self.buffer.len() + n;
 
                 if self.state.contains(END_OF_INPUT) {
                     Err(ParseError::Incomplete(self.request))
@@ -302,12 +218,12 @@ mod test {
     #[test]
     #[should_panic]
     fn bufsize_zero() {
-        let _ = Buffer::with_size(io::Cursor::new(&b"this is a test"[..]), 0);
+        let _ = ReadSource::with_size(io::Cursor::new(&b"this is a test"[..]), 0);
     }
 
     #[test]
     fn default_bufsize() {
-        let b = Buffer::new(io::Cursor::new(&b"test"[..]));
+        let b = ReadSource::new(io::Cursor::new(&b"test"[..]));
 
         assert_eq!(b.capacity(), super::DEFAULT_BUFFER_SIZE);
     }
@@ -315,7 +231,7 @@ mod test {
     #[test]
     fn empty_buf() {
         let mut n = 0;
-        let mut b = Buffer::new(io::Cursor::new(&b""[..]));
+        let mut b = ReadSource::new(io::Cursor::new(&b""[..]));
 
         let r = b.parse(|i| {
             n += 1;
@@ -331,7 +247,7 @@ mod test {
     fn fill() {
         let mut n = 0; // Times it has entered the parsing function
         let mut m = 0; // Times it has managed to get past the request for data
-        let mut b = Buffer::with_size(io::Cursor::new(&b"test"[..]), 1);
+        let mut b = ReadSource::with_size(io::Cursor::new(&b"test"[..]), 1);
 
         assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Ok(b't'));
         assert_eq!(n, 1);
@@ -369,7 +285,7 @@ mod test {
     fn fill2() {
         let mut n = 0; // Times it has entered the parsing function
         let mut m = 0; // Times it has managed to get past the request for data
-        let mut b = Buffer::with_size(io::Cursor::new(&b"test"[..]), 2);
+        let mut b = ReadSource::with_size(io::Cursor::new(&b"test"[..]), 2);
 
         assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Ok(b't'));
         assert_eq!(n, 1);
@@ -401,7 +317,7 @@ mod test {
     fn fill3() {
         let mut n = 0; // Times it has entered the parsing function
         let mut m = 0; // Times it has managed to get past the request for data
-        let mut b = Buffer::with_size(io::Cursor::new(&b"test"[..]), 3);
+        let mut b = ReadSource::with_size(io::Cursor::new(&b"test"[..]), 3);
 
         assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Ok(&b"te"[..]));
         assert_eq!(n, 1);
@@ -424,7 +340,7 @@ mod test {
     fn incomplete() {
         let mut n = 0; // Times it has entered the parsing function
         let mut m = 0; // Times it has managed to get past the request for data
-        let mut b = Buffer::with_size(io::Cursor::new(&b"tes"[..]), 2);
+        let mut b = ReadSource::with_size(io::Cursor::new(&b"tes"[..]), 2);
 
         assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Ok(&b"te"[..]));
         assert_eq!(n, 1);
@@ -444,7 +360,7 @@ mod test {
     fn no_autofill() {
         let mut n = 0; // Times it has entered the parsing function
         let mut m = 0; // Times it has managed to get past the request for data
-        let mut b = Buffer::with_size(io::Cursor::new(&b"test"[..]), 2);
+        let mut b = ReadSource::with_size(io::Cursor::new(&b"test"[..]), 2);
 
         b.set_autofill(false);
 
@@ -481,7 +397,7 @@ mod test {
     fn no_autofill_first() {
         let mut n = 0; // Times it has entered the parsing function
         let mut m = 0; // Times it has managed to get past the request for data
-        let mut b = Buffer::with_size(io::Cursor::new(&b"ab"[..]), 1);
+        let mut b = ReadSource::with_size(io::Cursor::new(&b"ab"[..]), 1);
 
         b.set_autofill(false);
 

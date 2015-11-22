@@ -1,4 +1,5 @@
 mod read;
+mod buffer;
 
 use std::io;
 
@@ -8,7 +9,9 @@ use {ParseResult, Input};
 use internal::input;
 use internal::{State, ParseResultModify};
 
-pub use self::read::Buffer;
+pub use self::read::ReadSource;
+pub use self::buffer::Buffer;
+pub use self::buffer::FixedSizeBuffer;
 
 #[derive(Debug)]
 pub enum ParseError<'a, I, E>
