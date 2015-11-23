@@ -1,3 +1,5 @@
+//! Utilities for parsing streams of data.
+
 mod stateful;
 mod buffer;
 mod slice;

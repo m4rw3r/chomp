@@ -1,12 +1,10 @@
-//! Utilities for parsing streams of data.
-
 use std::ops;
 use std::ptr;
 use std::io;
 
-use buffer::DataSource;
-
 use std::cell::Cell;
+
+use buffer::DataSource;
 
 const DEFAULT_BUFFER_SIZE: usize = 6 * 1024;
 
@@ -62,10 +60,12 @@ pub struct FixedSizeBuffer<I: Default + Clone> {
 }
 
 impl<I: Default + Clone> FixedSizeBuffer<I> {
+    /// Creates a fixed-size buffer with the default buffer size.
     pub fn new() -> Self {
         Self::with_size(DEFAULT_BUFFER_SIZE)
     }
 
+    /// Creates a fixed-size buffer with the supplied buffer size.
     pub fn with_size(size: usize) -> Self {
         assert!(size > 0);
 

@@ -1,3 +1,5 @@
+//! Implementation of datasources for `Source`.
+
 use std::io;
 
 /// Abstraction over `io::Read`, `Iterator` and others.
