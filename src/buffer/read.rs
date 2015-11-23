@@ -1,25 +1,23 @@
 use std::io;
 use std::cmp;
 
-use std::io::Read;
-use std::io::BufRead;
-
-use ParseResult;
-use Input;
-use buffer::ParseError;
-use buffer::Source;
+use {Input, ParseResult};
 use internal::input;
-use internal::State;
-use internal::ParseResultModify;
-use internal::InputModify;
+use internal::{InputModify, State, ParseResultModify};
 
-use buffer::FixedSizeBuffer;
-use buffer::Buffer;
+use buffer::{
+    Buffer,
+    DataSource,
+    FixedSizeBuffer,
+    ParseError,
+    ReadDataSource,
+    Source,
+};
 
 const DEFAULT_BUFFER_SIZE: usize = 6 * 1024;
 
 bitflags!{
-    flags BufferState: u64 {
+    flags ParserState: u64 {
         /// The parser which was last run on the buffer did not manage to complete with the data
         /// available in the buffer.
         const INCOMPLETE     = 1,
@@ -31,36 +29,9 @@ bitflags!{
     }
 }
 
-/// Abstraction over `Read`, `Iterator` and others.
-pub trait DataSource {
-    type Item;
-
-    /// Populates the supplied buffer with data, returns the number of items written.
-    ///
-    ///
-    fn read(&mut self, &mut [Self::Item]) -> io::Result<usize>;
-}
-
-/// Implementation of `DataSource` for `Read` instances.
-pub struct ReadDataSource<R: Read>(R);
-
-impl<R: Read> ReadDataSource<R> {
-    pub fn into_inner(self) -> R {
-        self.0
-    }
-}
-
-impl<R: Read> DataSource for ReadDataSource<R> {
-    type Item = u8;
-
-    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
-        self.0.read(buffer)
-    }
-}
-
 // TODO: More general variants of the buffer
 #[derive(Debug)]
-pub struct BufferedParser<S: DataSource, B: Buffer<S::Item>> {
+pub struct StatefulBuffer<S: DataSource, B: Buffer<S::Item>> {
     /// Source reader
     source:  S,
     /// Temporary source
@@ -68,18 +39,18 @@ pub struct BufferedParser<S: DataSource, B: Buffer<S::Item>> {
     /// The requested amount of bytes to be available for reading from the buffer
     request: usize,
     /// Input state, if end has been reached
-    state:   BufferState,
+    state:   ParserState,
 }
 
-impl<R: Read> BufferedParser<ReadDataSource<R>, FixedSizeBuffer<u8>> {
+impl<R: io::Read> StatefulBuffer<ReadDataSource<R>, FixedSizeBuffer<u8>> {
     pub fn new(source: R) -> Self {
-        Self::with_buffer(ReadDataSource(source), FixedSizeBuffer::new(DEFAULT_BUFFER_SIZE))
+        Self::with_buffer(ReadDataSource::new(source), FixedSizeBuffer::new(DEFAULT_BUFFER_SIZE))
     }
 }
 
-impl<S: DataSource, B: Buffer<S::Item>> BufferedParser<S, B> {
+impl<S: DataSource, B: Buffer<S::Item>> StatefulBuffer<S, B> {
     pub fn with_buffer(source: S, buffer: B) -> Self {
-        BufferedParser {
+        StatefulBuffer {
             source:  source,
             buffer:  buffer,
             request: 0,
@@ -144,7 +115,7 @@ impl<S: DataSource, B: Buffer<S::Item>> BufferedParser<S, B> {
 
     /// Resets the buffer state, keeping the current buffer contents and cursor position.
     pub fn reset(&mut self) {
-        self.state = BufferState::empty();
+        self.state = ParserState::empty();
     }
 
     /// Changes the setting automatic fill feature, `true` will make the buffer automatically
@@ -158,7 +129,7 @@ impl<S: DataSource, B: Buffer<S::Item>> BufferedParser<S, B> {
     }
 }
 
-impl<S: DataSource<Item=u8>, B: Buffer<u8>> Read for BufferedParser<S, B> {
+impl<S: DataSource<Item=u8>, B: Buffer<u8>> io::Read for StatefulBuffer<S, B> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if buf.len() > self.len() {
             try!(self.fill_requested(buf.len()));
@@ -172,7 +143,7 @@ impl<S: DataSource<Item=u8>, B: Buffer<u8>> Read for BufferedParser<S, B> {
     }
 }
 
-impl<S: DataSource<Item=u8>, B: Buffer<u8>> BufRead for BufferedParser<S, B> {
+impl<S: DataSource<Item=u8>, B: Buffer<u8>> io::BufRead for StatefulBuffer<S, B> {
     fn fill_buf(&mut self) -> io::Result<&[u8]> {
         let cap = self.buffer.capacity();
 
@@ -186,7 +157,7 @@ impl<S: DataSource<Item=u8>, B: Buffer<u8>> BufRead for BufferedParser<S, B> {
     }
 }
 
-impl<'a, S: DataSource, B: Buffer<S::Item>> Source<'a, 'a, S::Item> for BufferedParser<S, B> {
+impl<'a, S: DataSource, B: Buffer<S::Item>> Source<'a, 'a, S::Item> for StatefulBuffer<S, B> {
     fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, ParseError<'a, S::Item, E>>
       where F: FnOnce(Input<'a, S::Item>) -> ParseResult<'a, S::Item, T, E>,
             T: 'a,
@@ -238,11 +209,12 @@ mod test {
     use {any, take};
     use {ParseError, Error, Source};
     use buffer::FixedSizeBuffer;
+    use buffer::ReadDataSource;
 
     use super::*;
 
-    fn buf(source: &[u8], buffer_length: usize) -> BufferedParser<ReadDataSource<io::Cursor<&[u8]>>, FixedSizeBuffer<u8>> {
-        BufferedParser::with_buffer(ReadDataSource(io::Cursor::new(source)), FixedSizeBuffer::new(buffer_length))
+    fn buf(source: &[u8], buffer_length: usize) -> StatefulBuffer<ReadDataSource<io::Cursor<&[u8]>>, FixedSizeBuffer<u8>> {
+        StatefulBuffer::with_buffer(ReadDataSource::new(io::Cursor::new(source)), FixedSizeBuffer::new(buffer_length))
     }
 
     #[test]
@@ -253,7 +225,7 @@ mod test {
 
     #[test]
     fn default_bufsize() {
-        let b = BufferedParser::new(io::Cursor::new(&b"test"[..]));
+        let b = StatefulBuffer::new(io::Cursor::new(&b"test"[..]));
 
         assert_eq!(b.capacity(), super::DEFAULT_BUFFER_SIZE);
     }
@@ -261,7 +233,7 @@ mod test {
     #[test]
     fn empty_buf() {
         let mut n = 0;
-        let mut b = BufferedParser::new(io::Cursor::new(&b""[..]));
+        let mut b = StatefulBuffer::new(io::Cursor::new(&b""[..]));
 
         let r = b.parse(|i| {
             n += 1;
