@@ -3,14 +3,16 @@ use std::marker::PhantomData;
 use internal::input;
 use internal::{State, ParseResultModify};
 
-use {Input, IntoSource, Source, ParseResult, ParseError};
+use {Input, ParseResult};
+use buffer::{IntoStream, ParseError, Stream};
 
-/// Source implementation for slices.
+/// Stream implementation for slices.
 ///
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use chomp::{IntoSource, Source, token, take};
+/// use chomp::{token, take};
+/// use chomp::buffer::{IntoStream, Stream};
 ///
 /// let i = b"foo";
 ///
@@ -26,7 +28,8 @@ use {Input, IntoSource, Source, ParseResult, ParseError};
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use chomp::{IntoSource, Source, token, many, take};
+/// use chomp::{token, many, take};
+/// use chomp::buffer::{IntoStream, Stream};
 ///
 /// let i = b"foofoo";
 ///
@@ -39,18 +42,18 @@ use {Input, IntoSource, Source, ParseResult, ParseError};
 /// # }
 /// ```
 #[derive(Debug, Eq, PartialEq, Hash)]
-pub struct SliceSource<'a, 'i, I: 'i>(&'i [I], PhantomData<&'a u8>);
+pub struct SliceStream<'a, 'i, I: 'i>(&'i [I], PhantomData<&'a u8>);
 
-impl<'a, 'i, I: 'i> IntoSource<'a, 'i> for &'i [I] {
+impl<'a, 'i, I: 'i> IntoStream<'a, 'i> for &'i [I] {
     type Item = I;
-    type Into = SliceSource<'a, 'i, I>;
+    type Into = SliceStream<'a, 'i, I>;
 
-    fn into_source(self) -> SliceSource<'a, 'i, I> {
-        SliceSource(self, PhantomData)
+    fn into_source(self) -> SliceStream<'a, 'i, I> {
+        SliceStream(self, PhantomData)
     }
 }
 
-impl<'a, 'i, I> Source<'a, 'i, I> for SliceSource<'a, 'i, I> {
+impl<'a, 'i, I> Stream<'a, 'i, I> for SliceStream<'a, 'i, I> {
     fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, ParseError<'i, I, E>>
       where F: FnOnce(Input<'i, I>) -> ParseResult<'i, I, T, E>,
             T: 'i,

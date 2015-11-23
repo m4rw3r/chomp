@@ -1,20 +1,17 @@
 mod stateful;
 mod buffer;
 mod slice;
-mod data_source;
+
+pub mod data_source;
 
 use std::io;
 
 use {ParseResult, Input};
 
-pub use self::slice::SliceSource;
-pub use self::data_source::{
-    DataSource,
-    IteratorDataSource,
-    ReadDataSource,
-};
+pub use self::slice::SliceStream;
+pub use self::data_source::DataSource;
 pub use self::stateful::{
-    StatefulSource,
+    Source,
 };
 pub use self::buffer::{
     Buffer,
@@ -22,7 +19,7 @@ pub use self::buffer::{
     GrowingBuffer,
 };
 
-/// Error type for parsing using the `Source` trait.
+/// Error type for parsing using the `Stream` trait.
 #[derive(Debug)]
 pub enum ParseError<'a, I, E>
   where I: 'a {
@@ -54,31 +51,36 @@ impl<'a, I, E> PartialEq for ParseError<'a, I, E>
 }
 
 /// Trait wrapping the state management in reading from a data source while parsing.
-pub trait Source<'a, 'i, I> {
+pub trait Stream<'a, 'i, I> {
     fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, ParseError<'i, I, E>>
       where F: FnOnce(Input<'i, I>) -> ParseResult<'i, I, T, E>,
             T: 'i,
             E: 'i;
 }
 
-/// Trait for conversion into a `Source`.
-pub trait IntoSource<'a, 'i> {
+/// Trait for conversion into a `Stream`.
+pub trait IntoStream<'a, 'i> {
     type Item;
-    type Into: Source<'a, 'i, Self::Item>;
+    type Into: Stream<'a, 'i, Self::Item>;
 
     fn into_source(self) -> Self::Into;
 }
 
+// TODO: This is not very useful, since the Source might not refill automatically among other
+// issues.
 #[macro_export]
 macro_rules! source_for_each {
-    ( $parser:expr; $value:ident in $source:expr; $body:expr ) => {
+    ( $parser:expr; $value:ident in $stream:expr; $body:expr ) => {
         {
-            let ref mut s = &mut $source;
+            use $crate::buffer::Stream;
+
+            let ref mut s = &mut $stream;
+
             loop {
                 match s.parse($parser) {
                     Ok($value) => $body,
-                    Err(ParseError::Retry)      => {},
-                    Err(ParseError::EndOfInput) => break,
+                    Err($crate::buffer::ParseError::Retry)      => {},
+                    Err($crate::buffer::ParseError::EndOfInput) => break,
                     Err(e)                      => { println!("{:?}", e); break; },
                 }
             }

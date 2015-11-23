@@ -17,7 +17,7 @@ use std::env;
 
 use chomp::*;
 
-use chomp::buffer::StatefulSource;
+use chomp::buffer::Source;
 
 #[derive(Debug)]
 struct Request<'a> {
@@ -132,7 +132,7 @@ fn request(i: Input<u8>) -> U8Result<(Request, Vec<Header>)> {
 fn main() {
     let file = File::open(env::args().nth(1).expect("File to read")).ok().expect("Failed to open file");
 
-    let mut i = StatefulSource::new(file);
+    let mut i = Source::new(file);
 
     let mut n = 0;
 
