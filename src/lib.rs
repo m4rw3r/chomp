@@ -182,6 +182,7 @@ mod input;
 mod parse_result;
 
 pub mod ascii;
+pub mod buffer;
 pub mod internal;
 pub mod parsers;
 pub mod combinators;
