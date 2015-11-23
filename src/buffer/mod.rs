@@ -51,17 +51,19 @@ impl<'a, I, E> PartialEq for ParseError<'a, I, E>
 }
 
 /// Trait wrapping the state management in reading from a data source while parsing.
-pub trait Stream<'a, 'i, I> {
-    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, ParseError<'i, I, E>>
-      where F: FnOnce(Input<'i, I>) -> ParseResult<'i, I, T, E>,
+pub trait Stream<'a, 'i> {
+    type Item: 'i;
+
+    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, ParseError<'i, Self::Item, E>>
+      where F: FnOnce(Input<'i, Self::Item>) -> ParseResult<'i, Self::Item, T, E>,
             T: 'i,
             E: 'i;
 }
 
 /// Trait for conversion into a `Stream`.
 pub trait IntoStream<'a, 'i> {
-    type Item;
-    type Into: Stream<'a, 'i, Self::Item>;
+    type Item: 'i;
+    type Into: Stream<'a, 'i, Item=Self::Item>;
 
     fn into_stream(self) -> Self::Into;
 }

@@ -53,9 +53,11 @@ impl<'a, 'i, I: 'i> IntoStream<'a, 'i> for &'i [I] {
     }
 }
 
-impl<'a, 'i, I> Stream<'a, 'i, I> for SliceStream<'a, 'i, I> {
-    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, ParseError<'i, I, E>>
-      where F: FnOnce(Input<'i, I>) -> ParseResult<'i, I, T, E>,
+impl<'a, 'i, I: 'i> Stream<'a, 'i> for SliceStream<'a, 'i, I> {
+    type Item = I;
+
+    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, ParseError<'i, Self::Item, E>>
+      where F: FnOnce(Input<'i, Self::Item>) -> ParseResult<'i, Self::Item, T, E>,
             T: 'i,
             E: 'i {
         match f(input::new(input::END_OF_INPUT, self.0)).internal() {

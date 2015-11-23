@@ -168,9 +168,12 @@ impl<S: DataSource<Item=u8>, B: Buffer<u8>> io::BufRead for Source<S, B> {
     }
 }
 
-impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a, S::Item> for Source<S, B> {
-    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, ParseError<'a, S::Item, E>>
-      where F: FnOnce(Input<'a, S::Item>) -> ParseResult<'a, S::Item, T, E>,
+impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
+  where S::Item: 'a {
+    type Item = S::Item;
+
+    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, ParseError<'a, Self::Item, E>>
+      where F: FnOnce(Input<'a, Self::Item>) -> ParseResult<'a, Self::Item, T, E>,
             T: 'a,
             E: 'a {
         if self.state.contains(INCOMPLETE | AUTOMATIC_FILL) {
