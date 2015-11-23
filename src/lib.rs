@@ -211,7 +211,6 @@ pub use parsers::{
     token,
 };
 pub use err::Error;
-pub use internal::iter::Iter;
 pub use input::Input;
 pub use parse_result::{
     U8Result,
