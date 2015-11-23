@@ -1,4 +1,4 @@
-mod read;
+mod stateful;
 mod buffer;
 mod slice;
 mod data_source;
@@ -13,8 +13,8 @@ pub use self::data_source::{
     IteratorDataSource,
     ReadDataSource,
 };
-pub use self::read::{
-    StatefulBuffer,
+pub use self::stateful::{
+    StatefulSource,
 };
 pub use self::buffer::{
     Buffer,
