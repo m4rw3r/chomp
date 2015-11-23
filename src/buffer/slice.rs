@@ -86,6 +86,10 @@ impl<'a, 'i, I: 'i> Stream<'a, 'i> for SliceStream<'i, I> {
       where F: FnOnce(Input<'i, Self::Item>) -> ParseResult<'i, Self::Item, T, E>,
             T: 'i,
             E: 'i {
+        if self.is_empty() {
+            return Err(ParseError::EndOfInput);
+        }
+
         match f(input::new(input::END_OF_INPUT, &self.slice[self.pos..])).internal() {
             State::Data(remainder, data) => {
                 // TODO: Do something neater with the remainder
