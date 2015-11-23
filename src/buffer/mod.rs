@@ -9,10 +9,16 @@ use {ParseResult, Input};
 use internal::input;
 use internal::{State, ParseResultModify};
 
-pub use self::read::ReadSource;
-pub use self::buffer::Buffer;
-pub use self::buffer::FixedSizeBuffer;
-pub use self::buffer::GrowingBuffer;
+pub use self::read::{
+    DataSource,
+    ReadDataSource,
+    BufferedParser,
+};
+pub use self::buffer::{
+    Buffer,
+    FixedSizeBuffer,
+    GrowingBuffer,
+};
 
 /// Error type for parsing using the `Source` trait.
 #[derive(Debug)]

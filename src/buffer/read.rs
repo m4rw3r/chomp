@@ -31,11 +31,38 @@ bitflags!{
     }
 }
 
+/// Abstraction over `Read`, `Iterator` and others.
+pub trait DataSource {
+    type Item;
+
+    /// Populates the supplied buffer with data, returns the number of items written.
+    ///
+    ///
+    fn read(&mut self, &mut [Self::Item]) -> io::Result<usize>;
+}
+
+/// Implementation of `DataSource` for `Read` instances.
+pub struct ReadDataSource<R: Read>(R);
+
+impl<R: Read> ReadDataSource<R> {
+    pub fn into_inner(self) -> R {
+        self.0
+    }
+}
+
+impl<R: Read> DataSource for ReadDataSource<R> {
+    type Item = u8;
+
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        self.0.read(buffer)
+    }
+}
+
 // TODO: More general variants of the buffer
 #[derive(Debug)]
-pub struct ReadSource<R: Read, B: Buffer<u8>> {
+pub struct BufferedParser<S: DataSource, B: Buffer<S::Item>> {
     /// Source reader
-    source:  R,
+    source:  S,
     /// Temporary source
     buffer:  B,
     /// The requested amount of bytes to be available for reading from the buffer
@@ -44,15 +71,15 @@ pub struct ReadSource<R: Read, B: Buffer<u8>> {
     state:   BufferState,
 }
 
-impl<R: Read> ReadSource<R, FixedSizeBuffer<u8>> {
+impl<R: Read> BufferedParser<ReadDataSource<R>, FixedSizeBuffer<u8>> {
     pub fn new(source: R) -> Self {
-        Self::with_buffer(source, FixedSizeBuffer::new(DEFAULT_BUFFER_SIZE))
+        Self::with_buffer(ReadDataSource(source), FixedSizeBuffer::new(DEFAULT_BUFFER_SIZE))
     }
 }
 
-impl<R: Read, B: Buffer<u8>> ReadSource<R, B> {
-    pub fn with_buffer(source: R, buffer: B) -> Self {
-        ReadSource {
+impl<S: DataSource, B: Buffer<S::Item>> BufferedParser<S, B> {
+    pub fn with_buffer(source: S, buffer: B) -> Self {
+        BufferedParser {
             source:  source,
             buffer:  buffer,
             request: 0,
@@ -111,7 +138,7 @@ impl<R: Read, B: Buffer<u8>> ReadSource<R, B> {
     }
 
     /// Borrows the remainder of the buffer.
-    pub fn buffer(&self) -> &[u8] {
+    pub fn buffer(&self) -> &[S::Item] {
         &self.buffer
     }
 
@@ -131,7 +158,7 @@ impl<R: Read, B: Buffer<u8>> ReadSource<R, B> {
     }
 }
 
-impl<R: Read, B: Buffer<u8>> Read for ReadSource<R, B> {
+impl<S: DataSource<Item=u8>, B: Buffer<u8>> Read for BufferedParser<S, B> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if buf.len() > self.len() {
             try!(self.fill_requested(buf.len()));
@@ -145,7 +172,7 @@ impl<R: Read, B: Buffer<u8>> Read for ReadSource<R, B> {
     }
 }
 
-impl<R: Read, B: Buffer<u8>> BufRead for ReadSource<R, B> {
+impl<S: DataSource<Item=u8>, B: Buffer<u8>> BufRead for BufferedParser<S, B> {
     fn fill_buf(&mut self) -> io::Result<&[u8]> {
         let cap = self.buffer.capacity();
 
@@ -159,9 +186,9 @@ impl<R: Read, B: Buffer<u8>> BufRead for ReadSource<R, B> {
     }
 }
 
-impl<'a, R: Read, B: Buffer<u8>> Source<'a, 'a, u8> for ReadSource<R, B> {
-    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, ParseError<'a, u8, E>>
-      where F: FnOnce(Input<'a, u8>) -> ParseResult<'a, u8, T, E>,
+impl<'a, S: DataSource, B: Buffer<S::Item>> Source<'a, 'a, S::Item> for BufferedParser<S, B> {
+    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, ParseError<'a, S::Item, E>>
+      where F: FnOnce(Input<'a, S::Item>) -> ParseResult<'a, S::Item, T, E>,
             T: 'a,
             E: 'a {
         if self.state.contains(INCOMPLETE | AUTOMATIC_FILL) {
@@ -214,19 +241,19 @@ mod test {
 
     use super::*;
 
-    fn buf(source: io::Cursor<&[u8]>, buffer_length: usize) -> ReadSource<io::Cursor<&[u8]>, FixedSizeBuffer<u8>> {
-        ReadSource::with_buffer(source, FixedSizeBuffer::new(buffer_length))
+    fn buf(source: &[u8], buffer_length: usize) -> BufferedParser<ReadDataSource<io::Cursor<&[u8]>>, FixedSizeBuffer<u8>> {
+        BufferedParser::with_buffer(ReadDataSource(io::Cursor::new(source)), FixedSizeBuffer::new(buffer_length))
     }
 
     #[test]
     #[should_panic]
     fn bufsize_zero() {
-        let _ = buf(io::Cursor::new(&b"this is a test"[..]), 0);
+        let _ = buf(&b"this is a test"[..], 0);
     }
 
     #[test]
     fn default_bufsize() {
-        let b = ReadSource::new(io::Cursor::new(&b"test"[..]));
+        let b = BufferedParser::new(io::Cursor::new(&b"test"[..]));
 
         assert_eq!(b.capacity(), super::DEFAULT_BUFFER_SIZE);
     }
@@ -234,7 +261,7 @@ mod test {
     #[test]
     fn empty_buf() {
         let mut n = 0;
-        let mut b = ReadSource::new(io::Cursor::new(&b""[..]));
+        let mut b = BufferedParser::new(io::Cursor::new(&b""[..]));
 
         let r = b.parse(|i| {
             n += 1;
@@ -250,7 +277,7 @@ mod test {
     fn fill() {
         let mut n = 0; // Times it has entered the parsing function
         let mut m = 0; // Times it has managed to get past the request for data
-        let mut b = buf(io::Cursor::new(&b"test"[..]), 1);
+        let mut b = buf(&b"test"[..], 1);
 
         assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Ok(b't'));
         assert_eq!(n, 1);
@@ -288,7 +315,7 @@ mod test {
     fn fill2() {
         let mut n = 0; // Times it has entered the parsing function
         let mut m = 0; // Times it has managed to get past the request for data
-        let mut b = buf(io::Cursor::new(&b"test"[..]), 2);
+        let mut b = buf(&b"test"[..], 2);
 
         assert_eq!(b.parse(|i| { n += 1; any(i).inspect(|_| m += 1) }), Ok(b't'));
         assert_eq!(n, 1);
@@ -320,7 +347,7 @@ mod test {
     fn fill3() {
         let mut n = 0; // Times it has entered the parsing function
         let mut m = 0; // Times it has managed to get past the request for data
-        let mut b = buf(io::Cursor::new(&b"test"[..]), 3);
+        let mut b = buf(&b"test"[..], 3);
 
         assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Ok(&b"te"[..]));
         assert_eq!(n, 1);
@@ -346,7 +373,7 @@ mod test {
     fn incomplete() {
         let mut n = 0; // Times it has entered the parsing function
         let mut m = 0; // Times it has managed to get past the request for data
-        let mut b = buf(io::Cursor::new(&b"tes"[..]), 2);
+        let mut b = buf(&b"tes"[..], 2);
 
         assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Ok(&b"te"[..]));
         assert_eq!(n, 1);
@@ -366,7 +393,7 @@ mod test {
     fn no_autofill() {
         let mut n = 0; // Times it has entered the parsing function
         let mut m = 0; // Times it has managed to get past the request for data
-        let mut b = buf(io::Cursor::new(&b"test"[..]), 2);
+        let mut b = buf(&b"test"[..], 2);
 
         b.set_autofill(false);
 
@@ -403,7 +430,7 @@ mod test {
     fn no_autofill_first() {
         let mut n = 0; // Times it has entered the parsing function
         let mut m = 0; // Times it has managed to get past the request for data
-        let mut b = buf(io::Cursor::new(&b"ab"[..]), 1);
+        let mut b = buf(&b"ab"[..], 1);
 
         b.set_autofill(false);
 
