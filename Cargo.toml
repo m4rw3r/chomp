@@ -15,7 +15,7 @@ bitflags = "0.3.3"
 conv = { version = "0.3", default-features = false }
 # Technically a dev-dependency, but dev-dependencies are not allowed to be optional,
 # compiletest_rs fails to compile on stable and beta
-compiletest_rs = { version = "*", optional = true }
+compiletest_rs = { version = "0.0.10", optional = true }
 
 [features]
 default = ["verbose_error"]
