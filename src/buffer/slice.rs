@@ -1,12 +1,10 @@
-use std::marker::PhantomData;
-
 use internal::input;
-use internal::{State, ParseResultModify};
+use internal::{State, InputModify, ParseResultModify};
 
 use {Input, ParseResult};
 use buffer::{IntoStream, ParseError, Stream};
 
-/// Stream implementation for slices.
+/// Stream implementation for immutable slices.
 ///
 /// ```
 /// # #[macro_use] extern crate chomp;
@@ -42,28 +40,57 @@ use buffer::{IntoStream, ParseError, Stream};
 /// # }
 /// ```
 #[derive(Debug, Eq, PartialEq, Hash)]
-pub struct SliceStream<'a, 'i, I: 'i>(&'i [I], PhantomData<&'a u8>);
+pub struct SliceStream<'i, I: 'i> {
+    pos:   usize,
+    slice: &'i [I],
+}
 
-impl<'a, 'i, I: 'i> IntoStream<'a, 'i> for &'i [I] {
-    type Item = I;
-    type Into = SliceStream<'a, 'i, I>;
+impl<'i, I: 'i> SliceStream<'i, I> {
+    /// Creates a new stream from an immutable slice.
+    pub fn new(slice: &'i [I]) -> Self {
+        SliceStream {
+            pos:   0,
+            slice: slice,
+        }
+    }
 
-    fn into_stream(self) -> SliceStream<'a, 'i, I> {
-        SliceStream(self, PhantomData)
+    /// The number of bytes left in the buffer
+    pub fn len(&self) -> usize {
+        self.slice.len() - self.pos
     }
 }
 
-impl<'a, 'i, I: 'i> Stream<'a, 'i> for SliceStream<'a, 'i, I> {
+impl<'a, 'i, I: 'i> IntoStream<'a, 'i> for &'i [I] {
+    type Item = I;
+    type Into = SliceStream<'i, I>;
+
+    fn into_stream(self) -> SliceStream<'i, I> {
+        SliceStream::new(self)
+    }
+}
+
+impl<'a, 'i, I: 'i> Stream<'a, 'i> for SliceStream<'i, I> {
     type Item = I;
 
     fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, ParseError<'i, Self::Item, E>>
       where F: FnOnce(Input<'i, Self::Item>) -> ParseResult<'i, Self::Item, T, E>,
             T: 'i,
             E: 'i {
-        match f(input::new(input::END_OF_INPUT, self.0)).internal() {
-            State::Data(_, t)    => Ok(t),
-            State::Error(b, e)   => Err(ParseError::ParseError(b, e)),
-            State::Incomplete(n) => Err(ParseError::Incomplete(n)),
+        match f(input::new(input::END_OF_INPUT, &self.slice[self.pos..])).internal() {
+            State::Data(remainder, data) => {
+                // TODO: Do something neater with the remainder
+                self.pos += self.len() - remainder.buffer().len();
+
+                Ok(data)
+            },
+            State::Error(remainder, err) => {
+                // TODO: Do something neater with the remainder
+                // TODO: Detail this behaviour, maybe make it configurable
+                self.pos += self.len() - remainder.len();
+
+                Err(ParseError::ParseError(remainder, err))
+            },
+            State::Incomplete(n) => Err(ParseError::Incomplete(n + self.len())),
         }
     }
 }
