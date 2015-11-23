@@ -14,7 +14,6 @@ use buffer::{
 };
 use buffer::data_source::{IteratorDataSource, ReadDataSource};
 
-const DEFAULT_BUFFER_SIZE: usize = 6 * 1024;
 
 bitflags!{
     flags ParserState: u64 {
@@ -44,7 +43,7 @@ pub struct Source<S: DataSource, B: Buffer<S::Item>> {
 
 impl<R: io::Read> Source<ReadDataSource<R>, FixedSizeBuffer<u8>> {
     pub fn new(source: R) -> Self {
-        Self::with_buffer(ReadDataSource::new(source), FixedSizeBuffer::new(DEFAULT_BUFFER_SIZE))
+        Self::with_buffer(ReadDataSource::new(source), FixedSizeBuffer::new())
     }
 }
 
@@ -230,7 +229,7 @@ mod test {
     use super::*;
 
     fn buf(source: &[u8], buffer_length: usize) -> Source<ReadDataSource<io::Cursor<&[u8]>>, FixedSizeBuffer<u8>> {
-        Source::with_buffer(ReadDataSource::new(io::Cursor::new(source)), FixedSizeBuffer::new(buffer_length))
+        Source::with_buffer(ReadDataSource::new(io::Cursor::new(source)), FixedSizeBuffer::with_size(buffer_length))
     }
 
     #[test]
@@ -241,9 +240,9 @@ mod test {
 
     #[test]
     fn default_bufsize() {
-        let b = Source::new(io::Cursor::new(&b"test"[..]));
+        let b: Source<_, FixedSizeBuffer<_>> = Source::new(io::Cursor::new(&b"test"[..]));
 
-        assert_eq!(b.capacity(), super::DEFAULT_BUFFER_SIZE);
+        assert!(b.capacity() > 0);
     }
 
     #[test]

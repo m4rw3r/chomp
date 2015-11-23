@@ -6,6 +6,8 @@ use buffer::DataSource;
 
 use std::cell::Cell;
 
+const DEFAULT_BUFFER_SIZE: usize = 6 * 1024;
+
 /// Trait all parser buffers implement.
 ///
 /// Enables the consumer to request specific amounts of data and only consume partial parts of the
@@ -58,7 +60,11 @@ pub struct FixedSizeBuffer<I: Default + Clone> {
 }
 
 impl<I: Default + Clone> FixedSizeBuffer<I> {
-    pub fn new(size: usize) -> Self {
+    pub fn new() -> Self {
+        Self::with_size(DEFAULT_BUFFER_SIZE)
+    }
+
+    pub fn with_size(size: usize) -> Self {
         assert!(size > 0);
 
         FixedSizeBuffer {
