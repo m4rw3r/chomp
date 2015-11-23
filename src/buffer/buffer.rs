@@ -1,5 +1,8 @@
 use std::ops;
 use std::ptr;
+use std::io;
+
+use buffer::DataSource;
 
 use std::cell::Cell;
 
@@ -20,8 +23,7 @@ pub trait Buffer<I>: ops::Deref<Target=[I]> {
     /// * Return `0` if no more data is available or if the slice is of zero length.
     ///
     /// * The slice might contain uninitialized memory, do not read from the slice.
-    fn fill<F, E>(&mut self, f: F) -> Result<usize, E>
-      where F: FnOnce(&mut [I]) -> Result<usize, E>;
+    fn fill<S: DataSource<Item=I>>(&mut self, &mut S) -> io::Result<usize>;
 
 
     /// Buffer attempts to clear space for additional items.
@@ -82,9 +84,8 @@ impl<I: Default + Clone> ops::DerefMut for FixedSizeBuffer<I> {
 }
 
 impl<I: Default + Clone> Buffer<I> for FixedSizeBuffer<I> {
-    fn fill<F, E>(&mut self, f: F) -> Result<usize, E>
-      where F: FnOnce(&mut [I]) -> Result<usize, E> {
-        f(&mut self.buffer[self.populated..]).map(|n| {
+    fn fill<S: DataSource<Item=I>>(&mut self, s: &mut S) -> io::Result<usize> {
+        s.read(&mut self.buffer[self.populated..]).map(|n| {
             debug_assert!(self.populated + n <= self.buffer.len());
 
             self.populated += n;
@@ -180,9 +181,8 @@ impl<I> ops::DerefMut for GrowingBuffer<I> {
 }
 
 impl<I> Buffer<I> for GrowingBuffer<I> {
-    fn fill<F, E>(&mut self, f: F) -> Result<usize, E>
-      where F: FnOnce(&mut [I]) -> Result<usize, E> {
-        f(&mut self.buffer[self.populated..]).map(|n| {
+    fn fill<S: DataSource<Item=I>>(&mut self, s: &mut S) -> io::Result<usize> {
+        s.read(&mut self.buffer[self.populated..]).map(|n| {
             debug_assert!(self.populated + n <= self.buffer.len());
 
             self.populated += n;

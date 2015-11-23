@@ -103,7 +103,7 @@ impl<S: DataSource, B: Buffer<S::Item>> BufferedParser<S, B> {
             buffer.request_space(diff);
 
             while buffer.len() < _request {
-                match try!(buffer.fill(|b| source.read(b))) {
+                match try!(buffer.fill(source)) {
                     0 => break,
                     n => read = read + n,
                 }
