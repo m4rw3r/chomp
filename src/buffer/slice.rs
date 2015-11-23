@@ -47,6 +47,7 @@ pub struct SliceStream<'i, I: 'i> {
 
 impl<'i, I: 'i> SliceStream<'i, I> {
     /// Creates a new stream from an immutable slice.
+    #[inline]
     pub fn new(slice: &'i [I]) -> Self {
         SliceStream {
             pos:   0,
@@ -55,11 +56,13 @@ impl<'i, I: 'i> SliceStream<'i, I> {
     }
 
     /// The number of bytes left in the buffer
+    #[inline]
     pub fn len(&self) -> usize {
         self.slice.len() - self.pos
     }
 
     /// Returns true if no more bytes are available
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -69,6 +72,7 @@ impl<'a, 'i, I: 'i> IntoStream<'a, 'i> for &'i [I] {
     type Item = I;
     type Into = SliceStream<'i, I>;
 
+    #[inline]
     fn into_stream(self) -> SliceStream<'i, I> {
         SliceStream::new(self)
     }
@@ -77,6 +81,7 @@ impl<'a, 'i, I: 'i> IntoStream<'a, 'i> for &'i [I] {
 impl<'a, 'i, I: 'i> Stream<'a, 'i> for SliceStream<'i, I> {
     type Item = I;
 
+    #[inline]
     fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, ParseError<'i, Self::Item, E>>
       where F: FnOnce(Input<'i, Self::Item>) -> ParseResult<'i, Self::Item, T, E>,
             T: 'i,

@@ -25,26 +25,32 @@ pub trait Buffer<I>: ops::Deref<Target=[I]> {
     /// * Return `0` if no more data is available or if the slice is of zero length.
     ///
     /// * The slice might contain uninitialized memory, do not read from the slice.
+    #[inline]
     fn fill<S: DataSource<Item=I>>(&mut self, &mut S) -> io::Result<usize>;
 
 
     /// Buffer attempts to clear space for additional items.
+    #[inline]
     fn request_space(&mut self, usize);
 
     /// Consumes the given amount of bytes, must be less than or equal to `len()`.
     ///
     /// Does not invalidate any borrow of data from self.
+    #[inline]
     fn consume(&self, items: usize);
 
     /// Returns the number of bytes left in the buffer.
+    #[inline]
     fn len(&self) -> usize;
 
     /// If the buffer has no more data.
+    #[inline]
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
     /// Returns the maximum amount of data which can be stored
+    #[inline]
     fn capacity(&self) -> usize;
 }
 
@@ -66,11 +72,13 @@ pub struct FixedSizeBuffer<I: Copy> {
 
 impl<I: Copy> FixedSizeBuffer<I> {
     /// Creates a fixed-size buffer with the default buffer size.
+    #[inline]
     pub fn new() -> Self {
         Self::with_size(DEFAULT_BUFFER_SIZE)
     }
 
     /// Creates a fixed-size buffer with the supplied buffer size.
+    #[inline]
     pub fn with_size(size: usize) -> Self {
         assert!(size > 0);
 
@@ -96,18 +104,21 @@ impl<I: Copy> FixedSizeBuffer<I> {
 impl<I: Copy> ops::Deref for FixedSizeBuffer<I> {
     type Target = [I];
 
+    #[inline]
     fn deref(&self) -> &[I] {
         &self.buffer[self.used.get()..self.populated]
     }
 }
 
 impl<I: Copy> ops::DerefMut for FixedSizeBuffer<I> {
+    #[inline]
     fn deref_mut(&mut self) -> &mut [I] {
         &mut self.buffer[self.used.get()..self.populated]
     }
 }
 
 impl<I: Copy> Buffer<I> for FixedSizeBuffer<I> {
+    #[inline]
     fn fill<S: DataSource<Item=I>>(&mut self, s: &mut S) -> io::Result<usize> {
         s.read(&mut self.buffer[self.populated..]).map(|n| {
             debug_assert!(self.populated + n <= self.buffer.len());
@@ -118,6 +129,7 @@ impl<I: Copy> Buffer<I> for FixedSizeBuffer<I> {
         })
     }
 
+    #[inline]
     fn request_space(&mut self, items: usize) {
         use std::ptr;
 
@@ -134,16 +146,19 @@ impl<I: Copy> Buffer<I> for FixedSizeBuffer<I> {
         }
     }
 
+    #[inline]
     fn consume(&self, items: usize) {
         debug_assert!(self.used.get() + items <= self.populated);
 
         self.used.set(self.used.get() + items)
     }
 
+    #[inline]
     fn len(&self) -> usize {
         self.populated - self.used.get()
     }
 
+    #[inline]
     fn capacity(&self) -> usize {
         self.buffer.len()
     }
@@ -170,6 +185,7 @@ pub struct GrowingBuffer<I: Copy> {
 
 impl<I: Copy> GrowingBuffer<I> {
     /// Creates a new unlimited `GrowingBuffer`.
+    #[inline]
     pub fn new() -> Self {
         Self::with_limit(0)
     }
@@ -180,6 +196,7 @@ impl<I: Copy> GrowingBuffer<I> {
     ///
     /// The actual amount of allocated memory might be larger than the specified limit, depends on
     /// the allocator.
+    #[inline]
     pub fn with_limit(limit: usize) -> Self {
         GrowingBuffer {
             buffer:    Vec::new(),
@@ -193,18 +210,21 @@ impl<I: Copy> GrowingBuffer<I> {
 impl<I: Copy> ops::Deref for GrowingBuffer<I> {
     type Target = [I];
 
+    #[inline]
     fn deref(&self) -> &[I] {
         &self.buffer[self.used.get()..self.populated]
     }
 }
 
 impl<I: Copy> ops::DerefMut for GrowingBuffer<I> {
+    #[inline]
     fn deref_mut(&mut self) -> &mut [I] {
         &mut self.buffer[self.used.get()..self.populated]
     }
 }
 
 impl<I: Copy> Buffer<I> for GrowingBuffer<I> {
+    #[inline]
     fn fill<S: DataSource<Item=I>>(&mut self, s: &mut S) -> io::Result<usize> {
         s.read(&mut self.buffer[self.populated..]).map(|n| {
             debug_assert!(self.populated + n <= self.buffer.len());
@@ -215,6 +235,7 @@ impl<I: Copy> Buffer<I> for GrowingBuffer<I> {
         })
     }
 
+    #[inline]
     fn request_space(&mut self, items: usize) {
         // If we are over the limit, refuse
         if self.limit != 0 && self.buffer.capacity() > self.limit {
@@ -248,16 +269,19 @@ impl<I: Copy> Buffer<I> for GrowingBuffer<I> {
         }
     }
 
+    #[inline]
     fn consume(&self, items: usize) {
         debug_assert!(self.used.get() + items <= self.populated);
 
         self.used.set(self.used.get() + items)
     }
 
+    #[inline]
     fn len(&self) -> usize {
         self.populated - self.used.get()
     }
 
+    #[inline]
     fn capacity(&self) -> usize {
         self.buffer.len()
     }

@@ -16,6 +16,7 @@ pub trait DataSource {
     ///   should be returned (includes EOF).
     ///
     /// * The slice must not be read from, may contain uninitialized memory.
+    #[inline]
     fn read(&mut self, &mut [Self::Item]) -> io::Result<usize>;
 }
 
@@ -24,10 +25,12 @@ pub trait DataSource {
 pub struct ReadDataSource<R: io::Read>(R);
 
 impl<R: io::Read> ReadDataSource<R> {
+    #[inline]
     pub fn new(inner: R) -> Self {
         ReadDataSource(inner)
     }
 
+    #[inline]
     pub fn into_inner(self) -> R {
         self.0
     }
@@ -36,6 +39,7 @@ impl<R: io::Read> ReadDataSource<R> {
 impl<R: io::Read> DataSource for ReadDataSource<R> {
     type Item = u8;
 
+    #[inline]
     fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
         self.0.read(buffer)
     }
@@ -46,10 +50,12 @@ impl<R: io::Read> DataSource for ReadDataSource<R> {
 pub struct IteratorDataSource<I: Iterator>(I);
 
 impl<I: Iterator> IteratorDataSource<I> {
+    #[inline]
     pub fn new(inner: I) -> Self {
         IteratorDataSource(inner)
     }
 
+    #[inline]
     pub fn into_inner(self) -> I {
         self.0
     }
@@ -58,6 +64,7 @@ impl<I: Iterator> IteratorDataSource<I> {
 impl<I: Iterator> DataSource for IteratorDataSource<I> {
     type Item = I::Item;
 
+    #[inline]
     fn read(&mut self, buffer: &mut [I::Item]) -> io::Result<usize> {
         let mut n = 0;
 

@@ -39,6 +39,7 @@ pub enum ParseError<'a, I, E>
 
 impl<'a, I, E> PartialEq for ParseError<'a, I, E>
   where E: PartialEq, I: PartialEq {
+    #[inline]
     fn eq(&self, other: &ParseError<'a, I, E>) -> bool {
         match (self, other) {
             (&ParseError::ParseError(ref b1, ref e1), &ParseError::ParseError(ref b2, ref e2)) => b1 == b2 && e1 == e2,
@@ -54,6 +55,7 @@ impl<'a, I, E> PartialEq for ParseError<'a, I, E>
 pub trait Stream<'a, 'i> {
     type Item: 'i;
 
+    #[inline]
     fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, ParseError<'i, Self::Item, E>>
       where F: FnOnce(Input<'i, Self::Item>) -> ParseResult<'i, Self::Item, T, E>,
             T: 'i,
@@ -65,5 +67,6 @@ pub trait IntoStream<'a, 'i> {
     type Item: 'i;
     type Into: Stream<'a, 'i, Item=Self::Item>;
 
+    #[inline]
     fn into_stream(self) -> Self::Into;
 }

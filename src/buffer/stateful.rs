@@ -42,24 +42,28 @@ pub struct Source<S: DataSource, B: Buffer<S::Item>> {
 }
 
 impl<R: io::Read> Source<ReadDataSource<R>, FixedSizeBuffer<u8>> {
+    #[inline]
     pub fn new(source: R) -> Self {
         Self::with_buffer(ReadDataSource::new(source), FixedSizeBuffer::new())
     }
 }
 
 impl<R: io::Read, B: Buffer<u8>> Source<ReadDataSource<R>, B> {
+    #[inline]
     pub fn from_read(source: R, buffer: B) -> Self {
         Self::with_buffer(ReadDataSource::new(source), buffer)
     }
 }
 
 impl<I: Iterator, B: Buffer<I::Item>> Source<IteratorDataSource<I>, B> {
+    #[inline]
     pub fn from_iter(source: I, buffer: B) -> Self {
         Self::with_buffer(IteratorDataSource::new(source), buffer)
     }
 }
 
 impl<S: DataSource, B: Buffer<S::Item>> Source<S, B> {
+    #[inline]
     pub fn with_buffer(source: S, buffer: B) -> Self {
         Source {
             source:  source,
@@ -70,6 +74,7 @@ impl<S: DataSource, B: Buffer<S::Item>> Source<S, B> {
     }
 
     /// Attempts to fill this source so it contains at least ``request`` bytes.
+    #[inline]
     fn fill_requested(&mut self, request: usize) -> io::Result<usize> {
         let mut read = 0;
 
@@ -93,6 +98,7 @@ impl<S: DataSource, B: Buffer<S::Item>> Source<S, B> {
     }
 
     /// Attempts to fill the buffer to satisfy the last call to `parse()`.
+    #[inline]
     pub fn fill(&mut self) -> io::Result<usize> {
         // Make sure we actually try to read something in case the buffer is empty
         let req = cmp::max(1, self.request);
@@ -111,25 +117,30 @@ impl<S: DataSource, B: Buffer<S::Item>> Source<S, B> {
     }
 
     /// the number of bytes left in the buffer.
+    #[inline]
     pub fn len(&self) -> usize {
         self.buffer.len()
     }
 
     /// If the buffer is empty and the reader has reached the end.
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.state.contains(END_OF_INPUT) && self.len() == 0
     }
 
+    #[inline]
     pub fn capacity(&self) -> usize {
         self.buffer.capacity()
     }
 
     /// Borrows the remainder of the buffer.
+    #[inline]
     pub fn buffer(&self) -> &[S::Item] {
         &self.buffer
     }
 
     /// Resets the buffer state, keeping the current buffer contents and cursor position.
+    #[inline]
     pub fn reset(&mut self) {
         self.state = ParserState::empty();
     }
@@ -137,6 +148,7 @@ impl<S: DataSource, B: Buffer<S::Item>> Source<S, B> {
     /// Changes the setting automatic fill feature, `true` will make the buffer automatically
     /// call `fill()` on the next call to `parse()` after a `Retry` was encountered.
     // TODO: Make a part of the constructor/builder
+    #[inline]
     pub fn set_autofill(&mut self, value: bool) {
         if value {
             self.state.insert(AUTOMATIC_FILL)
@@ -147,6 +159,7 @@ impl<S: DataSource, B: Buffer<S::Item>> Source<S, B> {
 }
 
 impl<S: DataSource<Item=u8>, B: Buffer<u8>> io::Read for Source<S, B> {
+    #[inline]
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if buf.len() > self.len() {
             try!(self.fill_requested(buf.len()));
@@ -161,6 +174,7 @@ impl<S: DataSource<Item=u8>, B: Buffer<u8>> io::Read for Source<S, B> {
 }
 
 impl<S: DataSource<Item=u8>, B: Buffer<u8>> io::BufRead for Source<S, B> {
+    #[inline]
     fn fill_buf(&mut self) -> io::Result<&[u8]> {
         let cap = self.buffer.capacity();
 
@@ -169,6 +183,7 @@ impl<S: DataSource<Item=u8>, B: Buffer<u8>> io::BufRead for Source<S, B> {
         Ok(self.buffer())
     }
 
+    #[inline]
     fn consume(&mut self, num: usize) {
         self.buffer.consume(num)
     }
@@ -178,6 +193,7 @@ impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
   where S::Item: 'a {
     type Item = S::Item;
 
+    #[inline]
     fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, ParseError<'a, Self::Item, E>>
       where F: FnOnce(Input<'a, Self::Item>) -> ParseResult<'a, Self::Item, T, E>,
             T: 'a,
