@@ -58,6 +58,11 @@ impl<'i, I: 'i> SliceStream<'i, I> {
     pub fn len(&self) -> usize {
         self.slice.len() - self.pos
     }
+
+    /// Returns true if no more bytes are available
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 impl<'a, 'i, I: 'i> IntoStream<'a, 'i> for &'i [I] {

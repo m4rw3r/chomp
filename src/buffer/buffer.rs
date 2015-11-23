@@ -39,6 +39,11 @@ pub trait Buffer<I>: ops::Deref<Target=[I]> {
     /// Returns the number of bytes left in the buffer.
     fn len(&self) -> usize;
 
+    /// If the buffer has no more data.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Returns the maximum amount of data which can be stored
     fn capacity(&self) -> usize;
 }

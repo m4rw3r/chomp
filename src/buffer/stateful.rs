@@ -110,9 +110,14 @@ impl<S: DataSource, B: Buffer<S::Item>> Source<S, B> {
         })
     }
 
-    /// Returns the number of bytes left in the buffer.
+    /// the number of bytes left in the buffer.
     pub fn len(&self) -> usize {
         self.buffer.len()
+    }
+
+    /// If the buffer is empty and the reader has reached the end.
+    pub fn is_empty(&self) -> bool {
+        self.state.contains(END_OF_INPUT) && self.len() == 0
     }
 
     pub fn capacity(&self) -> usize {
@@ -133,9 +138,10 @@ impl<S: DataSource, B: Buffer<S::Item>> Source<S, B> {
     /// call `fill()` on the next call to `parse()` after a `Retry` was encountered.
     // TODO: Make a part of the constructor/builder
     pub fn set_autofill(&mut self, value: bool) {
-        match value {
-            true  => self.state.insert(AUTOMATIC_FILL),
-            false => self.state.remove(AUTOMATIC_FILL),
+        if value {
+            self.state.insert(AUTOMATIC_FILL)
+        } else {
+            self.state.remove(AUTOMATIC_FILL)
         }
     }
 }
@@ -146,11 +152,11 @@ impl<S: DataSource<Item=u8>, B: Buffer<u8>> io::Read for Source<S, B> {
             try!(self.fill_requested(buf.len()));
         }
 
-        return (&self.buffer[..]).read(buf).map(|n| {
+        (&self.buffer[..]).read(buf).map(|n| {
             self.buffer.consume(n);
 
             n
-        });
+        })
     }
 }
 
@@ -180,7 +186,7 @@ impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
             try!(self.fill().map_err(ParseError::IoError));
         }
 
-        if self.state.contains(END_OF_INPUT) && self.len() == 0 {
+        if self.is_empty() {
             return Err(ParseError::EndOfInput);
         }
 
