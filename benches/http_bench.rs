@@ -5,6 +5,7 @@ extern crate chomp;
 
 use test::Bencher;
 use chomp::*;
+use chomp::buffer::{Stream, IntoStream};
 
 #[derive(Debug)]
 struct Request<'a> {
@@ -129,7 +130,7 @@ Connection: keep-alive\r
 \r";
 
     b.iter(|| {
-        data.into_source().parse(request)
+        data.into_stream().parse(request)
     })
 }
 
@@ -141,7 +142,7 @@ Host: localhost\r
 \r";
 
     b.iter(|| {
-        data.into_source().parse(request)
+        data.into_stream().parse(request)
     })
 }
 
@@ -160,7 +161,7 @@ Cookie: azk=ue1-5eb08aeed9a7401c9195cb933eb7c966\r
 \r";
 
     b.iter(|| {
-        data.into_source().parse(request)
+        data.into_stream().parse(request)
     })
 }
 
@@ -169,6 +170,6 @@ fn multiple_requests(b: &mut Bencher) {
     let data = include_bytes!("./data/http-requests.txt");
 
     b.iter(|| {
-        data.into_source().parse::<_, Vec<_>, _>(parser!{many(request)})
+        data.into_stream().parse::<_, Vec<_>, _>(parser!{many(request)})
     })
 }

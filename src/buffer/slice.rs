@@ -16,7 +16,7 @@ use buffer::{IntoStream, ParseError, Stream};
 ///
 /// let i = b"foo";
 ///
-/// let r = i.into_source().parse(parser!{
+/// let r = i.into_stream().parse(parser!{
 ///     token(b'f');
 ///     take(2);
 /// });
@@ -33,7 +33,7 @@ use buffer::{IntoStream, ParseError, Stream};
 ///
 /// let i = b"foofoo";
 ///
-/// let r = i.into_source().parse(parser!{many(parser!{
+/// let r = i.into_stream().parse(parser!{many(parser!{
 ///     token(b'f');
 ///     take(2);
 /// })});
@@ -48,7 +48,7 @@ impl<'a, 'i, I: 'i> IntoStream<'a, 'i> for &'i [I] {
     type Item = I;
     type Into = SliceStream<'a, 'i, I>;
 
-    fn into_source(self) -> SliceStream<'a, 'i, I> {
+    fn into_stream(self) -> SliceStream<'a, 'i, I> {
         SliceStream(self, PhantomData)
     }
 }

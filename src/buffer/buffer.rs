@@ -1,3 +1,5 @@
+//! Utilities for parsing streams of data.
+
 use std::ops;
 use std::ptr;
 use std::io;

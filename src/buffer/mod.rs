@@ -10,9 +10,7 @@ use {ParseResult, Input};
 
 pub use self::slice::SliceStream;
 pub use self::data_source::DataSource;
-pub use self::stateful::{
-    Source,
-};
+pub use self::stateful::Source;
 pub use self::buffer::{
     Buffer,
     FixedSizeBuffer,
@@ -63,7 +61,7 @@ pub trait IntoStream<'a, 'i> {
     type Item;
     type Into: Stream<'a, 'i, Self::Item>;
 
-    fn into_source(self) -> Self::Into;
+    fn into_stream(self) -> Self::Into;
 }
 
 // TODO: This is not very useful, since the Source might not refill automatically among other
