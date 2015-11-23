@@ -17,7 +17,7 @@ use std::env;
 
 use chomp::*;
 
-use chomp::buffer::Source;
+use chomp::buffer::{Source, Stream, ParseError};
 
 #[derive(Debug)]
 struct Request<'a> {
@@ -130,13 +130,19 @@ fn request(i: Input<u8>) -> U8Result<(Request, Vec<Header>)> {
 }
 
 fn main() {
-    let file = File::open(env::args().nth(1).expect("File to read")).ok().expect("Failed to open file");
-
+    let file  = File::open(env::args().nth(1).expect("File to read")).ok().expect("Failed to open file");
+    // Use default buffer settings for a Read source
     let mut i = Source::new(file);
-
     let mut n = 0;
 
-    source_for_each!(request; _i in i; n += 1);
+    loop {
+        match i.parse(request) {
+            Ok(_)                       => n += 1,
+            Err(ParseError::Retry)      => {}, // Needed to refill buffer when necessary
+            Err(ParseError::EndOfInput) => break,
+            Err(e)                      => { panic!("{:?}", e); }
+        }
+    }
 
     println!("num: {}", n);
 }

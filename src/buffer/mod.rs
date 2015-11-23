@@ -67,25 +67,3 @@ pub trait IntoStream<'a, 'i> {
 
     fn into_stream(self) -> Self::Into;
 }
-
-// TODO: This is not very useful, since the Source might not refill automatically among other
-// issues.
-#[macro_export]
-macro_rules! source_for_each {
-    ( $parser:expr; $value:ident in $stream:expr; $body:expr ) => {
-        {
-            use $crate::buffer::Stream;
-
-            let ref mut s = &mut $stream;
-
-            loop {
-                match s.parse($parser) {
-                    Ok($value) => $body,
-                    Err($crate::buffer::ParseError::Retry)      => {},
-                    Err($crate::buffer::ParseError::EndOfInput) => break,
-                    Err(e)                      => { println!("{:?}", e); break; },
-                }
-            }
-        }
-    }
-}
