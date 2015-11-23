@@ -48,7 +48,7 @@ pub trait Buffer<I>: ops::Deref<Target=[I]> {
 /// Only allocates when created.
 // TODO: Tests
 #[derive(Debug, Eq, PartialEq)]
-pub struct FixedSizeBuffer<I: Default + Clone> {
+pub struct FixedSizeBuffer<I: Default + Copy> {
     /// Backing memory.
     buffer:    Vec<I>,
     /// Number of items of `buffer` which contain actual data.
@@ -59,7 +59,7 @@ pub struct FixedSizeBuffer<I: Default + Clone> {
     used:      Cell<usize>,
 }
 
-impl<I: Default + Clone> FixedSizeBuffer<I> {
+impl<I: Default + Copy> FixedSizeBuffer<I> {
     /// Creates a fixed-size buffer with the default buffer size.
     pub fn new() -> Self {
         Self::with_size(DEFAULT_BUFFER_SIZE)
@@ -77,7 +77,7 @@ impl<I: Default + Clone> FixedSizeBuffer<I> {
     }
 }
 
-impl<I: Default + Clone> ops::Deref for FixedSizeBuffer<I> {
+impl<I: Default + Copy> ops::Deref for FixedSizeBuffer<I> {
     type Target = [I];
 
     fn deref(&self) -> &[I] {
@@ -85,13 +85,13 @@ impl<I: Default + Clone> ops::Deref for FixedSizeBuffer<I> {
     }
 }
 
-impl<I: Default + Clone> ops::DerefMut for FixedSizeBuffer<I> {
+impl<I: Default + Copy> ops::DerefMut for FixedSizeBuffer<I> {
     fn deref_mut(&mut self) -> &mut [I] {
         &mut self.buffer[self.used.get()..self.populated]
     }
 }
 
-impl<I: Default + Clone> Buffer<I> for FixedSizeBuffer<I> {
+impl<I: Default + Copy> Buffer<I> for FixedSizeBuffer<I> {
     fn fill<S: DataSource<Item=I>>(&mut self, s: &mut S) -> io::Result<usize> {
         s.read(&mut self.buffer[self.populated..]).map(|n| {
             debug_assert!(self.populated + n <= self.buffer.len());
@@ -139,7 +139,7 @@ impl<I: Default + Clone> Buffer<I> for FixedSizeBuffer<I> {
 ///
 /// Will not decrease in size.
 // TODO: Tests
-pub struct GrowingBuffer<I> {
+pub struct GrowingBuffer<I: Copy> {
     /// Backing memory.
     buffer:    Vec<I>,
     /// Number of items of `buffer` which contain actual data.
@@ -152,7 +152,7 @@ pub struct GrowingBuffer<I> {
     used:      Cell<usize>,
 }
 
-impl<I> GrowingBuffer<I> {
+impl<I: Copy> GrowingBuffer<I> {
     /// Creates a new unlimited `GrowingBuffer`.
     pub fn new() -> Self {
         Self::with_limit(0)
@@ -174,7 +174,7 @@ impl<I> GrowingBuffer<I> {
     }
 }
 
-impl<I> ops::Deref for GrowingBuffer<I> {
+impl<I: Copy> ops::Deref for GrowingBuffer<I> {
     type Target = [I];
 
     fn deref(&self) -> &[I] {
@@ -182,13 +182,13 @@ impl<I> ops::Deref for GrowingBuffer<I> {
     }
 }
 
-impl<I> ops::DerefMut for GrowingBuffer<I> {
+impl<I: Copy> ops::DerefMut for GrowingBuffer<I> {
     fn deref_mut(&mut self) -> &mut [I] {
         &mut self.buffer[self.used.get()..self.populated]
     }
 }
 
-impl<I> Buffer<I> for GrowingBuffer<I> {
+impl<I: Copy> Buffer<I> for GrowingBuffer<I> {
     fn fill<S: DataSource<Item=I>>(&mut self, s: &mut S) -> io::Result<usize> {
         s.read(&mut self.buffer[self.populated..]).map(|n| {
             debug_assert!(self.populated + n <= self.buffer.len());
@@ -211,7 +211,7 @@ impl<I> Buffer<I> for GrowingBuffer<I> {
 
             let cap = self.buffer.capacity();
 
-            // TODO: Would it be better with a Clone and Default requirement on I?
+            // TODO: Would it be better with a Default requirement on I?
             // We set the length here to allow fill() to hand out a slice of uninitialized memory
             // to be populated.
             // NOTE: We cannot actually expose this memory to the parser since self.populated will
