@@ -48,7 +48,7 @@ pub trait Buffer<I>: ops::Deref<Target=[I]> {
 /// Only allocates when created.
 // TODO: Tests
 #[derive(Debug, Eq, PartialEq)]
-pub struct FixedSizeBuffer<I: Default + Copy> {
+pub struct FixedSizeBuffer<I: Copy> {
     /// Backing memory.
     buffer:    Vec<I>,
     /// Number of items of `buffer` which contain actual data.
@@ -59,7 +59,7 @@ pub struct FixedSizeBuffer<I: Default + Copy> {
     used:      Cell<usize>,
 }
 
-impl<I: Default + Copy> FixedSizeBuffer<I> {
+impl<I: Copy> FixedSizeBuffer<I> {
     /// Creates a fixed-size buffer with the default buffer size.
     pub fn new() -> Self {
         Self::with_size(DEFAULT_BUFFER_SIZE)
@@ -69,15 +69,26 @@ impl<I: Default + Copy> FixedSizeBuffer<I> {
     pub fn with_size(size: usize) -> Self {
         assert!(size > 0);
 
+        let mut buf = Vec::with_capacity(size);
+
+        // TODO: Would it be better with a Default requirement on I?
+        // We set the length here to allow fill() to hand out a slice of uninitialized memory
+        // to be populated.
+        // NOTE: We cannot actually expose this memory to the parser since self.populated will
+        // be the upper limit for the deref to slice.
+        unsafe {
+            buf.set_len(size);
+        }
+
         FixedSizeBuffer {
-            buffer:    vec![Default::default(); size],
+            buffer:    buf,
             populated: 0,
             used:      Cell::new(0),
         }
     }
 }
 
-impl<I: Default + Copy> ops::Deref for FixedSizeBuffer<I> {
+impl<I: Copy> ops::Deref for FixedSizeBuffer<I> {
     type Target = [I];
 
     fn deref(&self) -> &[I] {
@@ -85,13 +96,13 @@ impl<I: Default + Copy> ops::Deref for FixedSizeBuffer<I> {
     }
 }
 
-impl<I: Default + Copy> ops::DerefMut for FixedSizeBuffer<I> {
+impl<I: Copy> ops::DerefMut for FixedSizeBuffer<I> {
     fn deref_mut(&mut self) -> &mut [I] {
         &mut self.buffer[self.used.get()..self.populated]
     }
 }
 
-impl<I: Default + Copy> Buffer<I> for FixedSizeBuffer<I> {
+impl<I: Copy> Buffer<I> for FixedSizeBuffer<I> {
     fn fill<S: DataSource<Item=I>>(&mut self, s: &mut S) -> io::Result<usize> {
         s.read(&mut self.buffer[self.populated..]).map(|n| {
             debug_assert!(self.populated + n <= self.buffer.len());
