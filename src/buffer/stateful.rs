@@ -71,20 +71,17 @@ impl<S: DataSource, B: Buffer<S::Item>> Source<S, B> {
 
     /// Attempts to fill this source so it contains at least ``request`` bytes.
     fn fill_requested(&mut self, request: usize) -> io::Result<usize> {
-        // Make sure we actually try to read something in case the buffer is empty
-        let _request = cmp::max(1, request);
-
         let mut read = 0;
 
         let mut buffer = &mut self.buffer;
         let     source = &mut self.source;
 
-        if buffer.len() < _request {
-            let diff = _request - buffer.len();
+        if buffer.len() < request {
+            let diff = request - buffer.len();
 
             buffer.request_space(diff);
 
-            while buffer.len() < _request {
+            while buffer.len() < request {
                 match try!(buffer.fill(source)) {
                     0 => break,
                     n => read = read + n,
@@ -92,22 +89,25 @@ impl<S: DataSource, B: Buffer<S::Item>> Source<S, B> {
             }
         }
 
-        self.state.remove(INCOMPLETE);
-
-        if buffer.len() >= _request {
-            self.state.remove(END_OF_INPUT);
-        } else {
-            self.state.insert(END_OF_INPUT);
-        }
-
         Ok(read)
     }
 
     /// Attempts to fill the buffer to satisfy the last call to `parse()`.
     pub fn fill(&mut self) -> io::Result<usize> {
-        let req = self.request;
+        // Make sure we actually try to read something in case the buffer is empty
+        let req = cmp::max(1, self.request);
 
-        self.fill_requested(req)
+        self.fill_requested(req).map(|n| {
+            self.state.remove(INCOMPLETE);
+
+            if self.buffer.len() >= req {
+                self.state.remove(END_OF_INPUT);
+            } else {
+                self.state.insert(END_OF_INPUT);
+            }
+
+            n
+        })
     }
 
     /// Returns the number of bytes left in the buffer.
@@ -177,9 +177,7 @@ impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
             T: 'a,
             E: 'a {
         if self.state.contains(INCOMPLETE | AUTOMATIC_FILL) {
-            let req = self.request;
-
-            try!(self.fill_requested(req).map_err(ParseError::IoError));
+            try!(self.fill().map_err(ParseError::IoError));
         }
 
         if self.state.contains(END_OF_INPUT) && self.len() == 0 {
