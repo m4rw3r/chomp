@@ -30,8 +30,8 @@ In other words, just as a normal Rust function usually looks something like this
 
 ```rust
 fn f() -> (u8, u8, u8) {
-    let a = 3;
-    let b = 3;
+    let a = read_digit();
+    let b = read_digit();
     launch_missiles();
     return (a, b, a + b);
 }
@@ -42,12 +42,28 @@ A Chomp parser with a similar structure looks like this:
 ```rust
 fn f(i: Input<u8>) -> U8Result<(u8, u8, u8)> {
     parse!{i;
-        let a = token(3);
-        let b = token(3);
+        let a = read_digit();
+        let b = read_digit();
         string(b"missiles");
         ret (a, b, a + b);
     }
 } 
+```
+
+And to implement `read_digit`:
+
+```rust
+// Standard rust, no error handling:
+fn read_digit() -> u8 {
+    let mut s = String::new();
+    std::io::stdin().read_line(&mut s).unwrap();
+    s.trim().parse().unwrap()
+}
+
+// Chomp, error handling built in, and we make sure we only get a number:
+fn read_digit(i: Input<u8>) -> U8Result<u8> {
+    satisfy(i, |c| b'0' <= c && c <= b'9').map(|c| c - b'0')
+}
 ```
 
 For more documentation, see the rust-doc output.
@@ -69,7 +85,7 @@ struct Name<'a> {
 }
 
 fn main() {
-    let i = Input::new("martin wernstål\n".as_bytes());
+    let i = Input::new("Martin Wernstål\n".as_bytes());
 
     let r = parse!{i;
         let first = take_while1(|c| c != b' ');
@@ -82,7 +98,7 @@ fn main() {
         }
     };
 
-     assert_eq!(r.unwrap(), Name{first: b"martin", last: "wernstål".as_bytes()});
+     assert_eq!(r.unwrap(), Name{first: b"Martin", last: "Wernstål".as_bytes()});
 }
 ```
 

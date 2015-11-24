@@ -53,17 +53,17 @@
 //!   is far more involved than using the pre-existing parsers, but is sometimes unavoidable.
 //!
 //! A parser is, at its simplest, a function that takes a slice of input and returns a
-//! `ParserResult<'a, I, T, E>`, where `I`, `T`, and `E` are the input, output, and error types,
+//! `ParserResult<I, T, E>`, where `I`, `T`, and `E` are the input, output, and error types,
 //! respectively. Parsers are usually parameterized over values or other parsers as well, so these
 //! appear as extra arguments in the parsing function. As an example, here is the signature of the
 //! `token` parser, which matches a particular input.
 //!
 //! ```ignore
-//! fn token<'a, I: 'a + Copy + Eq>(i: Input<'a, I>, t: I) -> SimpleResult<'a, I, I> {...}
+//! fn token<I: Copy + Eq>(i: Input<I>, t: I) -> SimpleResult<I, I> {...}
 //! ```
 //!
-//! Notice that the first argument is an `Input<'a, I>`, and the second argument is some `I`.
-//! `Input<'a,I>` is just a datatype over the current state of the parser and a slice of input `I`,
+//! Notice that the first argument is an `Input<I>`, and the second argument is some `I`.
+//! `Input<I>` is just a datatype over the current state of the parser and a slice of input `I`,
 //! and prevents the parser writer from accidentally mutating the state of the parser. Later, when
 //! we introduce the `parse!` macro, we will see that using a parser in this macro just means
 //! supplying all of the arguments but the input, as so:
@@ -72,15 +72,15 @@
 //! token(b'T');
 //! ```
 //!
-//! Note that you cannot do this outside of the `parse!` macro. `SimpleResult<'a, I, T>` is a
-//! convenience type alias over `Result<'a, I, T, Error<u8>>`, and `Error<I>` is just a convenient
+//! Note that you cannot do this outside of the `parse!` macro. `SimpleResult<I, T>` is a
+//! convenience type alias over `ParseResult<I, T, Error<u8>>`, and `Error<I>` is just a convenient
 //! "default" error type that will be sufficient for most uses. For more sophisticated usage, one
 //! can always write a custom error type.
 //!
 //! A very useful parser is the `satisfy` parser:
 //!
 //! ```ignore
-//! fn satisfy<'a, I: 'a + Copy, F>(i: Input<'a, I>, f: F) -> SimpleResult<'a, I, I>
+//! fn satisfy<I: Copy, F>(i: Input<I>, f: F) -> SimpleResult<I, I>
 //!    where F: FnOnce(I) -> bool { ... }
 //! ```
 //!
@@ -129,9 +129,10 @@
 //!
 //! ```
 //! # fn launch_missiles() {}
+//! # fn read_number() -> u8 { 3 }
 //! fn f() -> (u8, u8, u8) {
-//!     let a = 3;
-//!     let b = 3;
+//!     let a = read_number();
+//!     let b = read_number();
 //!     launch_missiles();
 //!     return (a, b, a + b);
 //! }
@@ -141,18 +142,22 @@
 //!
 //! ```
 //! # #[macro_use] extern crate chomp;
-//! # use chomp::{Input, string, token, U8Result};
+//! # use chomp::{Input, satisfy, string, token, U8Result};
 //! fn f(i: Input<u8>) -> U8Result<(u8, u8, u8)> {
 //!     parse!{i;
-//!         let a = token(b'3');
-//!         let b = token(b'3');
-//!         string(b"missiles");
+//!         let a = digit();
+//!         let b = digit();
+//!                 string(b"missiles");
 //!         ret (a, b, a + b)
 //!     }
 //! }
+//!
+//! fn digit(i: Input<u8>) -> U8Result<u8> {
+//!     satisfy(i, |c| b'0' <= c && c <= b'9').map(|c| c - b'0')
+//! }
 //! # fn main() {
 //! #     let r = f(Input::new(b"33missiles"));
-//! #     assert_eq!(r.unwrap(), (b'3', b'3', b'f')); // b'3' + b'3' == b'f'
+//! #     assert_eq!(r.unwrap(), (3, 3, 6));
 //! # }
 //! ```
 //!

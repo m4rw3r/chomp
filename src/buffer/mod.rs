@@ -1,4 +1,31 @@
 //! Utilities for parsing streams of data.
+//!
+//! # Examples
+//!
+//! ```
+//! # #[macro_use] extern crate chomp;
+//! # fn main() {
+//! use std::fs::File;
+//!
+//! use chomp::buffer;
+//! use chomp::buffer::Stream;
+//! use chomp::{token, take_while, take_while1};
+//! use chomp::ascii::is_whitespace;
+//!
+//! let f = File::open("./README.md").unwrap();
+//!
+//! let mut b = buffer::Source::from_read(f, buffer::FixedSizeBuffer::new());
+//!
+//! let r = b.parse(parser!{
+//!     take_while(|c| c != b'#');
+//!     token(b'#');
+//!     take_while1(is_whitespace);
+//!     take_while1(|c| c != b'\r' && c != b'\n')
+//! });
+//!
+//! assert_eq!(r, Ok(&b"Chomp"[..]));
+//! # }
+//! ```
 
 mod stateful;
 mod buffer;
