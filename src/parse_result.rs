@@ -2,13 +2,45 @@ use std::fmt;
 
 use err::Error;
 use input::Input;
-use internal::State;
-use internal::IntoInner;
 
 /// Result for dealing with the basic parsers when parsing a stream of `u8`.
 pub type U8Result<'a, T>        = ParseResult<'a, u8, T, Error<u8>>;
 /// Result returned from the basic parsers.
 pub type SimpleResult<'a, I, T> = ParseResult<'a, I, T, Error<I>>;
+
+/// **Primitive:** Primitive inner type containing the parse-state.
+///
+/// # Primitive
+///
+/// Only used by fundamental parsers and combinators.
+#[must_use]
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum State<'a, I: 'a, T, E>
+  where I: 'a,
+        T: 'a,
+        E: 'a {
+    Data(Input<'a, I>, T),
+    Error(&'a [I], E),
+    /// The number of additional items requested
+    Incomplete(usize),
+}
+
+/// **Primitive:** Consumes self and reveals the inner state.
+///
+/// # Primitive
+///
+/// Only used by fundamental parsers and combinators.
+pub trait IntoInner {
+    type Inner;
+
+    /// **Primitive:** Consumes self and reveals the inner state.
+    ///
+    /// # Primitive
+    ///
+    /// Only used by fundamental parsers and combinators.
+    #[inline(always)]
+    fn into_inner(self) -> Self::Inner;
+}
 
 /// The basic return type of a parser.
 ///
@@ -320,9 +352,9 @@ impl<'a, I, T: fmt::Debug, E> ParseResult<'a, I, T, E> {
     }
 }
 
-/// **Internal:** Consumes the `ParseResult` and exposes the internal state.
+/// **Primitive:** Consumes the `ParseResult` and exposes the internal state.
 ///
-/// # Internal
+/// # Primitive
 ///
 /// Only used by fundamental parsers and combinators.
 ///
@@ -341,9 +373,7 @@ impl<'a, I, T: fmt::Debug, E> ParseResult<'a, I, T, E> {
 ///
 /// ```
 /// use chomp::{Input, ParseResult, take};
-/// use chomp::internal::State;
-/// use chomp::internal::InputClone;
-/// use chomp::internal::IntoInner;
+/// use chomp::primitives::{InputClone, IntoInner, State};
 ///
 /// // Version of option() which also catches incomplete
 /// fn my_combinator<'a, I, T, E, F>(i: Input<'a, I>, f: F, default: T) -> ParseResult<'a, I, T, E>
@@ -375,7 +405,7 @@ impl<'a, I, T, E> IntoInner for ParseResult<'a, I, T, E> {
 mod test {
     use input;
     use input::{Input, END_OF_INPUT};
-    use internal::State;
+    use primitives::State;
 
     use super::ParseResult;
 

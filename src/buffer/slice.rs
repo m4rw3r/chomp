@@ -1,5 +1,5 @@
-use internal::input;
-use internal::{State, InputBuffer, IntoInner};
+use primitives::input;
+use primitives::{State, InputBuffer, IntoInner};
 
 use {Input, ParseResult};
 use buffer::{IntoStream, ParseError, Stream};

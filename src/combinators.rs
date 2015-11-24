@@ -4,8 +4,8 @@ use std::iter::FromIterator;
 
 use {ParseResult, Input};
 
-use internal::State;
-use internal::{IntoInner, InputBuffer, InputClone};
+use primitives::State;
+use primitives::{IntoInner, InputBuffer, InputClone};
 use iter::{EndState, Iter};
 
 

@@ -1,5 +1,4 @@
-use ParseResult;
-use internal::State;
+use parse_result::{ParseResult, State};
 use parse_result;
 
 bitflags!{
@@ -11,50 +10,50 @@ bitflags!{
     }
 }
 
-/// **Internal:** Trait limiting the use of `Clone` for `Input`.
+/// **Primitive:** Trait limiting the use of `Clone` for `Input`.
 ///
-/// # Internal
+/// # Primitive
 ///
 /// Only used by fundamental parsers and combinators.
 ///
 pub trait InputClone {
-    /// Creates a clone of the instance.
+    /// **Primitive:** Creates a clone of the instance.
     ///
-    /// # Internal
+    /// # Primitive
     ///
     /// Only used by fundamental parsers and combinators.
     #[inline(always)]
     fn clone(&self) -> Self;
 }
 
-/// **Internal:** Trait exposing the buffer of `Input`.
+/// **Primitive:** Trait exposing the buffer of `Input`.
 ///
-/// # Internal
+/// # Primitive
 ///
 /// Only used by fundamental parsers and combinators.
 ///
 pub trait InputBuffer<'a> {
     type Item: 'a;
 
-    /// Reveals the internal buffer containig the remainder of the input.
+    /// **Primitive:** Reveals the internal buffer containig the remainder of the input.
     ///
-    /// # Internal
+    /// # Primitive
     ///
     /// Only used by fundamental parsers and combinators.
     #[inline(always)]
     fn buffer(&self) -> &'a [Self::Item];
 
-    /// Modifies the inner data without leaving the `Input` context.
+    /// **Primitive:** Modifies the inner data without leaving the `Input` context.
     ///
-    /// # Internal
+    /// # Primitive
     ///
     /// Only used by fundamental parsers and combinators.
     #[inline(always)]
     fn replace(self, &'a [Self::Item]) -> Self;
 
-    /// Returns true if this is the last available slice of the input.
+    /// **Primitive:** Returns true if this is the last available slice of the input.
     ///
-    /// # Internal
+    /// # Primitive
     ///
     /// Only used by fundamental parsers and combinators.
     #[inline(always)]
@@ -66,9 +65,9 @@ pub trait InputBuffer<'a> {
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Input<'a, I: 'a>(InputMode, &'a [I]);
 
-/// Creates a new input from the given state and buffer.
+/// **Primitive:** Creates a new input from the given state and buffer.
 ///
-/// # Internal
+/// # Primitive
 ///
 /// Only used by fundamental parsers and combinators.
 pub fn new<I>(state: InputMode, buffer: &[I]) -> Input<I> {
@@ -93,10 +92,10 @@ impl<'a, I> Input<'a, I> {
         parse_result::new(State::Error(self.1, e))
     }
 
-    /// Notifies that a parser has reached the end of the currently supplied slice but requires
-    /// more data.
+    /// **Primitive:** Notifies that a parser has reached the end of the currently supplied slice
+    /// but requires more data.
     ///
-    /// # Internal
+    /// # Primitive
     ///
     /// Only used by fundamental parsers and combinators.
     #[inline]
@@ -132,7 +131,11 @@ impl<'a, I> Input<'a, I> {
     }
 }
 
-/// **Internal:** Trait limiting the use of `Clone` for `Input`.
+/// **Primitive:** Trait limiting the use of `Clone` for `Input`.
+///
+/// # Primitive
+///
+/// Only used by fundamental parsers and combinators.
 ///
 /// # Motivation
 ///
@@ -150,7 +153,11 @@ impl<'a, I: 'a> InputClone for Input<'a, I> {
     }
 }
 
-/// **Internal:** Trait exposing the buffer of `Input`.
+/// **Primitive:** Trait exposing the buffer of `Input`.
+///
+/// # Primitive
+///
+/// Only used by fundamental parsers and combinators.
 ///
 /// # Motivation
 ///
@@ -167,7 +174,7 @@ impl<'a, I: 'a> InputClone for Input<'a, I> {
 ///
 /// ```
 /// use chomp::{Input, take};
-/// use chomp::internal::InputBuffer;
+/// use chomp::primitives::InputBuffer;
 ///
 /// let i = Input::new(b"Testing");
 ///

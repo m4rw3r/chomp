@@ -2,8 +2,8 @@ use std::io;
 use std::cmp;
 
 use {Input, ParseResult};
-use internal::input;
-use internal::{InputBuffer, State, IntoInner};
+use primitives::input;
+use primitives::{InputBuffer, State, IntoInner};
 
 use buffer::{
     Buffer,
@@ -13,7 +13,6 @@ use buffer::{
     Stream,
 };
 use buffer::data_source::{IteratorDataSource, ReadDataSource};
-
 
 bitflags!{
     flags ParserState: u64 {

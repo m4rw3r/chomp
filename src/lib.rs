@@ -49,7 +49,7 @@
 //!
 //! * `parsers` contains the basic parsers used to parse streams of input.
 //! * `combinators` contains functions which take parsers and return new ones.
-//! * `internal` contains the building blocks used to make new parsers. This is advanced usage and
+//! * `primitives` contains the building blocks used to make new parsers. This is advanced usage and
 //!   is far more involved than using the pre-existing parsers, but is sometimes unavoidable.
 //!
 //! A parser is, at its simplest, a function that takes a slice of input and returns a
@@ -179,11 +179,11 @@ extern crate conv;
 #[macro_use]
 mod macros;
 mod input;
+mod iter;
 mod parse_result;
 
 pub mod ascii;
 pub mod buffer;
-pub mod internal;
 pub mod parsers;
 pub mod combinators;
 
@@ -213,10 +213,49 @@ pub use parsers::{
 pub use err::Error;
 pub use input::Input;
 pub use parse_result::{
-    U8Result,
-    SimpleResult,
     ParseResult,
+    SimpleResult,
+    U8Result,
 };
+
+/// Module used to construct fundamental parsers and combinators.
+///
+/// # Primitive
+///
+/// Only used by fundamental parsers and combinators.
+pub mod primitives {
+    pub use input::{
+        InputBuffer,
+        InputClone,
+    };
+    pub use parse_result::{
+        IntoInner,
+        State,
+    };
+
+    /// Input utilities.
+    ///
+    /// # Primitive
+    ///
+    /// Only used by fundamental parsers and combinators.
+    pub mod input {
+        pub use input::{DEFAULT, END_OF_INPUT, new};
+    }
+
+    /// ParseResult utilities.
+    ///
+    /// # Primitive
+    ///
+    /// Only used by fundamental parsers and combinators.
+    ///
+    /// # Note
+    ///
+    /// Prefer to use ``Input::ret``, ``Input::err`` or ``Input::incomplete`` instead of using
+    /// ``parse_result::new``.
+    pub mod parse_result {
+        pub use parse_result::new;
+    }
+}
 
 #[cfg(feature = "verbose_error")]
 mod err {
@@ -321,7 +360,8 @@ mod err {
     pub fn string<'a, 'b, I, T>(i: Input<'a, I>, offset: usize, _expected: &'b [I])
         -> ParseResult<'a, I, T, Error<I>>
       where I: Copy {
-        use internal::InputBuffer;
+        use primitives::InputBuffer;
+
         let b = i.buffer();
 
         i.replace(&b[offset..]).err(Error(PhantomData))

@@ -4,7 +4,7 @@ use std::mem;
 
 use {Input, SimpleResult};
 use err;
-use internal::{InputBuffer};
+use primitives::{InputBuffer};
 
 /// Matches any item, returning it if present.
 ///
@@ -349,9 +349,9 @@ pub fn eof<I>(i: Input<I>) -> SimpleResult<I, ()> {
 
 #[cfg(test)]
 mod test {
-    use internal::input;
-    use internal::IntoInner;
-    use internal::State;
+    use primitives::input;
+    use primitives::IntoInner;
+    use primitives::State;
     use super::*;
     use {Input, SimpleResult};
 

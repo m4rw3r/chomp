@@ -5,9 +5,8 @@
 
 use std::marker::PhantomData;
 
-use {ParseResult, Input};
-use internal::State;
-use internal::{InputClone, IntoInner};
+use {Input, ParseResult};
+use primitives::{InputClone, IntoInner, State};
 
 pub enum EndState<'a, I, E>
   where I: 'a {
