@@ -2,13 +2,45 @@ use std::fmt;
 
 use err::Error;
 use input::Input;
-use internal::State;
-use internal::ParseResultModify;
 
 /// Result for dealing with the basic parsers when parsing a stream of `u8`.
 pub type U8Result<'a, T>        = ParseResult<'a, u8, T, Error<u8>>;
 /// Result returned from the basic parsers.
 pub type SimpleResult<'a, I, T> = ParseResult<'a, I, T, Error<I>>;
+
+/// **Primitive:** Primitive inner type containing the parse-state.
+///
+/// # Primitive
+///
+/// Only used by fundamental parsers and combinators.
+#[must_use]
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum State<'a, I: 'a, T, E>
+  where I: 'a,
+        T: 'a,
+        E: 'a {
+    Data(Input<'a, I>, T),
+    Error(&'a [I], E),
+    /// The number of additional items requested
+    Incomplete(usize),
+}
+
+/// **Primitive:** Consumes self and reveals the inner state.
+///
+/// # Primitive
+///
+/// Only used by fundamental parsers and combinators.
+pub trait IntoInner {
+    type Inner;
+
+    /// **Primitive:** Consumes self and reveals the inner state.
+    ///
+    /// # Primitive
+    ///
+    /// Only used by fundamental parsers and combinators.
+    #[inline(always)]
+    fn into_inner(self) -> Self::Inner;
+}
 
 /// The basic return type of a parser.
 ///
@@ -287,24 +319,24 @@ impl<'a, I, T: fmt::Debug, E> ParseResult<'a, I, T, E> {
     ///
     #[cfg_attr(feature = "verbose_error", doc = "
 
-# Examples
+ # Examples
 
-```
-use chomp::{Error, Input, token};
+ ```
+ use chomp::{Error, Input, token};
 
-let r = token(Input::new(b\"a\"), b'b');
+ let r = token(Input::new(b\"a\"), b'b');
 
-assert_eq!(r.unwrap_err(), Error::Expected(98));
-```
+ assert_eq!(r.unwrap_err(), Error::Expected(98));
+ ```
 
-```{.should_panic}
-use chomp::{Error, Input, token};
+ ```{.should_panic}
+ use chomp::{Error, Input, token};
 
-let r = token(Input::new(b\"a\"), b'a');
+ let r = token(Input::new(b\"a\"), b'a');
 
-// Panics with \"called `ParseResult::unwrap_err` on a success state: 97\"
-assert_eq!(r.unwrap_err(), Error::Expected(98));
-```
+ // Panics with \"called `ParseResult::unwrap_err` on a success state: 97\"
+ assert_eq!(r.unwrap_err(), Error::Expected(98));
+ ```
     ")]
     #[inline]
     pub fn unwrap_err(self) -> E {
@@ -320,41 +352,51 @@ assert_eq!(r.unwrap_err(), Error::Expected(98));
     }
 }
 
-/// Implementation of internal trait used as a building block for combinators.
+/// **Primitive:** Consumes the `ParseResult` and exposes the internal state.
 ///
-/// # Internal
+/// # Primitive
 ///
 /// Only used by fundamental parsers and combinators.
-impl<'a, I, T, E> ParseResultModify<'a> for ParseResult<'a, I, T, E> {
-    type Input = I;
-    type Data  = T;
-    type Error = E;
+///
+/// # Motivation
+///
+/// The `ParseResult` type is a semi-linear type, supposed to act like a linear type while used in
+/// a parsing context to carry the state. Normally it should be as restrictive as the `Input` type
+/// in terms of how much it exposes its internals, but to make it easier to use the parsers
+/// `unwrap`, `unwrap_err` and `expect` were introduced which breaks the linearity guarantee when
+/// used early.
+///
+/// The `IntoInner` trait implementation allows fundamental parsers and combinators to expose the
+/// inner `State` of the `ParseResult` and act on this.
+///
+/// # Example
+///
+/// ```
+/// use chomp::{Input, ParseResult, take};
+/// use chomp::primitives::{InputClone, IntoInner, State};
+///
+/// // Version of option() which also catches incomplete
+/// fn my_combinator<'a, I, T, E, F>(i: Input<'a, I>, f: F, default: T) -> ParseResult<'a, I, T, E>
+///   where F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+///     match f(i.clone()).into_inner() {
+///         // Data, preserve the buffer and return
+///         State::Data(b, d) => b.ret(d),
+///         // Not data, use original buffer and return default
+///         _                 => i.ret(default),
+///     }
+/// }
+///
+/// let i = Input::new(b"foo");
+///
+/// let r = my_combinator(i, |i| take(i, 10), &b"test"[..]);
+///
+/// assert_eq!(r.unwrap(), b"test");
+/// ```
+impl<'a, I, T, E> IntoInner for ParseResult<'a, I, T, E> {
+    type Inner = State<'a, I, T, E>;
 
-    /// Applies the function `f` to the inner `State` while preserving types.
     #[inline(always)]
-    fn modify<F>(self, f: F) -> Self
-      where F: FnOnce(State<'a, Self::Input, Self::Data, Self::Error>)
-                   -> ParseResult<'a, Self::Input, Self::Data, Self::Error>,
-            <Self as ParseResultModify<'a>>::Input: 'a,
-            <Self as ParseResultModify<'a>>::Data:  'a,
-            <Self as ParseResultModify<'a>>::Error: 'a {
-        f(self.0)
-    }
-
-    /// Applies the function `f` to the inner `State`, allows modification of data and error types.
-    #[inline(always)]
-    fn parse<F, U, V>(self, f: F) -> ParseResult<'a, Self::Input, U, V>
-      where F: FnOnce(State<'a, Self::Input, Self::Data, Self::Error>)
-                   -> ParseResult<'a, Self::Input, U, V>,
-            <Self as ParseResultModify<'a>>::Input: 'a,
-            <Self as ParseResultModify<'a>>::Data:  'a,
-            <Self as ParseResultModify<'a>>::Error: 'a {
-        f(self.0)
-    }
-
-    /// Consumes the `ParseResult` and reveals the inner state.
-    #[inline(always)]
-    fn internal(self) -> State<'a, Self::Input, Self::Data, Self::Error> {
+    fn into_inner(self) -> Self::Inner {
         self.0
     }
 }
@@ -363,7 +405,7 @@ impl<'a, I, T, E> ParseResultModify<'a> for ParseResult<'a, I, T, E> {
 mod test {
     use input;
     use input::{Input, END_OF_INPUT};
-    use internal::State;
+    use primitives::State;
 
     use super::ParseResult;
 

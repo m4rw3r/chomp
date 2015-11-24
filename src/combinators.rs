@@ -4,9 +4,9 @@ use std::iter::FromIterator;
 
 use {ParseResult, Input};
 
-use internal::State;
-use internal::{ParseResultModify, InputModify};
-use internal::iter::{EndState, Iter};
+use primitives::State;
+use primitives::{IntoInner, InputBuffer, InputClone};
+use iter::{EndState, Iter};
 
 
 /// Applies the parser ``p`` exactly ``num`` times, propagating any error or incomplete state.
@@ -81,11 +81,11 @@ pub fn count<'a, I, T, E, F, U>(i: Input<'a, I>, num: usize, p: F) -> ParseResul
 pub fn option<'a, I, T, E, F>(i: Input<'a, I>, f: F, default: T) -> ParseResult<'a, I, T, E>
   where I: 'a + Copy,
         F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E> {
-    f(i.clone_input()).parse(|s| match s {
+    match f(i.clone()).into_inner() {
         State::Data(b, d)    => b.ret(d),
         State::Error(_, _)   => i.ret(default),
         State::Incomplete(n) => i.incomplete(n),
-    })
+    }
 }
 
 /// Tries to match the parser ``f``, if ``f`` fails it tries ``g``. Returns the success value of
@@ -110,11 +110,11 @@ assert_eq!(or(p3, |i| token(i, b'a'), |i| token(i, b'b')).unwrap_err(), Error::E
 pub fn or<'a, I, T, E, F, G>(i: Input<'a, I>, f: F, g: G) -> ParseResult<'a, I, T, E>
   where F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E>,
         G: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E> {
-    f(i.clone_input()).parse(|s| match s {
+    match f(i.clone()).into_inner() {
         State::Data(b, d)    => b.ret(d),
         State::Error(_, _)   => g(i),
         State::Incomplete(n) => i.incomplete(n),
-    })
+    }
 }
 
 /// Parses many instances of ``f`` until it does no longer match, returning all matches.
@@ -234,7 +234,7 @@ pub fn many1<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, 
 pub fn skip_many<'a, I, T, E, F>(mut i: Input<'a, I>, mut f: F) -> ParseResult<'a, I, (), E>
   where T: 'a, F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
     loop {
-        match f(i.clone_input()).internal() {
+        match f(i.clone()).into_inner() {
             State::Data(b, _)    => i = b,
             State::Error(_, _)   => break,
             State::Incomplete(n) => return i.incomplete(n),

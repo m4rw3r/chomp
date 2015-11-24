@@ -4,7 +4,7 @@ use std::mem;
 
 use {Input, SimpleResult};
 use err;
-use internal::InputModify;
+use primitives::{InputBuffer};
 
 /// Matches any item, returning it if present.
 ///
@@ -19,9 +19,11 @@ use internal::InputModify;
 /// ```
 #[inline]
 pub fn any<I: Copy>(i: Input<I>) -> SimpleResult<I, I> {
-    match i.buffer().first() {
+    let b = i.buffer();
+
+    match b.first() {
         None     => i.incomplete(1),
-        Some(&c) => i.modify(|b| &b[1..]).ret(c),
+        Some(&c) => i.replace(&b[1..]).ret(c),
     }
 }
 
@@ -40,9 +42,11 @@ pub fn any<I: Copy>(i: Input<I>) -> SimpleResult<I, I> {
 #[inline]
 pub fn satisfy<I: Copy, F>(i: Input<I>, f: F) -> SimpleResult<I, I>
   where F: FnOnce(I) -> bool {
-    match i.buffer().first() {
+    let b = i.buffer();
+
+    match b.first() {
         None             => i.incomplete(1),
-        Some(&c) if f(c) => i.modify(|b| &b[1..]).ret(c),
+        Some(&c) if f(c) => i.replace(&b[1..]).ret(c),
         Some(_)          => i.err(err::unexpected()),
     }
 }
@@ -60,9 +64,11 @@ pub fn satisfy<I: Copy, F>(i: Input<I>, f: F) -> SimpleResult<I, I>
 /// ```
 #[inline]
 pub fn token<I: Copy + PartialEq>(i: Input<I>, t: I) -> SimpleResult<I, I> {
-    match i.buffer().first() {
+    let b = i.buffer();
+
+    match b.first() {
         None               => i.incomplete(1),
-        Some(&c) if t == c => i.modify(|b| &b[1..]).ret(c),
+        Some(&c) if t == c => i.replace(&b[1..]).ret(c),
         Some(_)            => i.err(err::expected(t)),
     }
 }
@@ -84,9 +90,11 @@ pub fn token<I: Copy + PartialEq>(i: Input<I>, t: I) -> SimpleResult<I, I> {
 /// ```
 #[inline]
 pub fn not_token<I: Copy + PartialEq>(i: Input<I>, t: I) -> SimpleResult<I, I> {
-    match i.buffer().first() {
+    let b = i.buffer();
+
+    match b.first() {
         None               => i.incomplete(1),
-        Some(&c) if t != c => i.modify(|b| &b[1..]).ret(c),
+        Some(&c) if t != c => i.replace(&b[1..]).ret(c),
         Some(_)            => i.err(err::unexpected()),
     }
 }
@@ -341,9 +349,9 @@ pub fn eof<I>(i: Input<I>) -> SimpleResult<I, ()> {
 
 #[cfg(test)]
 mod test {
-    use internal::input;
-    use internal::ParseResultModify;
-    use internal::State;
+    use primitives::input;
+    use primitives::IntoInner;
+    use primitives::State;
     use super::*;
     use {Input, SimpleResult};
 
@@ -394,9 +402,9 @@ mod test {
 
     #[test]
     fn take_test() {
-        assert_eq!(take(input::new(input::DEFAULT, b"a"), 1).internal(), State::Data(input::new(input::DEFAULT, b""), &b"a"[..]));
-        assert_eq!(take(input::new(input::DEFAULT, b"a"), 2).internal(), State::Incomplete(1));
-        assert_eq!(take(input::new(input::DEFAULT, b"ab"), 1).internal(), State::Data(input::new(input::DEFAULT, b"b"), &b"a"[..]));
-        assert_eq!(take(input::new(input::DEFAULT, b"ab"), 2).internal(), State::Data(input::new(input::DEFAULT, b""), &b"ab"[..]));
+        assert_eq!(take(input::new(input::DEFAULT, b"a"), 1).into_inner(), State::Data(input::new(input::DEFAULT, b""), &b"a"[..]));
+        assert_eq!(take(input::new(input::DEFAULT, b"a"), 2).into_inner(), State::Incomplete(1));
+        assert_eq!(take(input::new(input::DEFAULT, b"ab"), 1).into_inner(), State::Data(input::new(input::DEFAULT, b"b"), &b"a"[..]));
+        assert_eq!(take(input::new(input::DEFAULT, b"ab"), 2).into_inner(), State::Data(input::new(input::DEFAULT, b""), &b"ab"[..]));
     }
 }

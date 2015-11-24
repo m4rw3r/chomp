@@ -1,6 +1,4 @@
-use ParseResult;
-use internal::State;
-use internal::InputModify;
+use parse_result::{ParseResult, State};
 use parse_result;
 
 bitflags!{
@@ -12,14 +10,64 @@ bitflags!{
     }
 }
 
+/// **Primitive:** Trait limiting the use of `Clone` for `Input`.
+///
+/// # Primitive
+///
+/// Only used by fundamental parsers and combinators.
+///
+pub trait InputClone {
+    /// **Primitive:** Creates a clone of the instance.
+    ///
+    /// # Primitive
+    ///
+    /// Only used by fundamental parsers and combinators.
+    #[inline(always)]
+    fn clone(&self) -> Self;
+}
+
+/// **Primitive:** Trait exposing the buffer of `Input`.
+///
+/// # Primitive
+///
+/// Only used by fundamental parsers and combinators.
+///
+pub trait InputBuffer<'a> {
+    type Item: 'a;
+
+    /// **Primitive:** Reveals the internal buffer containig the remainder of the input.
+    ///
+    /// # Primitive
+    ///
+    /// Only used by fundamental parsers and combinators.
+    #[inline(always)]
+    fn buffer(&self) -> &'a [Self::Item];
+
+    /// **Primitive:** Modifies the inner data without leaving the `Input` context.
+    ///
+    /// # Primitive
+    ///
+    /// Only used by fundamental parsers and combinators.
+    #[inline(always)]
+    fn replace(self, &'a [Self::Item]) -> Self;
+
+    /// **Primitive:** Returns true if this is the last available slice of the input.
+    ///
+    /// # Primitive
+    ///
+    /// Only used by fundamental parsers and combinators.
+    #[inline(always)]
+    fn is_last_slice(&self) -> bool;
+}
+
 /// Linear type containing the parser state, this type is threaded though `bind`.
 #[must_use]
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Input<'a, I: 'a>(InputMode, &'a [I]);
 
-/// Creates a new input from the given state and buffer.
+/// **Primitive:** Creates a new input from the given state and buffer.
 ///
-/// # Internal
+/// # Primitive
 ///
 /// Only used by fundamental parsers and combinators.
 pub fn new<I>(state: InputMode, buffer: &[I]) -> Input<I> {
@@ -42,6 +90,17 @@ impl<'a, I> Input<'a, I> {
     #[inline]
     pub fn err<T, E>(self, e: E) -> ParseResult<'a, I, T, E> {
         parse_result::new(State::Error(self.1, e))
+    }
+
+    /// **Primitive:** Notifies that a parser has reached the end of the currently supplied slice
+    /// but requires more data.
+    ///
+    /// # Primitive
+    ///
+    /// Only used by fundamental parsers and combinators.
+    #[inline]
+    pub fn incomplete<T, E>(self, n: usize) -> ParseResult<'a, I, T, E> {
+        parse_result::new(State::Incomplete(n))
     }
 
     /// Converts a `Result` into a `ParseResult`.
@@ -72,57 +131,76 @@ impl<'a, I> Input<'a, I> {
     }
 }
 
-/// Implementation of internal trait used to build parsers and combinators.
+/// **Primitive:** Trait limiting the use of `Clone` for `Input`.
 ///
-/// # Internal
+/// # Primitive
 ///
 /// Only used by fundamental parsers and combinators.
-impl<'a, I> InputModify<'a> for Input<'a, I> {
-    type Type = I;
-
-    /// Creates a clone of the instance.
+///
+/// # Motivation
+///
+/// The `Input` type is supposed to be an approximation of a linear type when observed in the
+/// monadic parser context. This means that it should not be possible to duplicate or accidentally
+/// throw it away as well as restrict when and where an `Input` can be constructed. Not
+/// implementing `Clone` or `Copy` solves the first issue.
+///
+/// However, cloning an `Input` is necessary for backtracking and also allows for slightly more
+/// efficient iteration in combinators. This trait allows us to enable cloning selectively.
+impl<'a, I: 'a> InputClone for Input<'a, I> {
     #[inline(always)]
-    fn clone_input(&self) -> Self {
+    fn clone(&self) -> Self {
         Input(self.0, self.1)
     }
+}
+
+/// **Primitive:** Trait exposing the buffer of `Input`.
+///
+/// # Primitive
+///
+/// Only used by fundamental parsers and combinators.
+///
+/// # Motivation
+///
+/// The `Input` type is supposed to be an approximation of a linear type when observed in the
+/// monadic parser context. This means that it should not be possible to duplicate or accidentally
+/// throw it away as well as restrict when and where an `Input` can be constructed. Not exposing
+/// the constructor (to allow destructuring) as well as using `#[must_use]` solves the second
+/// issue.
+///
+/// But to be able to parse data the contents of the `Input` type must be exposed in at least one
+/// point, so that data can be examined, and this trait that makes it possible.
+///
+/// # Example
+///
+/// ```
+/// use chomp::{Input, take};
+/// use chomp::primitives::InputBuffer;
+///
+/// let i = Input::new(b"Testing");
+///
+/// assert_eq!(i.buffer(), b"Testing");
+/// assert_eq!(i.is_last_slice(), true);
+///
+/// let b = i.buffer();
+/// let j = i.replace(&b[..4]);
+///
+/// let r = take(j, 4);
+///
+/// assert_eq!(r.unwrap(), b"Test");
+/// ```
+impl<'a, I: 'a> InputBuffer<'a> for Input<'a, I> {
+    type Item = I;
 
     #[inline(always)]
-    fn buffer(&self) -> &'a [Self::Type]
-      where <Self as InputModify<'a>>::Type: 'a {
+    fn buffer(&self) -> &'a [Self::Item] {
         self.1
     }
 
-    /// Modifies the inner data without leaving the `Input` context.
     #[inline(always)]
-    fn replace(self, b: &'a [Self::Type]) -> Self
-      where <Self as InputModify<'a>>::Type: 'a {
+    fn replace(self, b: &'a [Self::Item]) -> Self {
         Input(self.0, b)
     }
 
-    /// Modifies the inner data without leaving the `Input` context.
-    #[inline(always)]
-    fn modify<F>(self, f: F) -> Self
-      where F: Fn(&'a [Self::Type]) -> &'a [Self::Type],
-          <Self as InputModify<'a>>::Type: 'a {
-        Input(self.0, f(self.1))
-    }
-
-    /// Notifies the combinator that a parser has reached the end of the currently supplied slice but
-    /// requires more data.
-    ///
-    /// # Internal
-    ///
-    /// Only used by fundamental parsers and combinators.
-    #[inline(always)]
-    fn incomplete<T, E>(self, n: usize) -> ParseResult<'a, Self::Type, T, E> {
-        parse_result::new(State::Incomplete(n))
-    }
-
-    /// Returns true if this is the last input slice available.
-    ///
-    /// # Internal
-    ///
-    /// Only used by fundamental parsers and combinators.
     #[inline(always)]
     fn is_last_slice(&self) -> bool {
         self.0.contains(END_OF_INPUT)
