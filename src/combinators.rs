@@ -6,7 +6,7 @@ use {ParseResult, Input};
 
 use internal::State;
 use internal::{IntoInner, InputBuffer, InputClone};
-use internal::iter::{EndState, Iter};
+use iter::{EndState, Iter};
 
 
 /// Applies the parser ``p`` exactly ``num`` times, propagating any error or incomplete state.

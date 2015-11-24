@@ -4,8 +4,6 @@
 //!
 //! Only used by fundamental parsers and combinators.
 
-pub mod iter;
-
 use Input;
 
 pub use input::InputClone;
