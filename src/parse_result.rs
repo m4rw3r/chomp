@@ -413,8 +413,9 @@ impl<'a, I, T, E> IntoInner for ParseResult<'a, I, T, E> {
 #[cfg(test)]
 mod test {
     use input;
-    use input::{Input, END_OF_INPUT};
+    use input::{Input, DEFAULT, END_OF_INPUT};
     use primitives::State;
+    use parsers::take_while;
 
     use super::ParseResult;
 
@@ -474,8 +475,6 @@ mod test {
 
     #[test]
     fn parse_result_inspect() {
-        use {Input, take_while};
-
         let mut n = 0;
         let i     = Input::new(b"test ");
 
@@ -485,5 +484,56 @@ mod test {
 
         assert_eq!(r.unwrap(), b"test");
         assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn input_propagation() {
+        let mut n1_calls = 0;
+        let mut n2_calls = 0;
+
+        let i1 = input::new(DEFAULT, b"test1").ret::<_, ()>(23);
+        let i2 = input::new(END_OF_INPUT, b"test2").ret::<_, ()>(24);
+
+        let r1: ParseResult<_, _, ()> = i1.bind(|i, t| { n1_calls += 1; i.ret(t) });
+        let r2: ParseResult<_, _, ()> = i2.bind(|i, t| { n2_calls += 1; i.ret(t) });
+
+        assert_eq!(r1.0, State::Data(input::new(DEFAULT, b"test1"), 23));
+        assert_eq!(r2.0, State::Data(input::new(END_OF_INPUT, b"test2"), 24));
+        assert_eq!(n1_calls, 1);
+        assert_eq!(n2_calls, 1);
+    }
+
+    #[test]
+    fn error_propagation() {
+        let mut n1_calls = 0;
+        let mut n2_calls = 0;
+
+        let i1 = input::new(DEFAULT, b"test1").err::<(), _>(23);
+        let i2 = input::new(END_OF_INPUT, b"test2").err::<(), _>(24);
+
+        let r1 = i1.bind(|i, t| { n1_calls += 1; i.ret(t) });
+        let r2 = i2.bind(|i, t| { n2_calls += 1; i.ret(t) });
+
+        assert_eq!(r1.0, State::Error(b"test1", 23));
+        assert_eq!(r2.0, State::Error(b"test2", 24));
+        assert_eq!(n1_calls, 0);
+        assert_eq!(n2_calls, 0);
+    }
+
+    #[test]
+    fn incomplete_propagation() {
+        let mut n1_calls = 0;
+        let mut n2_calls = 0;
+
+        let i1 = input::new(DEFAULT, b"test1").incomplete::<(), ()>(23);
+        let i2 = input::new(END_OF_INPUT, b"test2").incomplete::<(), ()>(24);
+
+        let r1: ParseResult<_, _, ()> = i1.bind(|i, t| { n1_calls += 1; i.ret(t) });
+        let r2: ParseResult<_, _, ()> = i2.bind(|i, t| { n2_calls += 1; i.ret(t) });
+
+        assert_eq!(r1.0, State::Incomplete(23));
+        assert_eq!(r2.0, State::Incomplete(24));
+        assert_eq!(n1_calls, 0);
+        assert_eq!(n2_calls, 0);
     }
 }
