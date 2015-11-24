@@ -1,6 +1,7 @@
 # Chomp
 
 [![Build Status](https://travis-ci.org/m4rw3r/chomp.svg)](https://travis-ci.org/m4rw3r/chomp)
+[![Coverage Status](https://coveralls.io/repos/m4rw3r/chomp/badge.svg?branch=master&service=github)](https://coveralls.io/github/m4rw3r/chomp?branch=master)
 [![Documentation](https://img.shields.io/badge/rustdoc-documentation-blue.svg)](http://m4rw3r.github.io/chomp)
 
 Chomp is a fast parser combinator designed to work on stable Rust. It was written as the culmination of the experiments detailed in these blog posts:
