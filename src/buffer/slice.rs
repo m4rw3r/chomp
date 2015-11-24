@@ -1,5 +1,5 @@
 use internal::input;
-use internal::{State, InputBuffer, ParseResultModify};
+use internal::{State, InputBuffer, IntoInner};
 
 use {Input, ParseResult};
 use buffer::{IntoStream, ParseError, Stream};
@@ -90,7 +90,7 @@ impl<'a, 'i, I: 'i> Stream<'a, 'i> for SliceStream<'i, I> {
             return Err(ParseError::EndOfInput);
         }
 
-        match f(input::new(input::END_OF_INPUT, &self.slice[self.pos..])).internal() {
+        match f(input::new(input::END_OF_INPUT, &self.slice[self.pos..])).into_inner() {
             State::Data(remainder, data) => {
                 // TODO: Do something neater with the remainder
                 self.pos += self.len() - remainder.buffer().len();

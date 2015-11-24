@@ -3,7 +3,7 @@ use std::fmt;
 use err::Error;
 use input::Input;
 use internal::State;
-use internal::ParseResultModify;
+use internal::IntoInner;
 
 /// Result for dealing with the basic parsers when parsing a stream of `u8`.
 pub type U8Result<'a, T>        = ParseResult<'a, u8, T, Error<u8>>;
@@ -320,41 +320,12 @@ assert_eq!(r.unwrap_err(), Error::Expected(98));
     }
 }
 
-/// Implementation of internal trait used as a building block for combinators.
-///
-/// # Internal
-///
-/// Only used by fundamental parsers and combinators.
-impl<'a, I, T, E> ParseResultModify<'a> for ParseResult<'a, I, T, E> {
-    type Input = I;
-    type Data  = T;
-    type Error = E;
-
-    /// Applies the function `f` to the inner `State` while preserving types.
-    #[inline(always)]
-    fn modify<F>(self, f: F) -> Self
-      where F: FnOnce(State<'a, Self::Input, Self::Data, Self::Error>)
-                   -> ParseResult<'a, Self::Input, Self::Data, Self::Error>,
-            <Self as ParseResultModify<'a>>::Input: 'a,
-            <Self as ParseResultModify<'a>>::Data:  'a,
-            <Self as ParseResultModify<'a>>::Error: 'a {
-        f(self.0)
-    }
-
-    /// Applies the function `f` to the inner `State`, allows modification of data and error types.
-    #[inline(always)]
-    fn parse<F, U, V>(self, f: F) -> ParseResult<'a, Self::Input, U, V>
-      where F: FnOnce(State<'a, Self::Input, Self::Data, Self::Error>)
-                   -> ParseResult<'a, Self::Input, U, V>,
-            <Self as ParseResultModify<'a>>::Input: 'a,
-            <Self as ParseResultModify<'a>>::Data:  'a,
-            <Self as ParseResultModify<'a>>::Error: 'a {
-        f(self.0)
-    }
+impl<'a, I, T, E> IntoInner for ParseResult<'a, I, T, E> {
+    type Inner = State<'a, I, T, E>;
 
     /// Consumes the `ParseResult` and reveals the inner state.
     #[inline(always)]
-    fn internal(self) -> State<'a, Self::Input, Self::Data, Self::Error> {
+    fn into_inner(self) -> Self::Inner {
         self.0
     }
 }

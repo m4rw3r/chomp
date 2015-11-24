@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 
 use {ParseResult, Input};
 use internal::State;
-use internal::{InputClone, ParseResultModify};
+use internal::{InputClone, IntoInner};
 
 pub enum EndState<'a, I, E>
   where I: 'a {
@@ -59,7 +59,7 @@ impl<'a, I, T, E, F> Iterator for Iter<'a, I, T, E, F>
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        match (self.parser)(self.buf.clone()).internal() {
+        match (self.parser)(self.buf.clone()).into_inner() {
             State::Data(b, v) => {
                 self.buf = b;
 

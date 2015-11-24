@@ -3,7 +3,7 @@ use std::cmp;
 
 use {Input, ParseResult};
 use internal::input;
-use internal::{InputBuffer, State, ParseResultModify};
+use internal::{InputBuffer, State, IntoInner};
 
 use buffer::{
     Buffer,
@@ -208,7 +208,7 @@ impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
 
         let input_state = if self.state.contains(END_OF_INPUT) { input::END_OF_INPUT } else { input::DEFAULT };
 
-        match f(input::new(input_state, &self.buffer)).internal() {
+        match f(input::new(input_state, &self.buffer)).into_inner() {
             State::Data(remainder, data) => {
                 // TODO: Do something neater with the remainder
                 self.buffer.consume(self.buffer.len() - remainder.buffer().len());

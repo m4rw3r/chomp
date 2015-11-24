@@ -321,7 +321,7 @@ mod err {
     pub fn string<'a, 'b, I, T>(i: Input<'a, I>, offset: usize, _expected: &'b [I])
         -> ParseResult<'a, I, T, Error<I>>
       where I: Copy {
-        use internal::InputModify;
+        use internal::InputBuffer;
         let b = i.buffer();
 
         i.replace(&b[offset..]).err(Error(PhantomData))

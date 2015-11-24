@@ -350,7 +350,7 @@ pub fn eof<I>(i: Input<I>) -> SimpleResult<I, ()> {
 #[cfg(test)]
 mod test {
     use internal::input;
-    use internal::ParseResultModify;
+    use internal::IntoInner;
     use internal::State;
     use super::*;
     use {Input, SimpleResult};
@@ -402,9 +402,9 @@ mod test {
 
     #[test]
     fn take_test() {
-        assert_eq!(take(input::new(input::DEFAULT, b"a"), 1).internal(), State::Data(input::new(input::DEFAULT, b""), &b"a"[..]));
-        assert_eq!(take(input::new(input::DEFAULT, b"a"), 2).internal(), State::Incomplete(1));
-        assert_eq!(take(input::new(input::DEFAULT, b"ab"), 1).internal(), State::Data(input::new(input::DEFAULT, b"b"), &b"a"[..]));
-        assert_eq!(take(input::new(input::DEFAULT, b"ab"), 2).internal(), State::Data(input::new(input::DEFAULT, b""), &b"ab"[..]));
+        assert_eq!(take(input::new(input::DEFAULT, b"a"), 1).into_inner(), State::Data(input::new(input::DEFAULT, b""), &b"a"[..]));
+        assert_eq!(take(input::new(input::DEFAULT, b"a"), 2).into_inner(), State::Incomplete(1));
+        assert_eq!(take(input::new(input::DEFAULT, b"ab"), 1).into_inner(), State::Data(input::new(input::DEFAULT, b"b"), &b"a"[..]));
+        assert_eq!(take(input::new(input::DEFAULT, b"ab"), 2).into_inner(), State::Data(input::new(input::DEFAULT, b""), &b"ab"[..]));
     }
 }

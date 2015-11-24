@@ -6,7 +6,7 @@
 
 pub mod iter;
 
-use {ParseResult, Input};
+use Input;
 
 /// Internal inner type containing the parse-state.
 ///
@@ -28,8 +28,13 @@ pub enum State<'a, I: 'a, T, E>
 pub trait IntoInner {
     type Inner;
 
+    /// Consumes self and reveals the inner state.
+    ///
+    /// # Internal
+    ///
+    /// Only used by fundamental parsers and combinators.
     #[inline(always)]
-    fn into_inner() -> Self::Inner;
+    fn into_inner(self) -> Self::Inner;
 }
 
 pub trait InputClone {
@@ -70,39 +75,6 @@ pub trait InputBuffer<'a> {
     fn is_last_slice(&self) -> bool;
 }
 
-/// Internal trait for modifying `ParseResult`.
-///
-/// # Internal
-///
-/// Only used by fundamental parsers and combinators.
-pub trait ParseResultModify<'a> {
-    type Input;
-    type Data;
-    type Error;
-
-    /// Modifies the content of ParseResult, without changing its type.
-    #[inline(always)]
-    fn modify<F>(self, F) -> Self
-      where F: FnOnce(State<'a, Self::Input, Self::Data, Self::Error>)
-                   -> ParseResult<'a, Self::Input, Self::Data, Self::Error>,
-            <Self as ParseResultModify<'a>>::Input: 'a,
-            <Self as ParseResultModify<'a>>::Data:  'a,
-            <Self as ParseResultModify<'a>>::Error: 'a;
-
-    /// Applies the function `f` to the inner `State`, allows modification of data and error types.
-    #[inline(always)]
-    fn parse<F, T, E>(self, F) -> ParseResult<'a, Self::Input, T, E>
-      where F: FnOnce(State<'a, Self::Input, Self::Data, Self::Error>)
-                   -> ParseResult<'a, Self::Input, T, E>,
-            <Self as ParseResultModify<'a>>::Input: 'a,
-            <Self as ParseResultModify<'a>>::Data:  'a,
-            <Self as ParseResultModify<'a>>::Error: 'a;
-
-    /// Consumes the `ParseResult` and reveals the inner state.
-    #[inline(always)]
-    fn internal(self) -> State<'a, Self::Input, Self::Data, Self::Error>;
-}
-
 /// Input utilities.
 ///
 /// # Internal
@@ -120,7 +92,7 @@ pub mod input {
 ///
 /// # Note
 ///
-/// Prefer to use ``Input::ret``, ``Input::err`` or ``InputModify::incomplete`` instead of using
+/// Prefer to use ``Input::ret``, ``Input::err`` or ``Input::incomplete`` instead of using
 /// ``parse_result::new``.
 pub mod parse_result {
     pub use parse_result::new;
