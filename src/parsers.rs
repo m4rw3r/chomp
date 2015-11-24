@@ -4,7 +4,7 @@ use std::mem;
 
 use {Input, SimpleResult};
 use err;
-use internal::InputModify;
+use internal::{InputBuffer};
 
 /// Matches any item, returning it if present.
 ///
@@ -19,9 +19,11 @@ use internal::InputModify;
 /// ```
 #[inline]
 pub fn any<I: Copy>(i: Input<I>) -> SimpleResult<I, I> {
-    match i.buffer().first() {
+    let b = i.buffer();
+
+    match b.first() {
         None     => i.incomplete(1),
-        Some(&c) => i.modify(|b| &b[1..]).ret(c),
+        Some(&c) => i.replace(&b[1..]).ret(c),
     }
 }
 
@@ -40,9 +42,11 @@ pub fn any<I: Copy>(i: Input<I>) -> SimpleResult<I, I> {
 #[inline]
 pub fn satisfy<I: Copy, F>(i: Input<I>, f: F) -> SimpleResult<I, I>
   where F: FnOnce(I) -> bool {
-    match i.buffer().first() {
+    let b = i.buffer();
+
+    match b.first() {
         None             => i.incomplete(1),
-        Some(&c) if f(c) => i.modify(|b| &b[1..]).ret(c),
+        Some(&c) if f(c) => i.replace(&b[1..]).ret(c),
         Some(_)          => i.err(err::unexpected()),
     }
 }
@@ -60,9 +64,11 @@ pub fn satisfy<I: Copy, F>(i: Input<I>, f: F) -> SimpleResult<I, I>
 /// ```
 #[inline]
 pub fn token<I: Copy + PartialEq>(i: Input<I>, t: I) -> SimpleResult<I, I> {
-    match i.buffer().first() {
+    let b = i.buffer();
+
+    match b.first() {
         None               => i.incomplete(1),
-        Some(&c) if t == c => i.modify(|b| &b[1..]).ret(c),
+        Some(&c) if t == c => i.replace(&b[1..]).ret(c),
         Some(_)            => i.err(err::expected(t)),
     }
 }
@@ -84,9 +90,11 @@ pub fn token<I: Copy + PartialEq>(i: Input<I>, t: I) -> SimpleResult<I, I> {
 /// ```
 #[inline]
 pub fn not_token<I: Copy + PartialEq>(i: Input<I>, t: I) -> SimpleResult<I, I> {
-    match i.buffer().first() {
+    let b = i.buffer();
+
+    match b.first() {
         None               => i.incomplete(1),
-        Some(&c) if t != c => i.modify(|b| &b[1..]).ret(c),
+        Some(&c) if t != c => i.replace(&b[1..]).ret(c),
         Some(_)            => i.err(err::unexpected()),
     }
 }

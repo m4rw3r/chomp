@@ -3,7 +3,7 @@ use std::cmp;
 
 use {Input, ParseResult};
 use internal::input;
-use internal::{InputModify, State, ParseResultModify};
+use internal::{InputBuffer, State, ParseResultModify};
 
 use buffer::{
     Buffer,

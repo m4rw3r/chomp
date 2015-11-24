@@ -1,7 +1,10 @@
 use ParseResult;
 use internal::State;
-use internal::InputModify;
 use parse_result;
+use internal::{
+    InputClone,
+    InputBuffer,
+};
 
 bitflags!{
     flags InputMode: u32 {
@@ -44,6 +47,17 @@ impl<'a, I> Input<'a, I> {
         parse_result::new(State::Error(self.1, e))
     }
 
+    /// Notifies that a parser has reached the end of the currently supplied slice but requires
+    /// more data.
+    ///
+    /// # Internal
+    ///
+    /// Only used by fundamental parsers and combinators.
+    #[inline]
+    pub fn incomplete<T, E>(self, n: usize) -> ParseResult<'a, I, T, E> {
+        parse_result::new(State::Incomplete(n))
+    }
+
     /// Converts a `Result` into a `ParseResult`.
     ///
     /// # Examples
@@ -72,57 +86,26 @@ impl<'a, I> Input<'a, I> {
     }
 }
 
-/// Implementation of internal trait used to build parsers and combinators.
-///
-/// # Internal
-///
-/// Only used by fundamental parsers and combinators.
-impl<'a, I> InputModify<'a> for Input<'a, I> {
-    type Type = I;
-
-    /// Creates a clone of the instance.
+impl<'a, I: 'a> InputClone for Input<'a, I> {
     #[inline(always)]
-    fn clone_input(&self) -> Self {
+    fn clone(&self) -> Self {
         Input(self.0, self.1)
     }
+}
+
+impl<'a, I: 'a> InputBuffer<'a> for Input<'a, I> {
+    type Item = I;
 
     #[inline(always)]
-    fn buffer(&self) -> &'a [Self::Type]
-      where <Self as InputModify<'a>>::Type: 'a {
+    fn buffer(&self) -> &'a [Self::Item] {
         self.1
     }
 
-    /// Modifies the inner data without leaving the `Input` context.
     #[inline(always)]
-    fn replace(self, b: &'a [Self::Type]) -> Self
-      where <Self as InputModify<'a>>::Type: 'a {
+    fn replace(self, b: &'a [Self::Item]) -> Self {
         Input(self.0, b)
     }
 
-    /// Modifies the inner data without leaving the `Input` context.
-    #[inline(always)]
-    fn modify<F>(self, f: F) -> Self
-      where F: Fn(&'a [Self::Type]) -> &'a [Self::Type],
-          <Self as InputModify<'a>>::Type: 'a {
-        Input(self.0, f(self.1))
-    }
-
-    /// Notifies the combinator that a parser has reached the end of the currently supplied slice but
-    /// requires more data.
-    ///
-    /// # Internal
-    ///
-    /// Only used by fundamental parsers and combinators.
-    #[inline(always)]
-    fn incomplete<T, E>(self, n: usize) -> ParseResult<'a, Self::Type, T, E> {
-        parse_result::new(State::Incomplete(n))
-    }
-
-    /// Returns true if this is the last input slice available.
-    ///
-    /// # Internal
-    ///
-    /// Only used by fundamental parsers and combinators.
     #[inline(always)]
     fn is_last_slice(&self) -> bool {
         self.0.contains(END_OF_INPUT)
