@@ -287,24 +287,24 @@ impl<'a, I, T: fmt::Debug, E> ParseResult<'a, I, T, E> {
     ///
     #[cfg_attr(feature = "verbose_error", doc = "
 
-# Examples
+ # Examples
 
-```
-use chomp::{Error, Input, token};
+ ```
+ use chomp::{Error, Input, token};
 
-let r = token(Input::new(b\"a\"), b'b');
+ let r = token(Input::new(b\"a\"), b'b');
 
-assert_eq!(r.unwrap_err(), Error::Expected(98));
-```
+ assert_eq!(r.unwrap_err(), Error::Expected(98));
+ ```
 
-```{.should_panic}
-use chomp::{Error, Input, token};
+ ```{.should_panic}
+ use chomp::{Error, Input, token};
 
-let r = token(Input::new(b\"a\"), b'a');
+ let r = token(Input::new(b\"a\"), b'a');
 
-// Panics with \"called `ParseResult::unwrap_err` on a success state: 97\"
-assert_eq!(r.unwrap_err(), Error::Expected(98));
-```
+ // Panics with \"called `ParseResult::unwrap_err` on a success state: 97\"
+ assert_eq!(r.unwrap_err(), Error::Expected(98));
+ ```
     ")]
     #[inline]
     pub fn unwrap_err(self) -> E {
