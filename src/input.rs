@@ -60,7 +60,18 @@ pub trait InputBuffer<'a> {
     fn is_last_slice(&self) -> bool;
 }
 
-/// Linear type containing the parser state, this type is threaded though `bind`.
+/// Linear type containing the parser state, this type is threaded though `bind` and is also the
+/// initial type passed to a parser.
+///
+/// Coupled with the `ParseResult` type it forms the parser monad:
+///
+/// ```ignore
+/// Fn*(Input<I>, ...) -> ParseResult<I, T, E>;
+/// ```
+///
+/// where ``Fn*`` is the appropriate closure/function trait, `I` the input token type (usually
+/// something like `u8`), `...` additional parameters to the parser, `T` the carried type and `E`
+/// the potential error type.
 #[must_use]
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Input<'a, I: 'a>(InputMode, &'a [I]);
@@ -75,18 +86,55 @@ pub fn new<I>(state: InputMode, buffer: &[I]) -> Input<I> {
 }
 
 impl<'a, I> Input<'a, I> {
+    /// Creates a new `Input` to start parsing with.
+    ///
+    /// # Note
+    ///
+    /// This should only be used for simple examples, for anything more advanced look at the
+    /// `buffer` module.
     // TODO: Remove, use parse_slice instead
+    #[inline]
     pub fn new(b: &'a [I]) -> Self {
         Input(END_OF_INPUT, b)
     }
 
-    /// Returns the value `t` with the input context.
+    /// Returns `t` as a success value in the parsing context.
+    ///
+    /// Equivalent to Haskell's `return` function in the `Monad` typeclass.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use chomp::Input;
+    ///
+    /// let i = Input::new(b"some state");
+    ///
+    /// // Annotate the error type
+    /// let r = i.ret::<_, ()>("Wohoo, success!");
+    ///
+    /// assert_eq!(r.unwrap(), "Wohoo, success!");
+    /// ```
     #[inline]
-    pub fn ret<T, E>(self, t: T) -> ParseResult<'a, I, T, E> {
+    pub fn ret<T, E = ()>(self, t: T) -> ParseResult<'a, I, T, E> {
         parse_result::new(State::Data(self, t))
     }
 
-    /// Returns the error value `e` with the input context.
+    /// Returns `e` as an error value in the parsing context.
+    ///
+    /// A more general version of Haskell's `fail` function in the `Monad` typeclass.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use chomp::Input;
+    ///
+    /// let i = Input::new(b"some state");
+    ///
+    /// // Annotate the value type
+    /// let r = i.err::<(), _>("Something went wrong");
+    ///
+    /// assert_eq!(r.unwrap_err(), "Something went wrong");
+    /// ```
     #[inline]
     pub fn err<T, E>(self, e: E) -> ParseResult<'a, I, T, E> {
         parse_result::new(State::Error(self.1, e))
@@ -103,7 +151,7 @@ impl<'a, I> Input<'a, I> {
         parse_result::new(State::Incomplete(n))
     }
 
-    /// Converts a `Result` into a `ParseResult`.
+    /// Converts a `Result` into a `ParseResult`, preserving parser state.
     ///
     /// # Examples
     ///
@@ -204,5 +252,55 @@ impl<'a, I: 'a> InputBuffer<'a> for Input<'a, I> {
     #[inline(always)]
     fn is_last_slice(&self) -> bool {
         self.0.contains(END_OF_INPUT)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::{new, Input, InputBuffer, DEFAULT, END_OF_INPUT};
+    use parse_result::ParseResult;
+    use primitives::{IntoInner, State};
+
+    #[test]
+    fn make_ret() {
+        let i1: Input<u8> = new(END_OF_INPUT, b"in1");
+        let i2: Input<u8> = new(DEFAULT,      b"in2");
+
+        let r1: ParseResult<u8, u32, ()> = i1.ret::<_, ()>(23u32);
+        let r2: ParseResult<u8, i32, ()> = i2.ret::<_, ()>(23i32);
+
+        assert_eq!(r1.into_inner(), State::Data(Input(END_OF_INPUT, b"in1"), 23u32));
+        assert_eq!(r2.into_inner(), State::Data(Input(DEFAULT, b"in2"), 23i32));
+    }
+
+    #[test]
+    fn make_err() {
+        let i1: Input<u8> = new(END_OF_INPUT, b"in1");
+        let i2: Input<u8> = new(DEFAULT,      b"in2");
+
+        let r1: ParseResult<u8, (), u32> = i1.err::<(), _>(23u32);
+        let r2: ParseResult<u8, (), i32> = i2.err::<(), _>(23i32);
+
+        assert_eq!(r1.into_inner(), State::Error(b"in1", 23u32));
+        assert_eq!(r2.into_inner(), State::Error(b"in2", 23i32));
+    }
+
+    #[test]
+    fn make_incomplete() {
+        let i1: Input<u8> = new(END_OF_INPUT, b"in1");
+        let i2: Input<u8> = new(DEFAULT,      b"in2");
+
+        let r1: ParseResult<u8, (), u32> = i1.incomplete::<(), _>(23);
+        let r2: ParseResult<u8, (), i32> = i2.incomplete::<(), _>(23);
+
+        assert_eq!(r1.into_inner(), State::Incomplete(23));
+        assert_eq!(r2.into_inner(), State::Incomplete(23));
+    }
+
+    #[test]
+    fn last_slice() {
+        let i = new(END_OF_INPUT, &b"foo"[..]);
+
+        assert_eq!(i.is_last_slice(), true);
     }
 }
