@@ -76,6 +76,15 @@ pub trait IntoInner {
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct ParseResult<'a, I: 'a, T: 'a, E: 'a>(State<'a, I, T, E>);
 
+/// **Primitive:** Creates a new `ParseResult`.
+///
+/// # Primitive
+///
+/// Only used by fundamental parsers and combinators.
+///
+/// # Note
+///
+/// Prefer to use ``Input::ret``, ``Input::err`` or ``Input::incomplete`` instead of using
 pub fn new<I, T, E>(s: State<I, T, E>) -> ParseResult<I, T, E> {
     ParseResult(s)
 }

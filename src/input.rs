@@ -17,7 +17,7 @@ bitflags!{
 /// Only used by fundamental parsers and combinators.
 ///
 pub trait InputClone {
-    /// **Primitive:** Creates a clone of the instance.
+    /// Creates a clone of the instance.
     ///
     /// # Primitive
     ///
@@ -35,7 +35,7 @@ pub trait InputClone {
 pub trait InputBuffer<'a> {
     type Item: 'a;
 
-    /// **Primitive:** Reveals the internal buffer containig the remainder of the input.
+    /// Reveals the internal buffer containig the remainder of the input.
     ///
     /// # Primitive
     ///
@@ -43,7 +43,7 @@ pub trait InputBuffer<'a> {
     #[inline(always)]
     fn buffer(&self) -> &'a [Self::Item];
 
-    /// **Primitive:** Modifies the inner data without leaving the `Input` context.
+    /// Modifies the inner data without leaving the `Input` context.
     ///
     /// # Primitive
     ///
@@ -51,7 +51,7 @@ pub trait InputBuffer<'a> {
     #[inline(always)]
     fn replace(self, &'a [Self::Item]) -> Self;
 
-    /// **Primitive:** Returns true if this is the last available slice of the input.
+    /// Returns true if this is the last available slice of the input.
     ///
     /// # Primitive
     ///
@@ -92,8 +92,8 @@ impl<'a, I> Input<'a, I> {
         parse_result::new(State::Error(self.1, e))
     }
 
-    /// **Primitive:** Notifies that a parser has reached the end of the currently supplied slice
-    /// but requires more data.
+    /// Notifies that a parser has reached the end of the currently supplied slice but requires
+    /// more data.
     ///
     /// # Primitive
     ///
@@ -131,7 +131,7 @@ impl<'a, I> Input<'a, I> {
     }
 }
 
-/// **Primitive:** Trait limiting the use of `Clone` for `Input`.
+/// Trait limiting the use of `Clone` for `Input`.
 ///
 /// # Primitive
 ///
@@ -153,7 +153,7 @@ impl<'a, I: 'a> InputClone for Input<'a, I> {
     }
 }
 
-/// **Primitive:** Trait exposing the buffer of `Input`.
+/// Trait exposing the buffer of `Input`.
 ///
 /// # Primitive
 ///
