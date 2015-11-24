@@ -5,6 +5,8 @@ rust:
   - stable
   - beta
   - nightly
+  # Minimum supported version (bitflags fails on 1.1):
+  - 1.2.0
 
 before_script:
   - pip install 'travis-cargo<0.2' --user
@@ -14,6 +16,7 @@ script:
   - |
       travis-cargo build -- $FEATURES &&
       travis-cargo test -- $FEATURES &&
+      travis-cargo bench -- $FEATURES &&
       travis-cargo --only stable doc
 
 after_success:
@@ -21,6 +24,7 @@ after_success:
     [ $TRAVIS_BRANCH = master ] &&
     [ -z "$FEATURES" ] &&
     travis-cargo --only stable doc-upload
+  - travis-cargo coveralls --no-sudo --verify
 
 env:
   matrix:
