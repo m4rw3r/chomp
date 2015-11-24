@@ -485,10 +485,11 @@ mod err {
 
 #[cfg(test)]
 mod test {
-    use primitives::input;
+    use primitives::input::{new, DEFAULT, END_OF_INPUT};
     use primitives::IntoInner;
     use primitives::State;
     use super::*;
+    use super::err;
     use {Input, SimpleResult};
 
     #[test]
@@ -537,10 +538,40 @@ mod test {
     }
 
     #[test]
+    fn token_test() {
+        assert_eq!(token(new(DEFAULT, b""), b'a').into_inner(), State::Incomplete(1));
+        assert_eq!(token(new(DEFAULT, b"ab"), b'a').into_inner(), State::Data(new(DEFAULT, b"b"), b'a'));
+        assert_eq!(token(new(DEFAULT, b"bb"), b'a').into_inner(), State::Error(b"bb", err::expected(b'a')));
+    }
+
+    #[test]
     fn take_test() {
-        assert_eq!(take(input::new(input::DEFAULT, b"a"), 1).into_inner(), State::Data(input::new(input::DEFAULT, b""), &b"a"[..]));
-        assert_eq!(take(input::new(input::DEFAULT, b"a"), 2).into_inner(), State::Incomplete(1));
-        assert_eq!(take(input::new(input::DEFAULT, b"ab"), 1).into_inner(), State::Data(input::new(input::DEFAULT, b"b"), &b"a"[..]));
-        assert_eq!(take(input::new(input::DEFAULT, b"ab"), 2).into_inner(), State::Data(input::new(input::DEFAULT, b""), &b"ab"[..]));
+        assert_eq!(take(new(DEFAULT, b"a"), 1).into_inner(), State::Data(new(DEFAULT, b""), &b"a"[..]));
+        assert_eq!(take(new(DEFAULT, b"a"), 2).into_inner(), State::Incomplete(1));
+        assert_eq!(take(new(DEFAULT, b"a"), 3).into_inner(), State::Incomplete(2));
+        assert_eq!(take(new(DEFAULT, b"ab"), 1).into_inner(), State::Data(new(DEFAULT, b"b"), &b"a"[..]));
+        assert_eq!(take(new(DEFAULT, b"ab"), 2).into_inner(), State::Data(new(DEFAULT, b""), &b"ab"[..]));
+    }
+
+    #[test]
+    fn take_while_test() {
+        assert_eq!(take_while(new(DEFAULT, b"abc"), |c| c != b'b').into_inner(), State::Data(new(DEFAULT, b"bc"), &b"a"[..]));
+        assert_eq!(take_while(new(DEFAULT, b"bbc"), |c| c != b'b').into_inner(), State::Data(new(DEFAULT, b"bbc"), &b""[..]));
+        assert_eq!(take_while(new(END_OF_INPUT, b"bbc"), |c| c != b'b').into_inner(), State::Data(new(END_OF_INPUT, b"bbc"), &b""[..]));
+        assert_eq!(take_while(new(END_OF_INPUT, b"abc"), |c| c != b'b').into_inner(), State::Data(new(END_OF_INPUT, b"bc"), &b"a"[..]));
+        // TODO: Update when the incomplete type has been updated
+        assert_eq!(take_while(new(DEFAULT, b"acc"), |c| c != b'b').into_inner(), State::Incomplete(1));
+        assert_eq!(take_while(new(END_OF_INPUT, b"acc"), |c| c != b'b').into_inner(), State::Data(new(END_OF_INPUT, b""), &b"acc"[..]));
+    }
+
+    #[test]
+    fn take_while1_test() {
+        assert_eq!(take_while1(new(DEFAULT, b"abc"), |c| c != b'b').into_inner(), State::Data(new(DEFAULT, b"bc"), &b"a"[..]));
+        assert_eq!(take_while1(new(DEFAULT, b"bbc"), |c| c != b'b').into_inner(), State::Error(&b"bbc"[..], err::unexpected()));
+        assert_eq!(take_while1(new(END_OF_INPUT, b"bbc"), |c| c != b'b').into_inner(), State::Error(&b"bbc"[..], err::unexpected()));
+        assert_eq!(take_while1(new(END_OF_INPUT, b"abc"), |c| c != b'b').into_inner(), State::Data(new(END_OF_INPUT, b"bc"), &b"a"[..]));
+        // TODO: Update when the incomplete type has been updated
+        assert_eq!(take_while1(new(DEFAULT, b"acc"), |c| c != b'b').into_inner(), State::Incomplete(1));
+        assert_eq!(take_while1(new(END_OF_INPUT, b"acc"), |c| c != b'b').into_inner(), State::Data(new(END_OF_INPUT, b""), &b"acc"[..]));
     }
 }
