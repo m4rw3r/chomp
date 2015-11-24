@@ -1,12 +1,12 @@
 use std::fmt;
 
-use err::Error;
+use parsers;
 use input::Input;
 
 /// Result for dealing with the basic parsers when parsing a stream of `u8`.
-pub type U8Result<'a, T>        = ParseResult<'a, u8, T, Error<u8>>;
+pub type U8Result<'a, T>        = ParseResult<'a, u8, T, parsers::Error<u8>>;
 /// Result returned from the basic parsers.
-pub type SimpleResult<'a, I, T> = ParseResult<'a, I, T, Error<I>>;
+pub type SimpleResult<'a, I, T> = ParseResult<'a, I, T, parsers::Error<I>>;
 
 /// **Primitive:** Primitive inner type containing the parse-state.
 ///

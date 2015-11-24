@@ -215,7 +215,7 @@ pub use parsers::{
     take_while1,
     token,
 };
-pub use err::Error;
+pub use parsers::Error;
 pub use input::Input;
 pub use parse_result::{
     ParseResult,
@@ -259,116 +259,5 @@ pub mod primitives {
     /// ``parse_result::new``.
     pub mod parse_result {
         pub use parse_result::new;
-    }
-}
-
-#[cfg(feature = "verbose_error")]
-mod err {
-    //! This is a private module to contain the more verbose error type as well as adapters for
-    //! using it.
-    //!
-    //! All adapters are #[inline(always)] and will construct the appropriate error type.
-    use std::any;
-    use std::error;
-    use std::fmt;
-
-    use {Input, ParseResult};
-
-    #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-    pub enum Error<I> {
-        Expected(I),
-        Unexpected,
-        String(Vec<I>),
-    }
-
-    impl<I> fmt::Display for Error<I>
-      where I: fmt::Debug {
-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            match *self {
-                Error::Expected(ref c) => write!(f, "expected {:?}", *c),
-                Error::Unexpected      => write!(f, "unexpected"),
-                Error::String(ref s)   => write!(f, "expected {:?}", *s),
-            }
-        }
-    }
-
-    impl<I: any::Any + fmt::Debug> error::Error for Error<I> {
-        fn description(&self) -> &str {
-            match *self {
-                Error::Expected(_) => "expected a certain token, received another",
-                Error::Unexpected  => "received an unexpected token",
-                Error::String(_)   =>
-                    "expected a certain string of tokens, encountered an unexpected token",
-            }
-        }
-    }
-
-    #[inline(always)]
-    pub fn unexpected<I>() -> Error<I> {
-        Error::Unexpected
-    }
-
-    #[inline(always)]
-    pub fn expected<'a, I>(i: I) -> Error<I> {
-        Error::Expected(i)
-    }
-
-
-    #[inline(always)]
-    pub fn string<'a, 'b, I, T>(i: Input<'a, I>, _offset: usize, expected: &'b [I])
-        -> ParseResult<'a, I, T, Error<I>>
-      where I: Copy {
-        i.err(Error::String(expected.to_vec()))
-    }
-}
-
-#[cfg(not(feature = "verbose_error"))]
-mod err {
-    //! This is a private module to contain the smaller error type as well as adapters for using
-    //! it.
-    //!
-    //! All adapters are #[inline(always)], and will just noop the data.
-    use std::any;
-    use std::error;
-    use std::fmt;
-
-    use std::marker::PhantomData;
-
-    use {Input, ParseResult};
-
-    #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-    pub struct Error<I>(PhantomData<I>);
-
-    impl<I: fmt::Debug> fmt::Display for Error<I> {
-        fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-            write!(f, "generic parse error (chomp was compiled without --feature verbose_error)")
-        }
-    }
-
-    impl<I: any::Any + fmt::Debug> error::Error for Error<I> {
-        fn description(&self) -> &str {
-            "generic parse error (chomp was compiled without --feature verbose_error)"
-        }
-    }
-
-    #[inline(always)]
-    pub fn unexpected<I>() -> Error<I> {
-        Error(PhantomData)
-    }
-
-    #[inline(always)]
-    pub fn expected<'a, I>(_: I) -> Error<I> {
-        Error(PhantomData)
-    }
-
-    #[inline(always)]
-    pub fn string<'a, 'b, I, T>(i: Input<'a, I>, offset: usize, _expected: &'b [I])
-        -> ParseResult<'a, I, T, Error<I>>
-      where I: Copy {
-        use primitives::InputBuffer;
-
-        let b = i.buffer();
-
-        i.replace(&b[offset..]).err(Error(PhantomData))
     }
 }
