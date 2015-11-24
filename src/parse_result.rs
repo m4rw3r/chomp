@@ -320,10 +320,51 @@ assert_eq!(r.unwrap_err(), Error::Expected(98));
     }
 }
 
+/// **Internal:** Consumes the `ParseResult` and exposes the internal state.
+///
+/// # Internal
+///
+/// Only used by fundamental parsers and combinators.
+///
+/// # Motivation
+///
+/// The `ParseResult` type is a semi-linear type, supposed to act like a linear type while used in
+/// a parsing context to carry the state. Normally it should be as restrictive as the `Input` type
+/// in terms of how much it exposes its internals, but to make it easier to use the parsers
+/// `unwrap`, `unwrap_err` and `expect` were introduced which breaks the linearity guarantee when
+/// used early.
+///
+/// The `IntoInner` trait implementation allows fundamental parsers and combinators to expose the
+/// inner `State` of the `ParseResult` and act on this.
+///
+/// # Example
+///
+/// ```
+/// use chomp::{Input, ParseResult, take};
+/// use chomp::internal::State;
+/// use chomp::internal::InputClone;
+/// use chomp::internal::IntoInner;
+///
+/// // Version of option() which also catches incomplete
+/// fn my_combinator<'a, I, T, E, F>(i: Input<'a, I>, f: F, default: T) -> ParseResult<'a, I, T, E>
+///   where F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+///     match f(i.clone()).into_inner() {
+///         // Data, preserve the buffer and return
+///         State::Data(b, d) => b.ret(d),
+///         // Not data, use original buffer and return default
+///         _                 => i.ret(default),
+///     }
+/// }
+///
+/// let i = Input::new(b"foo");
+///
+/// let r = my_combinator(i, |i| take(i, 10), &b"test"[..]);
+///
+/// assert_eq!(r.unwrap(), b"test");
+/// ```
 impl<'a, I, T, E> IntoInner for ParseResult<'a, I, T, E> {
     type Inner = State<'a, I, T, E>;
 
-    /// Consumes the `ParseResult` and reveals the inner state.
     #[inline(always)]
     fn into_inner(self) -> Self::Inner {
         self.0

@@ -8,6 +8,9 @@ pub mod iter;
 
 use Input;
 
+pub use input::InputClone;
+pub use input::InputBuffer;
+
 /// Internal inner type containing the parse-state.
 ///
 /// # Internal
@@ -25,6 +28,11 @@ pub enum State<'a, I: 'a, T, E>
     Incomplete(usize),
 }
 
+/// **Internal:** Consumes self and reveals the inner state.
+///
+/// # Internal
+///
+/// Only used by fundamental parsers and combinators.
 pub trait IntoInner {
     type Inner;
 
@@ -35,44 +43,6 @@ pub trait IntoInner {
     /// Only used by fundamental parsers and combinators.
     #[inline(always)]
     fn into_inner(self) -> Self::Inner;
-}
-
-pub trait InputClone {
-    /// Creates a clone of the instance.
-    ///
-    /// # Internal
-    ///
-    /// Only used by fundamental parsers and combinators.
-    #[inline(always)]
-    fn clone(&self) -> Self;
-}
-
-pub trait InputBuffer<'a> {
-    type Item: 'a;
-
-    /// Reveals the internal buffer containig the remainder of the input.
-    ///
-    /// # Internal
-    ///
-    /// Only used by fundamental parsers and combinators.
-    #[inline(always)]
-    fn buffer(&self) -> &'a [Self::Item];
-
-    /// Modifies the inner data without leaving the `Input` context.
-    ///
-    /// # Internal
-    ///
-    /// Only used by fundamental parsers and combinators.
-    #[inline(always)]
-    fn replace(self, &'a [Self::Item]) -> Self;
-
-    /// Returns true if this is the last available slice of the input.
-    ///
-    /// # Internal
-    ///
-    /// Only used by fundamental parsers and combinators.
-    #[inline(always)]
-    fn is_last_slice(&self) -> bool;
 }
 
 /// Input utilities.

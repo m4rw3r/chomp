@@ -1,10 +1,6 @@
 use ParseResult;
 use internal::State;
 use parse_result;
-use internal::{
-    InputClone,
-    InputBuffer,
-};
 
 bitflags!{
     flags InputMode: u32 {
@@ -13,6 +9,56 @@ bitflags!{
         /// If set the current slice of input is the last one.
         const END_OF_INPUT = 1,
     }
+}
+
+/// **Internal:** Trait limiting the use of `Clone` for `Input`.
+///
+/// # Internal
+///
+/// Only used by fundamental parsers and combinators.
+///
+pub trait InputClone {
+    /// Creates a clone of the instance.
+    ///
+    /// # Internal
+    ///
+    /// Only used by fundamental parsers and combinators.
+    #[inline(always)]
+    fn clone(&self) -> Self;
+}
+
+/// **Internal:** Trait exposing the buffer of `Input`.
+///
+/// # Internal
+///
+/// Only used by fundamental parsers and combinators.
+///
+pub trait InputBuffer<'a> {
+    type Item: 'a;
+
+    /// Reveals the internal buffer containig the remainder of the input.
+    ///
+    /// # Internal
+    ///
+    /// Only used by fundamental parsers and combinators.
+    #[inline(always)]
+    fn buffer(&self) -> &'a [Self::Item];
+
+    /// Modifies the inner data without leaving the `Input` context.
+    ///
+    /// # Internal
+    ///
+    /// Only used by fundamental parsers and combinators.
+    #[inline(always)]
+    fn replace(self, &'a [Self::Item]) -> Self;
+
+    /// Returns true if this is the last available slice of the input.
+    ///
+    /// # Internal
+    ///
+    /// Only used by fundamental parsers and combinators.
+    #[inline(always)]
+    fn is_last_slice(&self) -> bool;
 }
 
 /// Linear type containing the parser state, this type is threaded though `bind`.
@@ -86,6 +132,17 @@ impl<'a, I> Input<'a, I> {
     }
 }
 
+/// **Internal:** Trait limiting the use of `Clone` for `Input`.
+///
+/// # Motivation
+///
+/// The `Input` type is supposed to be an approximation of a linear type when observed in the
+/// monadic parser context. This means that it should not be possible to duplicate or accidentally
+/// throw it away as well as restrict when and where an `Input` can be constructed. Not
+/// implementing `Clone` or `Copy` solves the first issue.
+///
+/// However, cloning an `Input` is necessary for backtracking and also allows for slightly more
+/// efficient iteration in combinators. This trait allows us to enable cloning selectively.
 impl<'a, I: 'a> InputClone for Input<'a, I> {
     #[inline(always)]
     fn clone(&self) -> Self {
@@ -93,6 +150,37 @@ impl<'a, I: 'a> InputClone for Input<'a, I> {
     }
 }
 
+/// **Internal:** Trait exposing the buffer of `Input`.
+///
+/// # Motivation
+///
+/// The `Input` type is supposed to be an approximation of a linear type when observed in the
+/// monadic parser context. This means that it should not be possible to duplicate or accidentally
+/// throw it away as well as restrict when and where an `Input` can be constructed. Not exposing
+/// the constructor (to allow destructuring) as well as using `#[must_use]` solves the second
+/// issue.
+///
+/// But to be able to parse data the contents of the `Input` type must be exposed in at least one
+/// point, so that data can be examined, and this trait that makes it possible.
+///
+/// # Example
+///
+/// ```
+/// use chomp::{Input, take};
+/// use chomp::internal::InputBuffer;
+///
+/// let i = Input::new(b"Testing");
+///
+/// assert_eq!(i.buffer(), b"Testing");
+/// assert_eq!(i.is_last_slice(), true);
+///
+/// let b = i.buffer();
+/// let j = i.replace(&b[..4]);
+///
+/// let r = take(j, 4);
+///
+/// assert_eq!(r.unwrap(), b"Test");
+/// ```
 impl<'a, I: 'a> InputBuffer<'a> for Input<'a, I> {
     type Item = I;
 
