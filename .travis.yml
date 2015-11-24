@@ -15,7 +15,6 @@ addons:
       - libcurl4-openssl-dev
       - libelf-dev
       - libdw-dev
-      - binutils-dev
 
 before_script:
   - pip install 'travis-cargo<0.2' --user
@@ -33,7 +32,7 @@ after_success:
     [ $TRAVIS_BRANCH = master ] &&
     [ -z "$FEATURES" ] &&
     travis-cargo --only stable doc-upload
-  - travis-cargo coveralls --no-sudo --verify
+  - travis-cargo --only nightly coveralls --no-sudo
 
 env:
   matrix:
