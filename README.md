@@ -2,9 +2,10 @@
 
 [![Build Status](https://travis-ci.org/m4rw3r/chomp.svg)](https://travis-ci.org/m4rw3r/chomp)
 [![Coverage Status](https://coveralls.io/repos/m4rw3r/chomp/badge.svg?branch=master&service=github)](https://coveralls.io/github/m4rw3r/chomp?branch=master)
+[![Crates.io](https://img.shields.io/crates/v/chomp.svg)](https://crates.io/crates/chomp)
 [![Documentation](https://img.shields.io/badge/rustdoc-documentation-blue.svg)](http://m4rw3r.github.io/chomp)
 
-Chomp is a fast parser combinator designed to work on stable Rust. It was written as the culmination of the experiments detailed in these blog posts:
+Chomp is a fast monadic-style parser combinator library designed to work on stable Rust. It was written as the culmination of the experiments detailed in these blog posts:
 
 * [Part 1](http://m4rw3r.github.io/parser-combinator-experiments-rust/)
 * [Part 2](http://m4rw3r.github.io/parser-combinator-experiments-errors)
@@ -14,11 +15,16 @@ For its current capabilities, you will find that Chomp performs consistently as 
 
 ##Installation
 
-As of yet, there is no crate on crates.io. Just clone this repository and hack away.
+Add the following line to the dependencies section of your `Cargo.toml`:
+
+```toml
+[dependencies]
+chomp = "0.1.0"
+```
 
 ##Usage
 
-Parsers are functions from a slice over an input type `&'a [I]` to a `ParseResult<'a, I, T, E>`, which may be thought of as either a success resulting in type `T`, an error of type `E`, or a partially completed result which may still consume more input of type `I`.
+Parsers are functions from a slice over an input type `Input<I>` to a `ParseResult<I, T, E>`, which may be thought of as either a success resulting in type `T`, an error of type `E`, or a partially completed result which may still consume more input of type `I`.
 
 The input type is almost never manually manipulated. Rather, one uses parsers from Chomp by invoking the `parse!` macro. This macro was designed intentionally to be as close as possible to Haskell's `do`-syntax or F#'s "computation expressions", which are used to sequence monadic computations. At a very high level, usage of this macro allows one to declaratively:
 
@@ -50,7 +56,7 @@ fn f(i: Input<u8>) -> U8Result<(u8, u8, u8)> {
 } 
 ```
 
-And to implement `read_digit`:
+And to implement `read_digit` we can utilize the `map` function to manipulate any success value while preserving any error or incomplete state:
 
 ```rust
 // Standard rust, no error handling:
@@ -67,7 +73,6 @@ fn read_digit(i: Input<u8>) -> U8Result<u8> {
 ```
 
 For more documentation, see the rust-doc output.
-
 
 ## Example
 

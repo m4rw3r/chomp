@@ -2,12 +2,12 @@
 name          = "chomp"
 version       = "0.1.0"
 authors       = ["Martin Wernstål <m4rw3r@gmail.com>"]
-description   = "Chomp is a fast parser combinator designed to work on stable Rust."
+description   = "A fast monadic-style parser combinator designed to work on stable Rust."
 documentation = "http://m4rw3r.github.io/chomp"
 homepage      = "http://github.com/m4rw3r/chomp"
 repository    = "http://github.com/m4rw3r/chomp"
 readme        = "README.md"
-keywords      = ["parser", "parser-combinator"]
+keywords      = ["parser", "parser-combinators", "parsing", "streaming"]
 license       = "MIT"
 
 include = [

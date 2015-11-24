@@ -1,4 +1,4 @@
-//! Chomp is an alternative parser combinator library for the Rust programming language. It was
+//! Chomp is a fast monadic-style parser combinator library for the Rust programming language. It was
 //! written as the culmination of the experiments detailed in these blog posts:
 //!
 //! * [Part 1](http://m4rw3r.github.io/parser-combinator-experiments-rust/)
