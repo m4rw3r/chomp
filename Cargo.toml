@@ -10,6 +10,15 @@ readme        = "README.md"
 keywords      = ["parser", "parser-combinator"]
 license       = "MIT"
 
+include = [
+    "examples/**/*.rs",
+    "src/**/*.rs",
+    "tests/**/*.rs",
+    ".gitignore",
+    "README.md",
+    "Cargo.toml",
+]
+
 [dependencies]
 bitflags = "0.3.3"
 conv = { version = "0.3", default-features = false }
