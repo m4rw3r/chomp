@@ -255,6 +255,72 @@ impl<'a, I: 'a> InputBuffer<'a> for Input<'a, I> {
     }
 }
 
+#[cfg(feature = "nom_adapter")]
+impl<'a, I> Input<'a, I> {
+    /// Calls out to a Nom parser.
+    ///
+    /// # Example
+    /// ```
+    /// # #[macro_use] extern crate chomp;
+    /// #[macro_use]
+    /// extern crate nom;
+    ///
+    /// use chomp::{Input, ParseResult};
+    /// use chomp::{take_while1, token, take_remainder};
+    /// use chomp::ascii::is_alpha;
+    ///
+    /// named!(nom_word, chain!(word: take_while1!(is_alpha) ~ tag!(b" "), || word));
+    ///
+    /// # fn main() {
+    ///     let i = Input::new(b"Works with Nom!");
+    ///
+    ///     let r: ParseResult<_, _, chomp::NomError<_, _>> = parse!{i;
+    ///         let first      = take_while1(is_alpha);
+    ///                          token(b' ');
+    ///         let nom_result = i -> i.nom_parser(nom_word);
+    ///         let remainder  = take_remainder();
+    ///
+    ///         ret (first, nom_result, remainder)
+    ///     };
+    ///
+    ///     assert_eq!(r.unwrap(), (&b"Works"[..], &b"with"[..], &b"Nom!"[..]));
+    /// # }
+    /// ```
+    pub fn nom_parser<T, E, F>(self, f: F) -> ParseResult<'a, I, T, NomError<'a, I, E>>
+      where F: FnOnce(&'a [I]) -> ::nom::IResult<&'a [I], T, E> {
+        use nom::IResult;
+        use nom::Needed;
+
+        match f(self.1) {
+            IResult::Done(b, t)                  => parse_result::new(State::Data(Input(self.0, b), t)),
+            IResult::Error(e)                    => parse_result::new(State::Error(self.1, NomError::NomError(e))),
+            IResult::Incomplete(Needed::Unknown) => parse_result::new(State::Incomplete(1)),
+            IResult::Incomplete(Needed::Size(n)) => parse_result::new(State::Incomplete(n)),
+        }
+    }
+}
+
+#[cfg(feature = "nom_adapter")]
+#[derive(Debug)]
+pub enum NomError<'a, I: 'a, E> {
+    NomError(::nom::Err<&'a [I], E>),
+    ChompError(::parsers::Error<I>),
+}
+
+#[cfg(feature = "nom_adapter")]
+impl<'a, I: 'a, E> From<::nom::Err<&'a [I], E>> for NomError<'a, I, E> {
+    fn from(e: ::nom::Err<&'a [I], E>) -> Self {
+        NomError::NomError(e)
+    }
+}
+
+#[cfg(feature = "nom_adapter")]
+impl<'a, I, E> From<::parsers::Error<I>> for NomError<'a, I, E> {
+    fn from(e: ::parsers::Error<I>) -> Self {
+        NomError::ChompError(e)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::{new, Input, InputBuffer, DEFAULT, END_OF_INPUT};

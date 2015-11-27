@@ -25,6 +25,7 @@ conv = { version = "0.3", default-features = false }
 # Technically a dev-dependency, but dev-dependencies are not allowed to be optional,
 # compiletest_rs fails to compile on stable and beta
 compiletest_rs = { version = "0.0.10", optional = true }
+nom = { version = "1.0.0", optional = true }
 
 [features]
 default = ["verbose_error"]
@@ -32,3 +33,4 @@ default = ["verbose_error"]
 nightly_test = ["compiletest_rs"]
 
 verbose_error = []
+nom_adapter = ["nom"]
