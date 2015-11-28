@@ -372,6 +372,16 @@ pub enum Error<I> {
 }
 
 #[cfg(feature = "verbose_error")]
+impl<I> Error<I> {
+    /// Creates a new Unexpected error.
+    ///
+    /// Should be used when the error value is not important.
+    pub fn new() -> Self {
+        Error::Unexpected
+    }
+}
+
+#[cfg(feature = "verbose_error")]
 impl<I> fmt::Display for Error<I>
   where I: fmt::Debug {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -433,6 +443,16 @@ mod err {
 #[cfg(not(feature = "verbose_error"))]
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Error<I>(PhantomData<I>);
+
+#[cfg(not(feature = "verbose_error"))]
+impl<I> Error<I> {
+    /// Creates a new Unexpected error.
+    ///
+    /// Should be used when the error value is not important.
+    pub fn new() -> Self {
+        Error(PhantomData)
+    }
+}
 
 #[cfg(not(feature = "verbose_error"))]
 impl<I: fmt::Debug> fmt::Display for Error<I> {
