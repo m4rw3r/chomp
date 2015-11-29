@@ -128,6 +128,25 @@ pub fn peek<I: Copy>(i: Input<I>) -> SimpleResult<I, Option<I>> {
     i.ret(d)
 }
 
+/// Matches any item but does not consume it.
+///
+/// If the buffer length is 0 this parser is considered incomplete.
+///
+/// ```
+/// use chomp::{Input, peek_next};
+///
+/// let p1 = Input::new(b"abc");
+///
+/// assert_eq!(peek_next(p1).unwrap(), b'a');
+/// ```
+#[inline]
+pub fn peek_next<I: Copy>(i: Input<I>) -> SimpleResult<I, I> {
+    match i.buffer().first().cloned() {
+        None    => i.incomplete(1),
+        Some(c) => i.ret(c),
+    }
+}
+
 /// Matches ``num`` items no matter what they are, returning a slice of the matched items.
 ///
 /// If the buffer length is less than ``num`` this parser is considered incomplete.
@@ -593,5 +612,13 @@ mod test {
         // TODO: Update when the incomplete type has been updated
         assert_eq!(take_while1(new(DEFAULT, b"acc"), |c| c != b'b').into_inner(), State::Incomplete(1));
         assert_eq!(take_while1(new(END_OF_INPUT, b"acc"), |c| c != b'b').into_inner(), State::Data(new(END_OF_INPUT, b""), &b"acc"[..]));
+    }
+
+    #[test]
+    fn peek_next_test() {
+        assert_eq!(peek_next(new(DEFAULT, b"abc")).into_inner(), State::Data(new(DEFAULT, b"abc"), b'a'));
+        assert_eq!(peek_next(new(END_OF_INPUT, b"abc")).into_inner(), State::Data(new(END_OF_INPUT, b"abc"), b'a'));
+        assert_eq!(peek_next(new(DEFAULT, b"")).into_inner(), State::Incomplete(1));
+        assert_eq!(peek_next(new(END_OF_INPUT, b"")).into_inner(), State::Incomplete(1));
     }
 }

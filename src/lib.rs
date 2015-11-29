@@ -205,6 +205,7 @@ pub use parsers::{
     eof,
     not_token,
     peek,
+    peek_next,
     satisfy,
     scan,
     string,
