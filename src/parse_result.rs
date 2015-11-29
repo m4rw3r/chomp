@@ -415,7 +415,6 @@ mod test {
     use input;
     use input::{Input, DEFAULT, END_OF_INPUT};
     use primitives::State;
-    use parsers::take_while;
 
     use super::ParseResult;
 
@@ -475,15 +474,28 @@ mod test {
 
     #[test]
     fn parse_result_inspect() {
-        let mut n = 0;
-        let i     = Input::new(b"test ");
+        use primitives::IntoInner;
 
-        let r = take_while(i, |c| c != b' ').inspect(|_| {
-            n = n + 1;
+        let mut n1 = 0;
+        let mut n2 = 0;
+        let i1     = input::new(DEFAULT, b"test ").ret::<u32, ()>(23);
+        let i2     = input::new(END_OF_INPUT, b"test ").ret::<u32, ()>(23);
+
+        let r1 = i1.inspect(|d: &u32| {
+            assert_eq!(d, &23);
+
+            n1 += 1;
+        });
+        let r2 = i2.inspect(|d: &u32| {
+            assert_eq!(d, &23);
+
+            n2 += 1;
         });
 
-        assert_eq!(r.unwrap(), b"test");
-        assert_eq!(n, 1);
+        assert_eq!(r1.into_inner(), State::Data(input::new(DEFAULT, b"test "), 23));
+        assert_eq!(n1, 1);
+        assert_eq!(r2.into_inner(), State::Data(input::new(END_OF_INPUT, b"test "), 23));
+        assert_eq!(n2, 1);
     }
 
     #[test]
