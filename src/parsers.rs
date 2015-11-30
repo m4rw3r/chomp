@@ -322,13 +322,42 @@ pub fn take_till<I: Copy, F>(i: Input<I>, f: F) -> SimpleResult<I, &[I]>
 /// assert_eq!(r.unwrap(), b"/*test*of*scan*");
 /// ```
 #[inline]
-pub fn scan<I: Copy, S,  F>(i: Input<I>, s: S, mut f: F) -> SimpleResult<I, &[I]>
+pub fn scan<I: Copy, S, F>(i: Input<I>, s: S, mut f: F) -> SimpleResult<I, &[I]>
   where F: FnMut(S, I) -> Option<S> {
-    let b     = i.buffer();
+    let b         = i.buffer();
     let mut state = Some(s);
 
     match b.iter().position(|&c| { state = f(mem::replace(&mut state, None).unwrap(), c); state.is_none()}) {
         Some(n) => i.replace(&b[n..]).ret(&b[0..n]),
+        // TODO: Should this following 1 be something else, seeing as take_while1 is potentially
+        // infinite?
+        None    => i.incomplete(1),
+    }
+}
+
+/// Like `scan` but generalized to return the final state of the scanner.
+///
+/// ```
+/// use chomp::{Input, run_scanner};
+///
+///
+/// let p = Input::new(b"/*test*of*scan*/ foo");
+///
+/// let r = run_scanner(p, 0, |s, c| match (s, c) {
+///     (b'*', b'/') => None,
+///     (_,    c)    => Some(c),
+/// });
+///
+/// assert_eq!(r.unwrap(), (&b"/*test*of*scan*"[..], b'*'));
+/// ```
+#[inline]
+pub fn run_scanner<I: Copy, S: Copy, F>(i: Input<I>, s: S, mut f: F) -> SimpleResult<I, (&[I], S)>
+  where F: FnMut(S, I) -> Option<S> {
+    let b         = i.buffer();
+    let mut state = s;
+
+    match b.iter().position(|&c| { let t = f(state, c); match t { None => true, Some(v) => { state = v; false } } }) {
+        Some(n) => i.replace(&b[n..]).ret((&b[0..n], state)),
         // TODO: Should this following 1 be something else, seeing as take_while1 is potentially
         // infinite?
         None    => i.incomplete(1),

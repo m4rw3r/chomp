@@ -210,6 +210,7 @@ pub use parsers::{
     satisfy_with,
     scan,
     string,
+    run_scanner,
     take,
     take_remainder,
     take_till,
