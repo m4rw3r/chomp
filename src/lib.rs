@@ -207,6 +207,7 @@ pub use parsers::{
     peek,
     peek_next,
     satisfy,
+    satisfy_with,
     scan,
     string,
     take,

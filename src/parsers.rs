@@ -57,6 +57,40 @@ pub fn satisfy<I: Copy, F>(i: Input<I>, f: F) -> SimpleResult<I, I>
     }
 }
 
+/// Reads a single token, applies the transformation `F` and then succeeds with the transformed
+/// valeue if the predicate `P` yields true on this transformed value.
+///
+/// ```
+/// use std::ascii::AsciiExt;
+///
+/// use chomp::{Input, satisfy_with};
+///
+/// let i = Input::new(b"testing");
+///
+/// let r = satisfy_with(i, |c| AsciiExt::to_ascii_uppercase(&c), |c| c == b'T');
+///
+/// assert_eq!(r.unwrap(), b'T')
+/// ```
+#[inline]
+pub fn satisfy_with<I: Copy, T: Clone, F, P>(i: Input<I>, f: F, p: P) -> SimpleResult<I, T>
+  where F: FnOnce(I) -> T,
+        P: FnOnce(T) -> bool {
+    let b = i.buffer();
+
+    match b.first().cloned() {
+        Some(n) => {
+            let t = f(n);
+
+            if p(t.clone()) {
+                i.replace(&b[1..]).ret(t)
+            } else {
+                i.err(err::unexpected())
+            }
+        },
+        None    => i.incomplete(1),
+    }
+}
+
 /// Matches a single token, returning the match on success.
 ///
 /// If the buffer length is 0 this parser is considered incomplete.
@@ -620,5 +654,20 @@ mod test {
         assert_eq!(peek_next(new(END_OF_INPUT, b"abc")).into_inner(), State::Data(new(END_OF_INPUT, b"abc"), b'a'));
         assert_eq!(peek_next(new(DEFAULT, b"")).into_inner(), State::Incomplete(1));
         assert_eq!(peek_next(new(END_OF_INPUT, b"")).into_inner(), State::Incomplete(1));
+    }
+
+    #[test]
+    fn satisfy_with_test() {
+        let mut m1 = 0;
+        let mut n1 = 0;
+        assert_eq!(satisfy_with(new(DEFAULT, b"abc"), |m| { m1 += 1; m % 8 }, |n| { n1 += 1; n == 1 }).into_inner(), State::Data(new(DEFAULT, b"bc"), 1));
+        assert_eq!(m1, 1);
+        assert_eq!(n1, 1);
+
+        let mut m2 = 0;
+        let mut n2 = 0;
+        assert_eq!(satisfy_with(new(DEFAULT, b""), |m| { m2 += 1; m % 8 }, |n| { n2 += 1; n == 1 }).into_inner(), State::Incomplete(1));
+        assert_eq!(m2, 0);
+        assert_eq!(n2, 0);
     }
 }
