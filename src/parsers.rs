@@ -351,6 +351,7 @@ pub fn scan<I: Copy, S, F>(i: Input<I>, s: S, mut f: F) -> SimpleResult<I, &[I]>
 /// assert_eq!(r.unwrap(), (&b"/*test*of*scan*"[..], b'*'));
 /// ```
 #[inline]
+// TODO: Remove Copy bound on S
 pub fn run_scanner<I: Copy, S: Copy, F>(i: Input<I>, s: S, mut f: F) -> SimpleResult<I, (&[I], S)>
   where F: FnMut(S, I) -> Option<S> {
     let b         = i.buffer();

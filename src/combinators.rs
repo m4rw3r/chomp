@@ -220,7 +220,7 @@ pub fn many1<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, 
 ///
 /// Incomplete state will be propagated.
 ///
-/// This is more efficient to use compared to using ``many`` and then just discarding the result as
+/// This is more efficient compared to using ``many`` and then just discarding the result as
 /// ``many`` allocates a separate data structure to contain the data before proceeding.
 ///
 /// ```
@@ -242,4 +242,80 @@ pub fn skip_many<'a, I, T, E, F>(mut i: Input<'a, I>, mut f: F) -> ParseResult<'
     }
 
     i.ret(())
+}
+
+/// Runs the given parser until it fails, discarding matched input, expects at least one match.
+///
+/// Incomplete state will be propagated. Will propagate the error if it occurs during the first
+/// attempt.
+///
+/// This is more efficient compared to using ``many1`` and then just discarding the result as
+/// ``many1`` allocates a separate data structure to contain the data before proceeding.
+///
+/// ```
+/// use chomp::{Input, skip_many1, token};
+///
+/// let i1 = Input::new(b"aaaabc");
+/// let i2 = Input::new(b"abc");
+///
+/// let p = |i| skip_many1(i, |i| token(i, b'a')).bind(|i, _| token(i, b'b'));
+///
+/// assert_eq!(p(i1).unwrap(), b'b');
+/// assert_eq!(p(i2).unwrap(), b'b');
+/// ```
+///
+/// ```should_panic
+/// use chomp::{Input, skip_many1, token};
+///
+/// let i = Input::new(b"bc");
+///
+/// let p = |i| skip_many1(i, |i| token(i, b'a')).bind(|i, _| token(i, b'b'));
+///
+/// // Error:
+/// assert_eq!(p(i).unwrap(), b'b');
+/// ```
+#[inline]
+pub fn skip_many1<'a, I, T, E, F>(mut i: Input<'a, I>, mut f: F) -> ParseResult<'a, I, (), E>
+  where T: 'a, F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+    let mut n = false;
+
+    loop {
+        match f(i.clone()).into_inner() {
+            State::Data(b, _)    => {
+                n = true;
+                i = b;
+            },
+            State::Error(b, e)   => return if !n  {
+                // Error during first attempt, propagate
+                i.replace(b).err(e)
+            } else {
+                // Not the first attempt, exit skip_many1
+                i.ret(())
+            },
+            State::Incomplete(n) => return i.incomplete(n),
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use primitives::State;
+    use primitives::input::{new, DEFAULT, END_OF_INPUT};
+    use primitives::IntoInner;
+    use super::*;
+
+    use parsers::token;
+
+    #[test]
+    fn skip_many1_test() {
+        assert_eq!(skip_many1(new(DEFAULT, b"aabc"), |i| token(i, b'a')).into_inner(), State::Data(new(DEFAULT, b"bc"), ()));
+        assert_eq!(skip_many1(new(DEFAULT, b"abc"), |i| token(i, b'a')).into_inner(), State::Data(new(DEFAULT, b"bc"), ()));
+        assert_eq!(skip_many1(new(DEFAULT, b"bc"), |i| i.err::<(), _>("error")).into_inner(), State::Error(b"bc", "error"));
+        assert_eq!(skip_many1(new(DEFAULT, b"aaa"), |i| token(i, b'a')).into_inner(), State::Incomplete(1));
+        assert_eq!(skip_many1(new(END_OF_INPUT, b"aabc"), |i| token(i, b'a')).into_inner(), State::Data(new(END_OF_INPUT, b"bc"), ()));
+        assert_eq!(skip_many1(new(END_OF_INPUT, b"abc"), |i| token(i, b'a')).into_inner(), State::Data(new(END_OF_INPUT, b"bc"), ()));
+        assert_eq!(skip_many1(new(END_OF_INPUT, b"bc"), |i| i.err::<(), _>("error")).into_inner(), State::Error(b"bc", "error"));
+        // token is responsible for the incomplete
+        assert_eq!(skip_many1(new(END_OF_INPUT, b"aaa"), |i| token(i, b'a')).into_inner(), State::Incomplete(1));
+    }
 }

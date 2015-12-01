@@ -199,6 +199,7 @@ pub use combinators::{
     many,
     many1,
     skip_many,
+    skip_many1,
 };
 pub use parsers::{
     any,
