@@ -216,12 +216,12 @@ pub fn many1<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, 
     }
 }
 
-/// Applies the parser `P` multiple times until the parser `F` succeeds and returns a value
-/// populated by the values yielded by `P`. Consumes the matched part of `F`.
+/// Applies the parser `R` multiple times until the parser `F` succeeds and returns a value
+/// populated by the values yielded by `R`. Consumes the matched part of `F`.
 ///
-/// This parser is considered incomplete if the parser `P` is considered incomplete.
+/// This parser is considered incomplete if the parser `R` is considered incomplete.
 ///
-/// Errors from `P` are propagated.
+/// Errors from `R` are propagated.
 ///
 /// ```
 /// use chomp::{Input, ParseResult, many_till, any, token};
@@ -233,13 +233,13 @@ pub fn many1<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, 
 /// assert_eq!(r.unwrap(), vec![b'a', b'b', b'c']);
 /// ```
 #[inline]
-pub fn many_till<'a, I, T, E, P, F, U, V, N>(i: Input<'a, I>, p: P, end: F) -> ParseResult<'a, I, T, E>
+pub fn many_till<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, p: R, end: F) -> ParseResult<'a, I, T, E>
   where I: Copy,
         U: 'a,
         V: 'a,
         N: 'a,
         T: FromIterator<U>,
-        P: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
+        R: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
     let mut iter = IterTill::new(i, p, end);
 
