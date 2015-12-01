@@ -6,7 +6,7 @@ use {ParseResult, Input};
 
 use primitives::State;
 use primitives::{IntoInner, InputBuffer, InputClone};
-use iter::{EndState, Iter};
+use iter::{EndState, EndStateTill, Iter, IterTill};
 
 
 /// Applies the parser ``p`` exactly ``num`` times, propagating any error or incomplete state.
@@ -216,6 +216,44 @@ pub fn many1<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, 
     }
 }
 
+/// Applies the parser `P` multiple times until the parser `F` succeeds and returns a value
+/// populated by the values yielded by `P`. Consumes the matched part of `F`.
+///
+/// This parser is considered incomplete if the parser `P` is considered incomplete.
+///
+/// Errors from `P` are propagated.
+///
+/// ```
+/// use chomp::{Input, ParseResult, many_till, any, token};
+///
+/// let i = Input::new(b"abc;def");
+///
+/// let r: ParseResult<_, Vec<u8>, _> = many_till(i, any, |i| token(i, b';'));
+///
+/// assert_eq!(r.unwrap(), vec![b'a', b'b', b'c']);
+/// ```
+#[inline]
+pub fn many_till<'a, I, T, E, P, F, U, V, N>(i: Input<'a, I>, p: P, end: F) -> ParseResult<'a, I, T, E>
+  where I: Copy,
+        U: 'a,
+        V: 'a,
+        N: 'a,
+        T: FromIterator<U>,
+        P: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
+        F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
+    let mut iter = IterTill::new(i, p, end);
+
+    let result: T = FromIterator::from_iter(iter.by_ref());
+
+    match iter.end_state() {
+        (s, EndStateTill::EndSuccess)   => s.ret(result),
+        // Nested parser error, propagate
+        (s, EndStateTill::Error(b, e))   => s.replace(b).err(e),
+        // Nested parser incomplete, propagate
+        (s, EndStateTill::Incomplete(n)) => s.incomplete(n),
+    }
+}
+
 /// Runs the given parser until it fails, discarding matched input.
 ///
 /// Incomplete state will be propagated.
@@ -299,12 +337,13 @@ pub fn skip_many1<'a, I, T, E, F>(mut i: Input<'a, I>, mut f: F) -> ParseResult<
 
 #[cfg(test)]
 mod test {
+    use ParseResult;
     use primitives::State;
     use primitives::input::{new, DEFAULT, END_OF_INPUT};
     use primitives::IntoInner;
     use super::*;
 
-    use parsers::token;
+    use parsers::{any, token};
 
     #[test]
     fn skip_many1_test() {
@@ -317,5 +356,20 @@ mod test {
         assert_eq!(skip_many1(new(END_OF_INPUT, b"bc"), |i| i.err::<(), _>("error")).into_inner(), State::Error(b"bc", "error"));
         // token is responsible for the incomplete
         assert_eq!(skip_many1(new(END_OF_INPUT, b"aaa"), |i| token(i, b'a')).into_inner(), State::Incomplete(1));
+    }
+
+    #[test]
+    fn many_till_test() {
+        assert_eq!(many_till(new(DEFAULT, b"abcd"), any, |i| token(i, b'c')).into_inner(), State::Data(new(DEFAULT, b"d"), vec![b'a', b'b']));
+        let r: ParseResult<_, Vec<_>, _> = many_till(new(DEFAULT, b"abd"), any, |i| token(i, b'c'));
+        assert_eq!(r.into_inner(), State::Incomplete(1));
+
+        let r: ParseResult<_, Vec<u8>, _> = many_till(new(DEFAULT, b"abcd"), |i| i.err(()), |i| token(i, b'c'));
+        assert_eq!(r.into_inner(), State::Error(b"abcd", ()));
+
+        // Variant to make sure error slice is propagated
+        let mut n = 0;
+        let r: ParseResult<_, Vec<_>, _> = many_till(new(DEFAULT, b"abcd"), |i| if n == 0 { n += 1; any(i).map_err(|_| "any err") } else { i.err("the error") }, |i| token(i, b'c'));
+        assert_eq!(r.into_inner(), State::Error(b"bcd", "the error"));
     }
 }

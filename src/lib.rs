@@ -198,6 +198,7 @@ pub use combinators::{
     or,
     many,
     many1,
+    many_till,
     skip_many,
     skip_many1,
 };
