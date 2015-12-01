@@ -201,6 +201,7 @@ pub use combinators::{
     many_till,
     skip_many,
     skip_many1,
+    matched_by,
 };
 pub use parsers::{
     any,

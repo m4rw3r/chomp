@@ -335,6 +335,35 @@ pub fn skip_many1<'a, I, T, E, F>(mut i: Input<'a, I>, mut f: F) -> ParseResult<
     }
 }
 
+/// Returns the result of the given parser as well as the slice which matched it.
+///
+/// ```
+/// use chomp::{Input, matched_by};
+/// use chomp::ascii::decimal;
+///
+/// let i = Input::new(b"123");
+///
+/// assert_eq!(matched_by(i, decimal).unwrap(), (&b"123"[..], 123u32));
+/// ```
+#[inline]
+pub fn matched_by<'a, I, T, E, F>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, (&'a [I], T), E>
+  where T: 'a,
+        F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+    let buf = i.buffer();
+
+    match f(i.clone()).into_inner() {
+        State::Data(b, t) => {
+            // b is remainder, find out how much the parser used
+            let diff = buf.len() - b.buffer().len();
+            let n    = &buf[..diff];
+
+            b.ret((n, t))
+        },
+        State::Error(b, e)   => i.replace(b).err(e),
+        State::Incomplete(n) => i.incomplete(n),
+    }
+}
+
 #[cfg(test)]
 mod test {
     use ParseResult;
@@ -371,5 +400,13 @@ mod test {
         let mut n = 0;
         let r: ParseResult<_, Vec<_>, _> = many_till(new(DEFAULT, b"abcd"), |i| if n == 0 { n += 1; any(i).map_err(|_| "any err") } else { i.err("the error") }, |i| token(i, b'c'));
         assert_eq!(r.into_inner(), State::Error(b"bcd", "the error"));
+    }
+
+    #[test]
+    fn matched_by_test() {
+        assert_eq!(matched_by(new(DEFAULT, b"abc"), any).into_inner(), State::Data(new(DEFAULT, b"bc"), (&b"a"[..], b'a')));
+        assert_eq!(matched_by(new(DEFAULT, b"abc"), |i| i.err::<(), _>("my error")).into_inner(), State::Error(&b"abc"[..], "my error"));
+        assert_eq!(matched_by(new(DEFAULT, b"abc"), |i| any(i).map_err(|_| "any error").then(|i| i.err::<(), _>("my error"))).into_inner(), State::Error(&b"bc"[..], "my error"));
+        assert_eq!(matched_by(new(DEFAULT, b""), any).into_inner(), State::Incomplete(1));
     }
 }
