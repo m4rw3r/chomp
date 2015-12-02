@@ -471,6 +471,28 @@ pub fn matched_by<'a, I, T, E, F>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, (
     }
 }
 
+/// Applies the parser `F` without consuming any input.
+///
+/// ```
+/// use chomp::{Input, take};
+/// use chomp::combinators::look_ahead;
+///
+/// let i = Input::new(b"testing");
+///
+/// let r = look_ahead(i, |i| take(i, 4)).bind(|i, t| take(i, 7).map(|u| (t, u)));
+///
+/// assert_eq!(r.unwrap(), (&b"test"[..], &b"testing"[..]));
+/// ```
+#[inline]
+pub fn look_ahead<'a, I, T, E, F>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
+  where F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+    match f(i.clone()).into_inner() {
+        State::Data(_, t)    => i.ret(t),
+        State::Error(b, t)   => i.replace(b).err(t),
+        State::Incomplete(n) => i.incomplete(n),
+    }
+}
+
 #[cfg(test)]
 mod test {
     use ParseResult;
@@ -594,5 +616,12 @@ mod test {
 
         let r: ParseResult<_, Vec<_>, _> = sep_by1(new(DEFAULT, b"aaa--a"), |i| string(i, b"aaa"), |i| string(i, b"--"));
         assert_eq!(r.into_inner(), State::Incomplete(2));
+    }
+
+    #[test]
+    fn look_ahead_test() {
+        assert_eq!(look_ahead(new(DEFAULT, b"abc"), any).into_inner(), State::Data(new(DEFAULT, b"abc"), b'a'));
+        assert_eq!(look_ahead(new(DEFAULT, b"a"), |i| string(i, b"abc")).into_inner(), State::Incomplete(2));
+        assert_eq!(look_ahead(new(DEFAULT, b"aa"), |i| token(i, b'a').then(|i| token(i, b'b')).map_err(|_| "err")).into_inner(), State::Error(b"a", "err"));
     }
 }
