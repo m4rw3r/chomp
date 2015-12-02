@@ -6,8 +6,7 @@ use conv::errors::UnwrapOk;
 use std::ops::{Add, Mul};
 
 use {Input, U8Result};
-use parsers::take_while1;
-use parsers::satisfy;
+use parsers::{take_while, take_while1, satisfy};
 
 /// Lowercase ASCII predicate.
 #[inline]
@@ -52,6 +51,25 @@ pub fn is_alpha(c: u8) -> bool {
 #[inline]
 pub fn is_alphanumeric(c: u8) -> bool {
     is_alpha(c) || is_digit(c)
+}
+
+/// Skips over whitespace.
+///
+/// Matches zero-length.
+///
+/// # Example
+///
+/// ```
+/// use chomp::Input;
+/// use chomp::ascii::skip_whitespace;
+///
+/// let i = Input::new(b" \t ");
+///
+/// assert_eq!(skip_whitespace(i).unwrap(), ());
+/// ```
+#[inline]
+pub fn skip_whitespace(i: Input<u8>) -> U8Result<()> {
+    take_while(i, is_whitespace).map(|_| ())
 }
 
 /// Parses a single digit.
