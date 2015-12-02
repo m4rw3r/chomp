@@ -6,6 +6,7 @@ use conv::errors::UnwrapOk;
 use std::ops::{Add, Mul};
 
 use {Input, U8Result};
+use combinators::option;
 use parsers::{take_while, take_while1, satisfy};
 
 /// Lowercase ASCII predicate.
@@ -105,6 +106,36 @@ pub fn skip_whitespace(i: Input<u8>) -> U8Result<()> {
 #[inline]
 pub fn digit(i: Input<u8>) -> U8Result<u8> {
     satisfy(i, is_digit)
+}
+
+/// Parses a number with an optional leading '+' or '-'.
+///
+/// # Note
+///
+/// The from `i8` bound here is usually smaller than the number parser requirement for signed
+/// integers (usually the smallest possible signed is `i16`).
+///
+/// # Example
+///
+/// ```
+/// use chomp::{Input, ParseResult};
+/// use chomp::ascii::{decimal, signed};
+///
+/// let i = Input::new(b"-123");
+///
+/// let r: ParseResult<_, i16, _> = signed(i, decimal);
+///
+/// assert_eq!(r.unwrap(), -123i16);
+/// ```
+#[inline]
+pub fn signed<T, F>(i: Input<u8>, f: F) -> U8Result<T>
+  where T: Copy + ValueFrom<i8, Err=NoError> + Add<Output=T> + Mul<Output=T>,
+        F: FnOnce(Input<u8>) -> U8Result<T> {
+    option(i,
+           |i| satisfy(i, |c| c == b'-' || c == b'+')
+               .map(|s| T::value_from(if s == b'+' { 1 } else { -1 }).unwrap_ok()),
+           T::value_from(1).unwrap_ok())
+        .bind(|i, sign| f(i).map(|num| sign * num))
 }
 
 /// Parses a series of digits and converts them to an integer.
