@@ -35,6 +35,18 @@ pub fn is_whitespace(c: u8) -> bool {
     9 <= c && c <= 13 || c == b' '
 }
 
+/// A predicate which matches either space (' ') or horizontal tab ('\t').
+#[inline]
+pub fn is_horizontal_space(c: u8) -> bool {
+    c == b'\t' || c == b' '
+}
+
+/// A predicate matching eithr a newline ('\n') or a carriage return ('\r').
+#[inline]
+pub fn is_end_of_line(c: u8) -> bool {
+    c == b'\n' || c == b'\r'
+}
+
 /// ASCII digit predicate.
 #[inline]
 pub fn is_digit(c: u8) -> bool {
