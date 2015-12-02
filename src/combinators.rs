@@ -520,54 +520,78 @@ mod test {
     #[test]
     fn sep_by_test() {
         assert_eq!(sep_by(new(END_OF_INPUT, b""), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b""), vec![]));
+        assert_eq!(sep_by(new(END_OF_INPUT, b"b"), |i| token(i, b'a'), |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b"b"), vec![]));
         assert_eq!(sep_by(new(END_OF_INPUT, b"a"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b""), vec![b'a']));
         assert_eq!(sep_by(new(END_OF_INPUT, b"a;c"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b""), vec![b'a', b'c']));
         assert_eq!(sep_by(new(END_OF_INPUT, b"a;c;"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b";"), vec![b'a', b'c']));
         assert_eq!(sep_by(new(END_OF_INPUT, b"a--c-"), any, |i| string(i, b"--")).into_inner(), State::Data(new(END_OF_INPUT, b"-"), vec![b'a', b'c']));
+        assert_eq!(sep_by(new(END_OF_INPUT, b"abc"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b"bc"), vec![b'a']));
+        assert_eq!(sep_by(new(END_OF_INPUT, b"a;bc"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b"c"), vec![b'a', b'b']));
 
+        assert_eq!(sep_by(new(DEFAULT, b"abc"), any, |i| token(i, b';')).into_inner(), State::Data(new(DEFAULT, b"bc"), vec![b'a']));
         assert_eq!(sep_by(new(DEFAULT, b"a;bc"), any, |i| token(i, b';')).into_inner(), State::Data(new(DEFAULT, b"c"), vec![b'a', b'b']));
 
         // Incomplete becasue there might be another separator or item to be read
         let r: ParseResult<_, Vec<_>, _> = sep_by(new(DEFAULT, b""), any, |i| token(i, b';'));
         assert_eq!(r.into_inner(), State::Incomplete(1));
+
         let r: ParseResult<_, Vec<_>, _> = sep_by(new(DEFAULT, b"a"), any, |i| token(i, b';'));
         assert_eq!(r.into_inner(), State::Incomplete(1));
+
         let r: ParseResult<_, Vec<_>, _> = sep_by(new(DEFAULT, b"a;"), any, |i| token(i, b';'));
         assert_eq!(r.into_inner(), State::Incomplete(1));
+
         let r: ParseResult<_, Vec<_>, _> = sep_by(new(DEFAULT, b"a;c"), any, |i| token(i, b';'));
         assert_eq!(r.into_inner(), State::Incomplete(1));
+
         let r: ParseResult<_, Vec<_>, _> = sep_by(new(DEFAULT, b"a;c;"), any, |i| token(i, b';'));
         assert_eq!(r.into_inner(), State::Incomplete(1));
+
         let r: ParseResult<_, Vec<_>, _> = sep_by(new(DEFAULT, b"a--c-"), any, |i| string(i, b"--"));
         assert_eq!(r.into_inner(), State::Incomplete(1));
+
         let r: ParseResult<_, Vec<_>, _> = sep_by(new(DEFAULT, b"aaa--a"), |i| string(i, b"aaa"), |i| string(i, b"--"));
         assert_eq!(r.into_inner(), State::Incomplete(2));
+
     }
 
     #[test]
     fn sep_by1_test() {
         let r: ParseResult<_, Vec<_>, _> = sep_by1(new(END_OF_INPUT, b""), any, |i| token(i, b';'));
         assert_eq!(r.into_inner(), State::Incomplete(1));
+
+        let r: ParseResult<_, Vec<()>, _> = sep_by1(new(END_OF_INPUT, b"b"), |i| i.err("my err"), |i| token(i, b';').map_err(|_| "token_err"));
+        assert_eq!(r.into_inner(), State::Error(b"b", "my err"));
+
         assert_eq!(sep_by1(new(END_OF_INPUT, b"a"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b""), vec![b'a']));
         assert_eq!(sep_by1(new(END_OF_INPUT, b"a;c"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b""), vec![b'a', b'c']));
         assert_eq!(sep_by1(new(END_OF_INPUT, b"a;c;"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b";"), vec![b'a', b'c']));
         assert_eq!(sep_by1(new(END_OF_INPUT, b"a--c-"), any, |i| string(i, b"--")).into_inner(), State::Data(new(END_OF_INPUT, b"-"), vec![b'a', b'c']));
+        assert_eq!(sep_by1(new(END_OF_INPUT, b"abc"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b"bc"), vec![b'a']));
+        assert_eq!(sep_by1(new(END_OF_INPUT, b"a;bc"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b"c"), vec![b'a', b'b']));
 
+        assert_eq!(sep_by1(new(DEFAULT, b"abc"), any, |i| token(i, b';')).into_inner(), State::Data(new(DEFAULT, b"bc"), vec![b'a']));
         assert_eq!(sep_by1(new(DEFAULT, b"a;bc"), any, |i| token(i, b';')).into_inner(), State::Data(new(DEFAULT, b"c"), vec![b'a', b'b']));
 
         // Incomplete becasue there might be another separator or item to be read
         let r: ParseResult<_, Vec<_>, _> = sep_by1(new(DEFAULT, b""), any, |i| token(i, b';'));
         assert_eq!(r.into_inner(), State::Incomplete(1));
+
         let r: ParseResult<_, Vec<_>, _> = sep_by1(new(DEFAULT, b"a"), any, |i| token(i, b';'));
         assert_eq!(r.into_inner(), State::Incomplete(1));
+
         let r: ParseResult<_, Vec<_>, _> = sep_by1(new(DEFAULT, b"a;"), any, |i| token(i, b';'));
         assert_eq!(r.into_inner(), State::Incomplete(1));
+
         let r: ParseResult<_, Vec<_>, _> = sep_by1(new(DEFAULT, b"a;c"), any, |i| token(i, b';'));
         assert_eq!(r.into_inner(), State::Incomplete(1));
+
         let r: ParseResult<_, Vec<_>, _> = sep_by1(new(DEFAULT, b"a;c;"), any, |i| token(i, b';'));
         assert_eq!(r.into_inner(), State::Incomplete(1));
+
         let r: ParseResult<_, Vec<_>, _> = sep_by1(new(DEFAULT, b"a--c-"), any, |i| string(i, b"--"));
         assert_eq!(r.into_inner(), State::Incomplete(1));
+
         let r: ParseResult<_, Vec<_>, _> = sep_by1(new(DEFAULT, b"aaa--a"), |i| string(i, b"aaa"), |i| string(i, b"--"));
         assert_eq!(r.into_inner(), State::Incomplete(2));
     }
