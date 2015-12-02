@@ -7,6 +7,7 @@ use std::ops::{Add, Mul};
 
 use {Input, U8Result};
 use parsers::take_while1;
+use parsers::satisfy;
 
 /// Lowercase ASCII predicate.
 #[inline]
@@ -51,6 +52,29 @@ pub fn is_alpha(c: u8) -> bool {
 #[inline]
 pub fn is_alphanumeric(c: u8) -> bool {
     is_alpha(c) || is_digit(c)
+}
+
+/// Parses a single digit.
+///
+/// # Note
+///
+/// The result is the code of the digit, no conversion takes place.
+///
+/// # Example
+///
+/// ```
+/// use chomp::Input;
+/// use chomp::ascii::digit;
+///
+/// let i = Input::new(b"1");
+///
+/// let r = digit(i);
+///
+/// assert_eq!(r.unwrap(), b'1');
+/// ```
+#[inline]
+pub fn digit(i: Input<u8>) -> U8Result<u8> {
+    satisfy(i, is_digit)
 }
 
 /// Parses a series of digits and converts them to an integer.
