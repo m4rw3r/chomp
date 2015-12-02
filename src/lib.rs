@@ -199,6 +199,7 @@ pub use combinators::{
     many,
     many1,
     sep_by,
+    sep_by1,
     many_till,
     skip_many,
     skip_many1,

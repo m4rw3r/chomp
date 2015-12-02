@@ -219,10 +219,10 @@ pub fn many1<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, 
 /// Applies the parser `R` zero or more times, separated by the parser `F`. All matches from `R`
 /// will be collected into the type `T` implementing `IntoIterator`.
 ///
-/// If the separator registers error or incomplete this parser stops and yields the collected
-/// value.
+/// If the separator or parser registers error or incomplete this parser stops and yields the
+/// collected value.
 ///
-/// Incomplete will be propagated from `R`.
+/// Incomplete will be propagated from `R` if end of input has not been read.
 ///
 /// ```
 /// use chomp::{Input, sep_by, token};
@@ -244,7 +244,7 @@ pub fn sep_by<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, mut p: R, mut sep: F)
         E: From<N>,
         R: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
-    // If last iteration succeeded in parsing the separator
+    // If we have parsed at least one item
     let mut item = false;
     // Add sep in front of p if we have read at least one item
     let parser   = |i| (if item { sep(i).map(|_| ()) } else { i.ret(()) }).then(&mut p).inspect(|_| item = true);
@@ -261,6 +261,65 @@ pub fn sep_by<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, mut p: R, mut sep: F)
         } else {
             s.incomplete(n)
         },
+    }
+}
+
+
+/// Applies the parser `R` one or more times, separated by the parser `F`. All matches from `R`
+/// will be collected into the type `T` implementing `IntoIterator`.
+///
+/// If the separator or parser registers error or incomplete this parser stops and yields the
+/// collected value if at least one item has been read.
+///
+/// Incomplete will be propagated from `R` if end of input has not been read.
+///
+/// ```
+/// use chomp::{Input, sep_by1, token};
+/// use chomp::ascii::decimal;
+///
+/// let i = Input::new(b"91;03;20");
+///
+/// let r: Vec<u8> = sep_by1(i, decimal, |i| token(i, b';')).unwrap();
+///
+/// assert_eq!(r, vec![91, 03, 20]);
+/// ```
+#[inline]
+pub fn sep_by1<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, mut p: R, mut sep: F) -> ParseResult<'a, I, T, E>
+  where I: Copy,
+        U: 'a,
+        V: 'a,
+        N: 'a,
+        T: FromIterator<U>,
+        E: From<N>,
+        R: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
+        F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
+    // If we have parsed at least one item
+    let mut item = false;
+    // Wrap to end borrow of item
+    let (result, state): (T, _) = {
+        // Add sep in front of p if we have read at least one item
+        let parser   = |i| (if item { sep(i).map(|_| ()) } else { i.ret(()) }).then(&mut p).inspect(|_| item = true);
+        let mut iter = Iter::new(i, parser);
+
+        (FromIterator::from_iter(iter.by_ref()), iter.end_state())
+    };
+
+    if !item {
+        match state {
+            (s, EndState::Error(b, e))   => s.replace(b).err(e),
+            (s, EndState::Incomplete(n)) => s.incomplete(n),
+        }
+    } else {
+        match state {
+            (s, EndState::Error(_, _))   => s.ret(result),
+            // Nested parser incomplete, propagate
+            // Only propagate if we can read more data
+            (s, EndState::Incomplete(n)) => if s.is_last_slice() {
+                s.ret(result)
+            } else {
+                s.incomplete(n)
+            },
+        }
     }
 }
 
@@ -460,6 +519,8 @@ mod test {
 
     #[test]
     fn sep_by_test() {
+        assert_eq!(sep_by(new(END_OF_INPUT, b""), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b""), vec![]));
+        assert_eq!(sep_by(new(END_OF_INPUT, b"a"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b""), vec![b'a']));
         assert_eq!(sep_by(new(END_OF_INPUT, b"a;c"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b""), vec![b'a', b'c']));
         assert_eq!(sep_by(new(END_OF_INPUT, b"a;c;"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b";"), vec![b'a', b'c']));
         assert_eq!(sep_by(new(END_OF_INPUT, b"a--c-"), any, |i| string(i, b"--")).into_inner(), State::Data(new(END_OF_INPUT, b"-"), vec![b'a', b'c']));
@@ -467,6 +528,12 @@ mod test {
         assert_eq!(sep_by(new(DEFAULT, b"a;bc"), any, |i| token(i, b';')).into_inner(), State::Data(new(DEFAULT, b"c"), vec![b'a', b'b']));
 
         // Incomplete becasue there might be another separator or item to be read
+        let r: ParseResult<_, Vec<_>, _> = sep_by(new(DEFAULT, b""), any, |i| token(i, b';'));
+        assert_eq!(r.into_inner(), State::Incomplete(1));
+        let r: ParseResult<_, Vec<_>, _> = sep_by(new(DEFAULT, b"a"), any, |i| token(i, b';'));
+        assert_eq!(r.into_inner(), State::Incomplete(1));
+        let r: ParseResult<_, Vec<_>, _> = sep_by(new(DEFAULT, b"a;"), any, |i| token(i, b';'));
+        assert_eq!(r.into_inner(), State::Incomplete(1));
         let r: ParseResult<_, Vec<_>, _> = sep_by(new(DEFAULT, b"a;c"), any, |i| token(i, b';'));
         assert_eq!(r.into_inner(), State::Incomplete(1));
         let r: ParseResult<_, Vec<_>, _> = sep_by(new(DEFAULT, b"a;c;"), any, |i| token(i, b';'));
@@ -474,6 +541,34 @@ mod test {
         let r: ParseResult<_, Vec<_>, _> = sep_by(new(DEFAULT, b"a--c-"), any, |i| string(i, b"--"));
         assert_eq!(r.into_inner(), State::Incomplete(1));
         let r: ParseResult<_, Vec<_>, _> = sep_by(new(DEFAULT, b"aaa--a"), |i| string(i, b"aaa"), |i| string(i, b"--"));
+        assert_eq!(r.into_inner(), State::Incomplete(2));
+    }
+
+    #[test]
+    fn sep_by1_test() {
+        let r: ParseResult<_, Vec<_>, _> = sep_by1(new(END_OF_INPUT, b""), any, |i| token(i, b';'));
+        assert_eq!(r.into_inner(), State::Incomplete(1));
+        assert_eq!(sep_by1(new(END_OF_INPUT, b"a"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b""), vec![b'a']));
+        assert_eq!(sep_by1(new(END_OF_INPUT, b"a;c"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b""), vec![b'a', b'c']));
+        assert_eq!(sep_by1(new(END_OF_INPUT, b"a;c;"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b";"), vec![b'a', b'c']));
+        assert_eq!(sep_by1(new(END_OF_INPUT, b"a--c-"), any, |i| string(i, b"--")).into_inner(), State::Data(new(END_OF_INPUT, b"-"), vec![b'a', b'c']));
+
+        assert_eq!(sep_by1(new(DEFAULT, b"a;bc"), any, |i| token(i, b';')).into_inner(), State::Data(new(DEFAULT, b"c"), vec![b'a', b'b']));
+
+        // Incomplete becasue there might be another separator or item to be read
+        let r: ParseResult<_, Vec<_>, _> = sep_by1(new(DEFAULT, b""), any, |i| token(i, b';'));
+        assert_eq!(r.into_inner(), State::Incomplete(1));
+        let r: ParseResult<_, Vec<_>, _> = sep_by1(new(DEFAULT, b"a"), any, |i| token(i, b';'));
+        assert_eq!(r.into_inner(), State::Incomplete(1));
+        let r: ParseResult<_, Vec<_>, _> = sep_by1(new(DEFAULT, b"a;"), any, |i| token(i, b';'));
+        assert_eq!(r.into_inner(), State::Incomplete(1));
+        let r: ParseResult<_, Vec<_>, _> = sep_by1(new(DEFAULT, b"a;c"), any, |i| token(i, b';'));
+        assert_eq!(r.into_inner(), State::Incomplete(1));
+        let r: ParseResult<_, Vec<_>, _> = sep_by1(new(DEFAULT, b"a;c;"), any, |i| token(i, b';'));
+        assert_eq!(r.into_inner(), State::Incomplete(1));
+        let r: ParseResult<_, Vec<_>, _> = sep_by1(new(DEFAULT, b"a--c-"), any, |i| string(i, b"--"));
+        assert_eq!(r.into_inner(), State::Incomplete(1));
+        let r: ParseResult<_, Vec<_>, _> = sep_by1(new(DEFAULT, b"aaa--a"), |i| string(i, b"aaa"), |i| string(i, b"--"));
         assert_eq!(r.into_inner(), State::Incomplete(2));
     }
 }
