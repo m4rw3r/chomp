@@ -177,6 +177,8 @@
 //!
 //! The entire grammar for the macro is listed elsewhere in this documentation.
 
+#![cfg_attr(all(test, feature = "unstable"), feature(fnbox))]
+
 #[macro_use]
 extern crate bitflags;
 extern crate conv;

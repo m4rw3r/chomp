@@ -72,6 +72,23 @@ pub trait IntoInner {
 /// m >>= return     ≡  m
 /// (m >>= f) >>= g  ≡  m >>= (\x -> f x >>= g)
 /// ```
+///
+/// # Equivalence with Haskell's ``Applicative`` typeclass:
+///
+/// ```text
+/// f <*> g  ≡  f(m).apply(g)
+/// f *> g   ≡  f(m).then(g)
+/// f <* g   ≡  f(m).skip(g)
+/// ```
+///
+/// It also satisfies the applicative laws:
+///
+/// ```text
+/// pure id <*> v               ≡  v
+/// pure (.) <*> u <*> v <*> w  ≡  u <*> (v <*> w)
+/// pure f <*> pure x           ≡  pure (f x)
+/// u <*> pure y                ≡  pure ($ y) <*> u
+/// ```
 #[must_use]
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct ParseResult<'a, I: 'a, T: 'a, E: 'a>(State<'a, I, T, E>);
@@ -90,6 +107,8 @@ pub fn new<I, T, E>(s: State<I, T, E>) -> ParseResult<I, T, E> {
 }
 
 impl<'a, I, T, E> ParseResult<'a, I, T, E> {
+    // Monad
+
     /// Sequentially composes the result with a parse action ``f``, passing any produced value as
     /// the second parameter.
     ///
@@ -173,6 +192,69 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
         self.bind(|i, _| f(i))
     }
 
+    // Applicative
+
+    /// Applies the function in the parser to the argument produced by `rhs`, returning the result
+    /// of the function.
+    ///
+    /// # Automatic conversion of ``E``
+    ///
+    /// The error value ``E`` will automatically be converted using the ``From`` trait to the
+    /// desired type. The downside with this using the current stable version of Rust (1.4) is that
+    /// the type inferrence will currently not use the default value for the generic ``V`` and will
+    /// therefore require extra type hint for the error.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chomp::Input;
+    /// use chomp::ascii::decimal;
+    ///
+    /// fn square(n: u32) -> u32 {
+    ///     n * n
+    /// }
+    ///
+    /// let i = Input::new(b"3 test");
+    ///
+    /// // parse a decimal number and apply the square function
+    /// let r = i.ret(square).apply(decimal);
+    ///
+    /// assert_eq!(r.unwrap(), 9);
+    /// ```
+    #[inline]
+    pub fn apply<F, A, B, V = E>(self, rhs: F) -> ParseResult<'a, I, B, V>
+      where A: 'a,
+            T: FnOnce(A) -> B,
+            V: From<E>,
+            F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, A, V> {
+        self.bind(|i, f| rhs(i).map(f))
+    }
+
+    /// Runs the parser `rhs`, discarding its success value on success. If the parser is successful
+    /// the success value is the existing success value.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use chomp::{Input, any};
+    /// use chomp::ascii::decimal;
+    ///
+    /// let i = Input::new(b"a123b");
+    ///
+    /// let r = any(i).skip(decimal::<u16>).bind(|i, c| any(i).map(|c2| (c, c2)));
+    ///
+    /// assert_eq!(r.unwrap(), (b'a', b'b'));
+    /// ```
+    #[inline]
+    pub fn skip<F, U, V = E>(self, rhs: F) -> ParseResult<'a, I, T, V>
+      where U: 'a,
+            V: From<E>,
+            F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, U, V> {
+        self.bind(|i, t| rhs(i).map(|_| t))
+    }
+
+    // Functor
+
     /// Applies the function `f` on the contained data if the parser is in a success state.
     ///
     /// # Example
@@ -190,7 +272,7 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
     pub fn map<U, F>(self, f: F) -> ParseResult<'a, I, U, E>
       where F: FnOnce(T) -> U {
         match self.0 {
-            State::Data(i, t) => ParseResult(State::Data(i, f(t))),
+            State::Data(i, t)    => ParseResult(State::Data(i, f(t))),
             State::Error(i, e)   => ParseResult(State::Error(i, e)),
             State::Incomplete(n) => ParseResult(State::Incomplete(n)),
         }
@@ -219,6 +301,8 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
             State::Incomplete(n) => ParseResult(State::Incomplete(n)),
         }
     }
+
+    // Utility
 
     /// Calls the function `f` with a reference of the contained data if the parser is in a success
     /// state.
@@ -418,6 +502,8 @@ mod test {
 
     use super::ParseResult;
 
+    // Monad
+
     #[test]
     fn monad_left_identity() {
         fn f<I: Copy>(i: Input<I>, n: u32) -> ParseResult<I, u32, ()> {
@@ -472,6 +558,122 @@ mod test {
         assert_eq!(rhs.0, State::Data(input::new(END_OF_INPUT, b"test"), 6));
     }
 
+    // Applicative
+
+    #[test]
+    fn applicative_identity() {
+        fn f<I: Copy>(i: Input<I>) -> ParseResult<I, u64, ()> {
+            i.ret(123)
+        }
+
+        let lhs_m = input::new(END_OF_INPUT, b"test");
+        let rhs_m = input::new(END_OF_INPUT, b"test");
+
+        // pure id <*> v
+        let lhs = lhs_m.ret(|x| x).apply(f);
+        // v
+        let rhs = f(rhs_m);
+
+        assert_eq!(lhs.0, State::Data(input::new(END_OF_INPUT, b"test"), 123));
+        assert_eq!(rhs.0, State::Data(input::new(END_OF_INPUT, b"test"), 123));
+    }
+
+    // We need FnBox here to be able to run this test
+    #[cfg(all(test, feature = "unstable"))]
+    #[test]
+    fn applicative_composition() {
+        use std::boxed::FnBox;
+
+        let lhs_m = input::new(END_OF_INPUT, b"test");
+        let rhs_m = input::new(END_OF_INPUT, b"test");
+
+        // compose :: (c -> b) -> (a -> b) -> (a -> c)
+        // curried version of compose
+        fn compose<'a, F, G, A, B, C>(f: F) -> Box<FnBox(G) -> Box<FnBox(A) -> C + 'a> + 'a>
+          where F: FnOnce(B) -> C + 'a,
+                G: FnOnce(A) -> B + 'a {
+            Box::new(move |g: G| -> Box<FnBox(A) -> C + 'a> {
+                Box::new(move |x: A| -> C { f(g(x)) })
+            })
+        };
+
+        // u :: Parser (u32 -> i32)
+        fn u<I: Copy>(i: Input<I>) -> ParseResult<I, Box<FnBox(u32) -> i32>, ()> {
+            i.ret(Box::new(|x| (x + 3) as i32))
+        }
+        // v :: Parser (u8 -> u32)
+        fn v<I: Copy>(i: Input<I>) -> ParseResult<I, Box<FnBox(u8) -> u32>, ()> {
+            i.ret(Box::new(|x| (x * 2) as u32))
+        }
+        // w :: Parser u8
+        fn w<I: Copy>(i: Input<I>) -> ParseResult<I, u8, ()> {
+            i.ret(2)
+        }
+
+        // pure (.) <*> u <*> v <*> w
+        let lhs: ParseResult<_, _, ()> = lhs_m.ret(compose).apply(u).apply(v).apply(w);
+        // u <*> (v <*> w)
+        let rhs: ParseResult<_, _, ()> = u(rhs_m).apply(|i| v(i).apply(w));
+
+        assert_eq!(lhs.0, State::Data(input::new(END_OF_INPUT, b"test"), 7i32));
+        assert_eq!(rhs.0, State::Data(input::new(END_OF_INPUT, b"test"), 7i32));
+    }
+
+    #[test]
+    fn applicative_homomorphism() {
+        let lhs_m = input::new(END_OF_INPUT, b"test");
+        let rhs_m = input::new(END_OF_INPUT, b"test");
+
+        fn f(n: u32) -> i32 {
+            (n * 2) as i32
+        }
+
+        let x = 3;
+
+        // pure f <*> pure x
+        let lhs: ParseResult<_, _, ()> = lhs_m.ret(f).apply(|i| i.ret(x));
+        // pure (f x)
+        let rhs: ParseResult<_, _, ()> = rhs_m.ret(f(x));
+
+        assert_eq!(lhs.0, State::Data(input::new(END_OF_INPUT, b"test"), 6i32));
+        assert_eq!(rhs.0, State::Data(input::new(END_OF_INPUT, b"test"), 6i32));
+    }
+
+    // We need FnBox here to be able to run this test
+    #[cfg(all(test, feature = "unstable"))]
+    #[test]
+    fn applicative_interchange() {
+        use std::boxed::FnBox;
+
+        let lhs_m = input::new(END_OF_INPUT, b"test");
+        let rhs_m = input::new(END_OF_INPUT, b"test");
+
+        let y = 3u32;
+
+        // u :: Parser (u32 -> i32)
+        fn u<I: Copy>(i: Input<I>) -> ParseResult<I, Box<FnBox(u32) -> i32>, ()> {
+            i.ret(Box::new(|x| (x + 4) as i32))
+        }
+
+        // $ :: (a -> b) -> a -> b
+        // we're interested in the form ($ x) which is of type :: b -> (a -> b) -> b
+        fn apply_arg<'a, A, B, F>(a: A) -> Box<FnBox(F) -> B + 'a>
+          where A: 'a,
+                F: FnOnce(A) -> B {
+            Box::new(move |f: F| f(a))
+        }
+
+        // u <*> pure y
+        let lhs: ParseResult<_, _, ()> = u(lhs_m).apply(|i| i.ret(y));
+        // pure ($ y) <*> u
+        let rhs: ParseResult<_, _, ()> = rhs_m.ret(apply_arg(y)).apply(u);
+
+        assert_eq!(lhs.0, State::Data(input::new(END_OF_INPUT, b"test"), 7i32));
+        assert_eq!(rhs.0, State::Data(input::new(END_OF_INPUT, b"test"), 7i32));
+    }
+
+    // Utilities
+
     #[test]
     fn parse_result_inspect() {
         use primitives::IntoInner;
@@ -497,6 +699,8 @@ mod test {
         assert_eq!(r2.into_inner(), State::Data(input::new(END_OF_INPUT, b"test "), 23));
         assert_eq!(n2, 1);
     }
+
+    // State
 
     #[test]
     fn input_propagation() {
