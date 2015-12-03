@@ -29,6 +29,6 @@ compiletest_rs = { version = "0.0.10", optional = true }
 [features]
 default = ["verbose_error"]
 # Feature for running extra (compiletime fail) tests on nightly
-nightly_test = ["compiletest_rs"]
+unstable = ["compiletest_rs"]
 
 verbose_error = []

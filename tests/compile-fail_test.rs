@@ -1,7 +1,7 @@
-#[cfg(all(test, feature = "nightly_test"))]
+#[cfg(all(test, feature = "unstable"))]
 extern crate compiletest_rs as compiletest;
 
-#[cfg(all(test, feature = "nightly_test"))]
+#[cfg(all(test, feature = "unstable"))]
 fn run_mode(mode: &'static str) {
     use std::path::PathBuf;
 
@@ -16,7 +16,7 @@ fn run_mode(mode: &'static str) {
 }
 
 #[test]
-#[cfg(all(test, feature = "nightly_test"))]
+#[cfg(all(test, feature = "unstable"))]
 fn compile_test() {
     run_mode("compile-fail");
 }
