@@ -231,7 +231,9 @@ pub use parse_result::{
     ParseResult,
     SimpleResult,
     U8Result,
+    ApplyArgs,
 };
+
 
 /// Module used to construct fundamental parsers and combinators.
 ///

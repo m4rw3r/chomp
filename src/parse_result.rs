@@ -42,6 +42,104 @@ pub trait IntoInner {
     fn into_inner(self) -> Self::Inner;
 }
 
+pub trait ApplyArgs<'a, I, F> {
+    type Return;
+    type Error;
+
+    fn apply(self, Input<'a, I>, F) -> ParseResult<'a, I, Self::Return, Self::Error>;
+}
+
+impl<'a, I, T, F, A, AR, AE> ApplyArgs<'a, I, F> for A
+  where I:  'a,
+        A:  FnOnce(Input<'a, I>) -> ParseResult<'a, I, AR, AE>,
+        AR: 'a,
+        AE: 'a,
+        F:  FnOnce(AR) -> T {
+    type Return = T;
+    type Error  = AE;
+
+    fn apply(self, i: Input<'a, I>, f: F) -> ParseResult<'a, I, Self::Return, Self::Error> {
+        self(i).map(f)
+    }
+}
+
+/*
+impl<'a, I, F, T,
+A, AR, AE,
+B, BR, BE> ApplyArgs<'a, I, F> for (A,
+                                    B)
+  where I: 'a,
+        A: FnOnce(Input<'a, I>) -> ParseResult<'a, I, AR, AE>,
+        AR: 'a,
+        AE: 'a,
+        B: FnOnce(Input<'a, I>) -> ParseResult<'a, I, BR, BE>,
+        BR: 'a,
+        BE: 'a,
+        BE: From<AE>,
+        F: FnOnce(AR, BR) -> T {
+    type Return = T;
+    type Error  = BE;
+
+    fn apply(self, i: Input<'a, I>, f: F) -> ParseResult<'a, I, Self::Return, Self::Error> {
+        let (a, b) = self;
+
+        a(i).bind(|i, a_r| b(i).map(|b_r| f(a_r, b_r)))
+    }
+}
+*/
+
+macro_rules! impl_apply_args {
+    ( $a:ident : $a_r:ident $a_e:ident,
+      $(
+          $b:ident : $b_r:ident ($($p_e:ident),+ -> $b_e:ident)
+      ),+
+      => $e:ident ) => {
+        impl<'input, In, Function, FunctionType,
+            $a, $a_r, $a_e, $($b, $b_r, $b_e),+>
+        ApplyArgs<'input, In, Function> for ($a, $($b),+)
+          where In:       'input,
+                Function: FnOnce($a_r, $($b_r),+) -> FunctionType,
+                $a:       FnOnce(Input<'input, In>) -> ParseResult<'input, In, $a_r, $a_e>,
+                $a_r:     'input,
+                $a_e:     'input,
+                $(
+                    $b:     FnOnce(Input<'input, In>) -> ParseResult<'input, In, $b_r, $b_e>,
+                    $b_r:   'input,
+                    $b_e:   'input,
+                    $($b_e: From<$p_e>),+ // Needs to be convertable from all pervious error types
+                ),+
+                {
+            type Return = FunctionType;
+            type Error  = $e;
+
+            #[allow(non_snake_case)]
+            fn apply(self, i: Input<'input, In>, f: Function) -> ParseResult<'input, In, Self::Return, Self::Error> {
+                let ($a, $($b),+) = self;
+
+                impl_apply_args_chain!(i, f(): $a => $a_r, $($b => $b_r),+)
+            }
+        }
+    };
+}
+
+macro_rules! impl_apply_args_chain {
+    ( $i:ident, $f:ident($($f_r:ident)*) : $a:ident => $a_r:ident, $($b:ident => $b_r:ident),+ ) => {
+        $a($i).bind(|i, $a_r| impl_apply_args_chain!(i, $f($($f_r)* $a_r): $($b => $b_r),+))
+    };
+    ( $i:ident, $f:ident($($f_r:ident)+) : $a:ident => $a_r:ident ) => {
+        $a($i).map(|$a_r| $f($($f_r),+, $a_r))
+    };
+}
+
+impl_apply_args!{A: AR AE, B: BR (AE -> BE) => BE}
+impl_apply_args!{A: AR AE, B: BR (AE -> BE), C: CR (AE, BE -> CE) => CE}
+impl_apply_args!{A: AR AE, B: BR (AE -> BE), C: CR (AE, BE -> CE), D: DR (AE, BE, CE -> DE) => DE}
+impl_apply_args!{A: AR AE, B: BR (AE -> BE), C: CR (AE, BE -> CE), D: DR (AE, BE, CE -> DE), E: ER (AE, BE, CE, DE -> EE) => EE}
+impl_apply_args!{A: AR AE, B: BR (AE -> BE), C: CR (AE, BE -> CE), D: DR (AE, BE, CE -> DE), E: ER (AE, BE, CE, DE -> EE), F: FR (AE, BE, CE, DE, EE -> FE) => FE}
+impl_apply_args!{A: AR AE, B: BR (AE -> BE), C: CR (AE, BE -> CE), D: DR (AE, BE, CE -> DE), E: ER (AE, BE, CE, DE -> EE), F: FR (AE, BE, CE, DE, EE -> FE), G: GR (AE, BE, CE, DE, EE, FE -> GE) => GE}
+impl_apply_args!{A: AR AE, B: BR (AE -> BE), C: CR (AE, BE -> CE), D: DR (AE, BE, CE -> DE), E: ER (AE, BE, CE, DE -> EE), F: FR (AE, BE, CE, DE, EE -> FE), G: GR (AE, BE, CE, DE, EE, FE -> GE), H: HR (AE, BE, CE, DE, EE, FE, GE -> HE) => HE}
+impl_apply_args!{A: AR AE, B: BR (AE -> BE), C: CR (AE, BE -> CE), D: DR (AE, BE, CE -> DE), E: ER (AE, BE, CE, DE -> EE), F: FR (AE, BE, CE, DE, EE -> FE), G: GR (AE, BE, CE, DE, EE, FE -> GE), H: HR (AE, BE, CE, DE, EE, FE, GE -> HE), I: IR (AE, BE, CE, DE, EE, FE, GE, HE -> IE) => IE}
+
 /// The basic return type of a parser.
 ///
 /// This type satisfies a variant of the ``Monad`` typeclass. Due to the limitations of Rust's
@@ -222,6 +320,19 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
     /// assert_eq!(r.unwrap(), 9);
     /// ```
     #[inline]
+    pub fn apply<Args>(self, rhs: Args) -> ParseResult<'a, I, Args::Return, Args::Error>
+      where Args:        ApplyArgs<'a, I, T> + 'a,
+            Args::Error: From<E> {
+        self.bind(|i, f| rhs.apply(i, f))
+    }
+
+    pub fn apply2<Args>(self, rhs: Args) -> ParseResult<'a, I, Args::Return, Args::Error>
+      where Args:        Arg<'a, I, T> + 'a,
+            Args::Error: From<E> {
+        self.bind(|i, f| rhs.do_it(i, f))
+    }
+    /*
+    #[inline]
     pub fn apply<F, A, B, V = E>(self, rhs: F) -> ParseResult<'a, I, B, V>
       where A: 'a,
             T: FnOnce(A) -> B,
@@ -229,6 +340,7 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
             F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, A, V> {
         self.bind(|i, f| rhs(i).map(f))
     }
+    */
 
     /// Runs the parser `rhs`, discarding its success value on success. If the parser is successful
     /// the success value is the existing success value.
@@ -631,7 +743,15 @@ mod test {
         let x = 3;
 
         // pure f <*> pure x
+
+        // Line below does not manage to figure out what `i` is, if type annotated that it is an
+        // Input it is fine
+        //
+        // Lifetimes is also an issue, seems like it cannot infer that it is an FnOnce and is
+        // supposed to move x, which will oddly enough force specific 'static as well as move
+        // annotations
         let lhs: ParseResult<_, _, ()> = lhs_m.ret(f).apply(|i| i.ret(x));
+        //let lhs: ParseResult<_, _, ()> = lhs_m.ret(f).apply(|i| Input::ret(i, x));
         // pure (f x)
         let rhs: ParseResult<_, _, ()> = rhs_m.ret(f(x));
 
