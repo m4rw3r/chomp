@@ -42,6 +42,12 @@ pub trait IntoInner {
     fn into_inner(self) -> Self::Inner;
 }
 
+/*
+pub trait TupleApply<F> {
+    fn apply(self, F) -> Self::Result;
+}
+*/
+
 pub trait ApplyArgs<'a, I, F> {
     type Return;
     type Error;
@@ -49,6 +55,7 @@ pub trait ApplyArgs<'a, I, F> {
     fn apply(self, Input<'a, I>, F) -> ParseResult<'a, I, Self::Return, Self::Error>;
 }
 
+/*
 impl<'a, I, T, F, A, AR, AE> ApplyArgs<'a, I, F> for A
   where I:  'a,
         A:  FnOnce(Input<'a, I>) -> ParseResult<'a, I, AR, AE>,
@@ -60,6 +67,24 @@ impl<'a, I, T, F, A, AR, AE> ApplyArgs<'a, I, F> for A
 
     fn apply(self, i: Input<'a, I>, f: F) -> ParseResult<'a, I, Self::Return, Self::Error> {
         self(i).map(f)
+    }
+}
+*/
+
+impl<'a, I, F, T,
+A, AR, AE> ApplyArgs<'a, I, F> for A
+  where I: 'a,
+        A: FnOnce(Input<'a, I>) -> ParseResult<'a, I, AR, AE>,
+        AR: 'a,
+        AE: 'a,
+        F: FnOnce(AR) -> T {
+    type Return = T;
+    type Error  = AE;
+
+    fn apply(self, i: Input<'a, I>, f: F) -> ParseResult<'a, I, Self::Return, Self::Error> {
+        let a = self;
+
+        a(i).map(|a_r| f(a_r))
     }
 }
 
@@ -319,17 +344,22 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
     ///
     /// assert_eq!(r.unwrap(), 9);
     /// ```
+    // The below code has the issue that it cannot allow inference of the closures because it is
+    // using two traits (type of `apply.rhs` -> ApplyArgs -> FnOnce -> Concrete closure), which
+    // will make it impossible to infer the type of the closure since there are a potentially
+    // infinite implementations of ApplyArgs which can be satisfied by the closure.
+    //
+    // Using functions or type-annotations on both parameter and return types will make it work
+    // properly:
+    //
+    // ```
+    // i.ret(|x| 2 * x).apply(|i: Input<_>| -> ParseResult<_, _, _> string(i, b"foobar"))
+    // ```
     #[inline]
     pub fn apply<Args>(self, rhs: Args) -> ParseResult<'a, I, Args::Return, Args::Error>
       where Args:        ApplyArgs<'a, I, T> + 'a,
             Args::Error: From<E> {
         self.bind(|i, f| rhs.apply(i, f))
-    }
-
-    pub fn apply2<Args>(self, rhs: Args) -> ParseResult<'a, I, Args::Return, Args::Error>
-      where Args:        Arg<'a, I, T> + 'a,
-            Args::Error: From<E> {
-        self.bind(|i, f| rhs.do_it(i, f))
     }
     /*
     #[inline]
@@ -341,6 +371,41 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
         self.bind(|i, f| rhs(i).map(f))
     }
     */
+
+    // This is an attempt to stack up a tuple T -> (T, U) -> (T, U, V) and then invoking a supplied
+    // closure with |T, U, V| once the parsers for the individual values have been run. Essentially
+    // reversing the order of the Applicative operations in Haskell.
+    //
+    // We have issues with the general form of trying to use a generic over `T`, `(T,)`, `(T, U)`,
+    // `(T, U, V)` and so on since the implementation of a trait over T.
+    //
+    // Once we have a `(T,)` in the ParseResult we can continue to construct the tuple-list of
+    // values, the issue here is that the `Input + ParseResult` is no longer an applicative at all
+    // times it is a monad. Generally `T => Applicative for all T: T => Monad` which is not true in
+    // this case.
+    //
+    // Was suggested that an initial `ap` method on `Input` can solve the syntactic issues:
+    //
+    // ```
+    // struct IP(u8, u8, u8, u8);
+    //
+    // fn dot(i: Input<u8>) -> U8Result<u8> {
+    //     token(i, b'.')
+    // }
+    //
+    // let ip = i.ap(digit).skip(dot).ap(digit).skip(dot).ap(digit).skip(dot).ap(digit).apply(IP);
+    // ```
+    //
+    // Technically `apply` in the code-example above is a special version of `map`, where the
+    // parameters are lifted out of the tuple and passed as parameters to the supplied function.
+    //#[inline]
+    //pub fn ap<F, U, V = E>(self, f: F) -> ParseResult<'a, I, T::Result, V>
+    //  where F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, U, V>,
+    //        V: From<E>,
+    //        U: 'a,
+    //        T: TupleCons<U> {
+    //    self.bind(|i, t| f(i).map(|u| t.cons(u)))
+    //}
 
     /// Runs the parser `rhs`, discarding its success value on success. If the parser is successful
     /// the success value is the existing success value.
@@ -746,12 +811,9 @@ mod test {
 
         // Line below does not manage to figure out what `i` is, if type annotated that it is an
         // Input it is fine
-        //
-        // Lifetimes is also an issue, seems like it cannot infer that it is an FnOnce and is
-        // supposed to move x, which will oddly enough force specific 'static as well as move
-        // annotations
-        let lhs: ParseResult<_, _, ()> = lhs_m.ret(f).apply(|i| i.ret(x));
-        //let lhs: ParseResult<_, _, ()> = lhs_m.ret(f).apply(|i| Input::ret(i, x));
+        //let lhs: ParseResult<_, _, ()> = lhs_m.ret(f).apply(|i| i.ret(x));
+        //let lhs: ParseResult<_, _, ()> = lhs_m.ret(f).apply(|i: Input<_>| -> ParseResult<_, _, _> {i.ret(x)});
+        let lhs: ParseResult<_, _, ()> = lhs_m.ret(f).apply(|i| Input::ret(i, x));
         // pure (f x)
         let rhs: ParseResult<_, _, ()> = rhs_m.ret(f(x));
 

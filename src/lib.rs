@@ -189,6 +189,7 @@ mod input;
 mod iter;
 mod parse_result;
 
+pub mod applicative;
 pub mod ascii;
 pub mod buffer;
 pub mod parsers;
