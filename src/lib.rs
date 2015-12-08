@@ -177,6 +177,7 @@
 //!
 //! The entire grammar for the macro is listed elsewhere in this documentation.
 
+#![feature(default_type_parameter_fallback)]
 #![cfg_attr(all(test, feature = "unstable"), feature(fnbox))]
 
 #[macro_use]
@@ -272,5 +273,24 @@ pub mod primitives {
     /// ``parse_result::new``.
     pub mod parse_result {
         pub use parse_result::new;
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use {Input, ParseResult};
+    use primitives::input::*;
+    use primitives::{IntoInner, State};
+    use applicative::Applicative;
+
+    #[test]
+    fn ap_test() {
+        let m = new(END_OF_INPUT, b"test");
+
+        fn f<I: Copy>(i: Input<I>) -> ParseResult<I, u64, ()> {
+            i.ret(123)
+        }
+
+        assert_eq!(m.ap(f).ap(f).into_inner(), State::Data(new(END_OF_INPUT, b"test"), (123, 123)));
     }
 }
