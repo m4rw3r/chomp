@@ -180,6 +180,8 @@
 #[macro_use]
 extern crate bitflags;
 extern crate conv;
+#[cfg(feature = "nom_adapter")]
+extern crate nom;
 
 #[macro_use]
 mod macros;
@@ -269,3 +271,6 @@ pub mod primitives {
         pub use parse_result::new;
     }
 }
+
+#[cfg(feature = "nom_adapter")]
+pub use input::NomError;
