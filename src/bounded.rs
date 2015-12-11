@@ -6,6 +6,7 @@ use std::ops::{
     RangeFull,
     RangeTo,
 };
+use std::cmp::max;
 
 use {Input, ParseResult};
 use primitives::{InputClone, InputBuffer, IntoInner, State};
@@ -181,7 +182,8 @@ impl BoundedRange for Range<usize> {
             state:  EndState::Incomplete(1),
             parser: f,
             buf:    i,
-            data:   (self.start, self.end),
+            // Range is closed on left side, open on right, ie. [self.start, self.end)
+            data:   (self.start, max(self.end, 1) - 1),
             _t:     PhantomData,
         };
 
@@ -230,6 +232,7 @@ impl BoundedRange for RangeFrom<usize> {
             state:  EndState::Incomplete(1),
             parser: f,
             buf:    i,
+            // Inclusive
             data:   self.start,
             _t:     PhantomData,
         };
@@ -269,6 +272,7 @@ impl BoundedRange for RangeFull {
             state:  EndState::Incomplete(1),
             parser: f,
             buf:    i,
+            // No data required
             data:   (),
             _t:     PhantomData,
         };
@@ -315,7 +319,8 @@ impl BoundedRange for RangeTo<usize> {
             state:  EndState::Incomplete(1),
             parser: f,
             buf:    i,
-            data:   self.end,
+            // Exclusive range [0, end)
+            data:   max(self.end, 1) - 1,
             _t:     PhantomData,
         };
 
