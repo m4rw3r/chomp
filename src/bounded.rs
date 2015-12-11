@@ -10,6 +10,42 @@ use std::ops::{
 use {Input, ParseResult};
 use primitives::{InputClone, InputBuffer, IntoInner, State};
 
+/// Internal macro to provide speedup for `FromIterator::from_iter`.
+///
+/// Needed as of rustc 1.7.0-nightly (81ae8be71 2015-12-09).
+macro_rules! run_from_iter(
+    ( $iter:ident as $r_ty:ty ) => {
+        {
+            // Dummy variable to tie the scope of the iteration into the current scope,
+            // this causes rustc to inline `Iterator::next` into this scope including
+            // `FromIterator::from_iter`.
+            // This is probably how it works, #[inline] and #[inline(always)] do not affect it as
+            // of rustc 1.7.0-nightly (81ae8be71 2015-12-09).
+            let mut item = false;
+
+            // the inspect() is useless here, but ties the inner scope of the loop to the current
+            // scope which will make it inline `Iterator::next`.
+            let result: T = FromIterator::from_iter($iter.by_ref().inspect(|_| item = true));
+
+            // Oddly enough, no inspect() is much much slower:
+            //
+            // ```
+            // let result: $r_ty = FromIterator::from_iter($iter.by_ref());
+            // ```
+            //
+            // The above code is only faster in very very small benchmarks, anything larger than
+            // the benchmarks for many (ie. multiple `many(i, any)`) will most likely be slower
+            // when using the above line.
+
+            // The performance difference is definitely noticeable in benchmarks, parsing 10k bytes of
+            // any type and just storing them in a Vec is 10x slower on current nightly
+            // (rustc 1.7.0-nightly (81ae8be71 2015-12-09)).
+
+            (result, $iter.end_state())
+        }
+    }
+);
+
 /// Macro to implement a parser iterator, it provides the ability to add an extra state variable
 /// into it and also provide a size_hint as well as a pre- and on-next hooks.
 macro_rules! impl_iter {
@@ -48,7 +84,7 @@ macro_rules! impl_iter {
                 T: 'a,
                 E: 'a,
                 F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
-            #[inline]
+            #[inline(always)]
             fn end_state(self) -> (Input<'a, I>, $data_ty, EndState<'a, I, E>) {
                 (self.buf, self.data, self.state)
             }
@@ -61,12 +97,12 @@ macro_rules! impl_iter {
                 F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
             type Item = T;
 
-            #[inline]
+            #[inline(always)]
             fn size_hint(&$size_hint_self) -> (usize, Option<usize>) {
                 $size_hint
             }
 
-            #[inline]
+            #[inline(always)]
             fn next(&mut $next_self) -> Option<Self::Item> {
                 $pre_next
 
@@ -149,9 +185,9 @@ impl BoundedRange for Range<usize> {
             _t:     PhantomData,
         };
 
-        let result: T = FromIterator::from_iter(iter.by_ref());
+        let (result, state) = run_from_iter!(iter as T);
 
-        match iter.end_state() {
+        match state {
             // Got all occurrences of the parser
             (s, (0, 0), _) => s.ret(result),
             // Ok, last parser failed and we have reached minimum, we have iterated all.
@@ -197,15 +233,10 @@ impl BoundedRange for RangeFrom<usize> {
             data:   self.start,
             _t:     PhantomData,
         };
-        // Dummy variable to make it fast
-        let mut item = false;
 
-        // the inspect() is useless here, but makes the loop go vroom
-        let result: T = FromIterator::from_iter(iter.by_ref().inspect(|_| item = true));
-        // Oddly enough, no inspect is slower
-        // let result: T = FromIterator::from_iter(iter.by_ref());
+        let (result, state) = run_from_iter!(iter as T);
 
-        match iter.end_state() {
+        match state {
             // We got at least n items
             (s, 0, EndState::Error(_, _))   => s.ret(result),
             // Nested parser incomplete, propagate if not at end
@@ -242,17 +273,9 @@ impl BoundedRange for RangeFull {
             _t:     PhantomData,
         };
 
-        //let result: T = FromIterator::from_iter(iter.by_ref());
+        let (result, state) = run_from_iter!(iter as T);
 
-        // Dummy variable to make it fast
-        let mut item = false;
-
-        // the inspect() is useless here, but makes the loop go vroom
-        let result: T = FromIterator::from_iter(iter.by_ref().inspect(|_| item = true));
-        // Oddly enough, no inspect is slower
-        // let result: T = FromIterator::from_iter(iter.by_ref());
-
-        match iter.end_state() {
+        match state {
             (s, (), EndState::Error(_, _))   => s.ret(result),
             // Nested parser incomplete, propagate if not at end
             (s, (), EndState::Incomplete(n)) => if s.buffer().len() == 0 && s.is_last_slice() {
@@ -296,9 +319,9 @@ impl BoundedRange for RangeTo<usize> {
             _t:     PhantomData,
         };
 
-        let result: T = FromIterator::from_iter(iter.by_ref());
+        let (result, state) = run_from_iter!(iter as T);
 
-        match iter.end_state() {
+        match state {
             // Either error or incomplete after the end
             (s, 0, _)                       => s.ret(result),
             // Inside of range, never outside
