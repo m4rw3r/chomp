@@ -452,6 +452,60 @@ mod test {
     use parsers::{any, token, string};
 
     #[test]
+    fn many_test() {
+        let r: State<_, Vec<_>, _> = many(new(DEFAULT, b""), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+        let r: State<_, Vec<_>, _> = many(new(DEFAULT, b"a"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+        let r: State<_, Vec<_>, _> = many(new(DEFAULT, b"aa"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+
+        let r: State<_, Vec<_>, _> = many(new(DEFAULT, b"bbb"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(DEFAULT, b"bbb"), vec![]));
+        let r: State<_, Vec<_>, _> = many(new(DEFAULT, b"abb"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(DEFAULT, b"bb"), vec![b'a']));
+        let r: State<_, Vec<_>, _> = many(new(DEFAULT, b"aab"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(DEFAULT, b"b"), vec![b'a', b'a']));
+
+        let r: State<_, Vec<_>, _> = many(new(END_OF_INPUT, b""), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(END_OF_INPUT, b""), vec![]));
+        let r: State<_, Vec<_>, _> = many(new(END_OF_INPUT, b"a"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(END_OF_INPUT, b""), vec![b'a']));
+        let r: State<_, Vec<_>, _> = many(new(END_OF_INPUT, b"aa"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(END_OF_INPUT, b""), vec![b'a', b'a']));
+
+        let r: State<_, Vec<_>, _> = many(new(END_OF_INPUT, b"aab"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(END_OF_INPUT, b"b"), vec![b'a', b'a']));
+    }
+
+    #[test]
+    fn many1_test() {
+        let r: State<_, Vec<_>, _> = many1(new(DEFAULT, b""), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+        let r: State<_, Vec<_>, _> = many1(new(DEFAULT, b"a"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+        let r: State<_, Vec<_>, _> = many1(new(DEFAULT, b"aa"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+
+        let r: State<_, Vec<_>, _> = many1(new(DEFAULT, b"bbb"), |i| token(i, b'a').map_err(|_| "token_error")).into_inner();
+        assert_eq!(r, State::Error(b"bbb", "token_error"));
+        let r: State<_, Vec<_>, _> = many1(new(DEFAULT, b"abb"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(DEFAULT, b"bb"), vec![b'a']));
+        let r: State<_, Vec<_>, _> = many1(new(DEFAULT, b"aab"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(DEFAULT, b"b"), vec![b'a', b'a']));
+
+        let r: State<_, Vec<_>, _> = many1(new(END_OF_INPUT, b""), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+        let r: State<_, Vec<_>, _> = many1(new(END_OF_INPUT, b"a"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(END_OF_INPUT, b""), vec![b'a']));
+        let r: State<_, Vec<_>, _> = many1(new(END_OF_INPUT, b"aa"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(END_OF_INPUT, b""), vec![b'a', b'a']));
+
+        let r: State<_, Vec<_>, _> = many1(new(END_OF_INPUT, b"aab"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(END_OF_INPUT, b"b"), vec![b'a', b'a']));
+    }
+
+    #[test]
     fn count_test() {
         let r: State<_, Vec<_>, _> = count(new(DEFAULT, b""), 3,  |i| token(i, b'a')).into_inner();
         assert_eq!(r, State::Incomplete(1));
