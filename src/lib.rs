@@ -188,6 +188,7 @@ mod iter;
 mod parse_result;
 
 pub mod ascii;
+pub mod bounded;
 pub mod buffer;
 pub mod parsers;
 pub mod combinators;
