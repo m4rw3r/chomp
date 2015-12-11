@@ -504,6 +504,31 @@ mod test {
     use parsers::{any, token, string};
 
     #[test]
+    fn count_test() {
+        let r: State<_, Vec<_>, _> = count(new(DEFAULT, b""), 3,  |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+        let r: State<_, Vec<_>, _> = count(new(DEFAULT, b"a"), 3,  |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+        let r: State<_, Vec<_>, _> = count(new(DEFAULT, b"aa"), 3,  |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+        let r: State<_, Vec<_>, _> = count(new(DEFAULT, b"aaa"), 3,  |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(DEFAULT, b""), vec![b'a', b'a', b'a']));
+        let r: State<_, Vec<_>, _> = count(new(DEFAULT, b"aaaa"), 3,  |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(DEFAULT, b"a"), vec![b'a', b'a', b'a']));
+
+        let r: State<_, Vec<_>, _> = count(new(END_OF_INPUT, b""), 3,  |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+        let r: State<_, Vec<_>, _> = count(new(END_OF_INPUT, b"a"), 3,  |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+        let r: State<_, Vec<_>, _> = count(new(END_OF_INPUT, b"aa"), 3,  |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+        let r: State<_, Vec<_>, _> = count(new(END_OF_INPUT, b"aaa"), 3,  |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(END_OF_INPUT, b""), vec![b'a', b'a', b'a']));
+        let r: State<_, Vec<_>, _> = count(new(END_OF_INPUT, b"aaaa"), 3,  |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(END_OF_INPUT, b"a"), vec![b'a', b'a', b'a']));
+    }
+
+    #[test]
     fn skip_many1_test() {
         assert_eq!(skip_many1(new(DEFAULT, b"aabc"), |i| token(i, b'a')).into_inner(), State::Data(new(DEFAULT, b"bc"), ()));
         assert_eq!(skip_many1(new(DEFAULT, b"abc"), |i| token(i, b'a')).into_inner(), State::Data(new(DEFAULT, b"bc"), ()));
