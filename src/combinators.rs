@@ -44,7 +44,7 @@ pub fn count<'a, I, T, E, F, U>(i: Input<'a, I>, num: usize, p: F) -> ParseResul
         U: 'a,
         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
         T: FromIterator<U> {
-    b_many(i, num..num, p)
+    b_many(i, num, p)
 }
 
 /// Tries the parser ``f``, on success it yields the parsed value, on failure ``default`` will be

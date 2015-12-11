@@ -341,6 +341,52 @@ impl BoundedRange for RangeTo<usize> {
     }
 }
 
+impl BoundedRange for usize {
+    #[inline]
+    fn parse<'a, I, T, E, F, U>(&self, i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
+      where I: Copy,
+            U: 'a,
+            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
+            T: FromIterator<U> {
+        impl_iter!(ToIter(usize) {
+            size_hint(self) {
+                (self.data, Some(self.data))
+            }
+
+            next(self) {
+                pre {
+                    if self.data == 0 {
+                        return None;
+                    }
+                }
+                on {
+                    self.data  -= 1;
+                }
+            }
+        });
+
+        let mut iter = ToIter {
+            state:  EndState::Incomplete(1),
+            parser: f,
+            buf:    i,
+            // Excatly self
+            data:   *self,
+            _t:     PhantomData,
+        };
+
+        let (result, state) = run_from_iter!(iter as T);
+
+        match state {
+            // Got exact
+            (s, 0, _)                       => s.ret(result),
+            // We have got too few items, propagate error
+            (s, _, EndState::Error(b, e))   => s.replace(b).err(e),
+            // Nested parser incomplete, propagate
+            (s, _, EndState::Incomplete(n)) => s.incomplete(n),
+        }
+    }
+}
+
 #[inline]
 pub fn many<'a, I, T, E, F, U, R>(i: Input<'a, I>, r: R, f: F) -> ParseResult<'a, I, T, E>
   where I: Copy,
