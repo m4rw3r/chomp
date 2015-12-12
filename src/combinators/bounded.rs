@@ -649,6 +649,24 @@ mod test {
 
     #[test]
     fn many_range_to() {
+        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b""), ..0, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b""), vec![]));
+        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"a"), ..0, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"a"), vec![]));
+        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b""), ..0, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), vec![]));
+        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"a"), ..0, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"a"), vec![]));
+
+        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b""), ..1, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b""), vec![]));
+        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"a"), ..1, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"a"), vec![]));
+        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b""), ..1, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), vec![]));
+        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"a"), ..1, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"a"), vec![]));
+
         let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b""), ..3, |i| token(i, b'a'));
         assert_eq!(r.into_inner(), State::Incomplete(1));
         let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"a"), ..3, |i| token(i, b'a'));
@@ -721,6 +739,24 @@ mod test {
 
     #[test]
     fn many_range() {
+        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b""), 0..0, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b""), vec![]));
+        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"a"), 0..0, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"a"), vec![]));
+        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b""), 0..0, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), vec![]));
+        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"a"), 0..0, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"a"), vec![]));
+
+        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b""), 0..1, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b""), vec![]));
+        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"a"), 0..1, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"a"), vec![]));
+        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b""), 0..1, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), vec![]));
+        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"a"), 0..1, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"a"), vec![]));
+
         let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b""), 2..4, |i| token(i, b'a'));
         assert_eq!(r.into_inner(), State::Incomplete(1));
         let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"a"), 2..4, |i| token(i, b'a'));
@@ -838,6 +874,24 @@ mod test {
 
     #[test]
     fn skip_range_to() {
+        let r = skip_many(new(DEFAULT, b""), ..0, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b""), ()));
+        let r = skip_many(new(DEFAULT, b"a"), ..0, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"a"), ()));
+        let r = skip_many(new(END_OF_INPUT, b""), ..0, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), ()));
+        let r = skip_many(new(END_OF_INPUT, b"a"), ..0, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"a"), ()));
+
+        let r = skip_many(new(DEFAULT, b""), ..1, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b""), ()));
+        let r = skip_many(new(DEFAULT, b"a"), ..1, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"a"), ()));
+        let r = skip_many(new(END_OF_INPUT, b""), ..1, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), ()));
+        let r = skip_many(new(END_OF_INPUT, b"a"), ..1, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"a"), ()));
+
         let r = skip_many(new(DEFAULT, b""), ..3, |i| token(i, b'a'));
         assert_eq!(r.into_inner(), State::Incomplete(1));
         let r = skip_many(new(DEFAULT, b"a"), ..3, |i| token(i, b'a'));
@@ -910,6 +964,24 @@ mod test {
 
     #[test]
     fn skip_range() {
+        let r = skip_many(new(DEFAULT, b""), 0..0, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b""), ()));
+        let r = skip_many(new(DEFAULT, b"a"), 0..0, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"a"), ()));
+        let r = skip_many(new(END_OF_INPUT, b""), 0..0, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), ()));
+        let r = skip_many(new(END_OF_INPUT, b"a"), 0..0, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"a"), ()));
+
+        let r = skip_many(new(DEFAULT, b""), 0..1, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b""), ()));
+        let r = skip_many(new(DEFAULT, b"a"), 0..1, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"a"), ()));
+        let r = skip_many(new(END_OF_INPUT, b""), 0..1, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), ()));
+        let r = skip_many(new(END_OF_INPUT, b"a"), 0..1, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"a"), ()));
+
         let r = skip_many(new(DEFAULT, b""), 2..4, |i| token(i, b'a'));
         assert_eq!(r.into_inner(), State::Incomplete(1));
         let r = skip_many(new(DEFAULT, b"a"), 2..4, |i| token(i, b'a'));
