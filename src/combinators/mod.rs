@@ -6,9 +6,9 @@ use {ParseResult, Input};
 
 use primitives::State;
 use primitives::{IntoInner, InputBuffer, InputClone};
-use iter::{EndState, EndStateTill, Iter, IterTill};
+use iter::{EndStateTill, IterTill};
 
-use bounded::many as b_many;
+pub mod bounded;
 
 
 /// Applies the parser ``p`` exactly ``num`` times, propagating any error or incomplete state.
@@ -44,7 +44,7 @@ pub fn count<'a, I, T, E, F, U>(i: Input<'a, I>, num: usize, p: F) -> ParseResul
         U: 'a,
         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
         T: FromIterator<U> {
-    b_many(i, num, p)
+    bounded::many(i, num, p)
 }
 
 /// Tries the parser ``f``, on success it yields the parsed value, on failure ``default`` will be
@@ -128,7 +128,7 @@ pub fn many<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E
         U: 'a,
         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
         T: FromIterator<U> {
-    b_many(i, .., f)
+    bounded::many(i, .., f)
 }
 
 /// Parses at least one instance of ``f`` and continues until it does no longer match,
@@ -161,7 +161,7 @@ pub fn many1<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, 
         U: 'a,
         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
         T: FromIterator<U> {
-    b_many(i, 1.., f)
+    bounded::many(i, 1.., f)
 }
 
 /// Applies the parser `R` zero or more times, separated by the parser `F`. All matches from `R`
@@ -203,7 +203,7 @@ pub fn sep_by<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, mut p: R, mut sep: F)
         .then(&mut p)
         .inspect(|_| item = true);
 
-    b_many(i, .., parser)
+    bounded::many(i, .., parser)
 }
 
 
@@ -246,7 +246,7 @@ pub fn sep_by1<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, mut p: R, mut sep: F
         .then(&mut p)
         .inspect(|_| item = true);
 
-    b_many(i, 1.., parser)
+    bounded::many(i, 1.., parser)
 }
 
 /// Applies the parser `R` multiple times until the parser `F` succeeds and returns a value
@@ -303,7 +303,8 @@ pub fn many_till<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, p: R, end: F) -> P
 /// ```
 #[inline]
 pub fn skip_many<'a, I, T, E, F>(mut i: Input<'a, I>, mut f: F) -> ParseResult<'a, I, (), E>
-  where T: 'a, F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+  where T: 'a,
+        F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
     loop {
         match f(i.clone()).into_inner() {
             State::Data(b, _)    => i = b,

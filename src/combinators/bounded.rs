@@ -1,3 +1,21 @@
+//! Bounded versions of combinators.
+//!
+//! This module provides bounded versions of `many`, `many_till` and `skip_many`.
+//!
+//! The core range types are used to describe a half-open range of successive applications of a
+//! parser. `usize` is used to specify an exact number of iterations:
+//!
+//! ```
+//! use chomp::combinators::bounded::many;
+//! use chomp::{Input, ParseResult, any};
+//!
+//! let i = Input::new(b"abcd");
+//! // Read any character 2 or 3 times
+//! let r: ParseResult<_, Vec<_>, _> = many(i, 2..4, any);
+//!
+//! assert_eq!(r.unwrap(), vec![b'a', b'b', b'c']);
+//! ```
+
 use std::marker::PhantomData;
 use std::iter::FromIterator;
 use std::ops::{
@@ -146,7 +164,7 @@ macro_rules! impl_iter {
 /// Trait for iterating a parser based on a range.
 pub trait BoundedRange {
     #[inline]
-    fn parse<'a, I, T, E, F, U>(&self, i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
+    fn parse_many<'a, I, T, E, F, U>(self, i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
       where I: Copy,
             U: 'a,
             F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
@@ -155,7 +173,7 @@ pub trait BoundedRange {
 
 impl BoundedRange for Range<usize> {
     #[inline]
-    fn parse<'a, I, T, E, F, U>(&self, i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
+    fn parse_many<'a, I, T, E, F, U>(self, i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
       where I: Copy,
             U: 'a,
             F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
@@ -210,7 +228,7 @@ impl BoundedRange for Range<usize> {
 
 impl BoundedRange for RangeFrom<usize> {
     #[inline]
-    fn parse<'a, I, T, E, F, U>(&self, i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
+    fn parse_many<'a, I, T, E, F, U>(self, i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
       where I: Copy,
             U: 'a,
             F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
@@ -257,7 +275,7 @@ impl BoundedRange for RangeFrom<usize> {
 
 impl BoundedRange for RangeFull {
     #[inline]
-    fn parse<'a, I, T, E, F, U>(&self, i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
+    fn parse_many<'a, I, T, E, F, U>(self, i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
       where I: Copy,
             U: 'a,
             F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
@@ -293,7 +311,7 @@ impl BoundedRange for RangeFull {
 
 impl BoundedRange for RangeTo<usize> {
     #[inline]
-    fn parse<'a, I, T, E, F, U>(&self, i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
+    fn parse_many<'a, I, T, E, F, U>(self, i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
       where I: Copy,
             U: 'a,
             F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
@@ -343,7 +361,7 @@ impl BoundedRange for RangeTo<usize> {
 
 impl BoundedRange for usize {
     #[inline]
-    fn parse<'a, I, T, E, F, U>(&self, i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
+    fn parse_many<'a, I, T, E, F, U>(self, i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
       where I: Copy,
             U: 'a,
             F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
@@ -370,7 +388,7 @@ impl BoundedRange for usize {
             parser: f,
             buf:    i,
             // Excatly self
-            data:   *self,
+            data:   self,
             _t:     PhantomData,
         };
 
@@ -394,5 +412,5 @@ pub fn many<'a, I, T, E, F, U, R>(i: Input<'a, I>, r: R, f: F) -> ParseResult<'a
         U: 'a,
         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
         T: FromIterator<U> {
-    BoundedRange::parse(&r, i, f)
+    BoundedRange::parse_many(r, i, f)
 }
