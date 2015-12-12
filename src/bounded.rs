@@ -196,7 +196,7 @@ impl BoundedRange for Range<usize> {
             // Return remainder of buffer and the collected result
             (s, (0, _), EndState::Error(_, _))   => s.ret(result),
             // Nested parser incomplete but reached at least minimum, propagate if not at end
-            (s, (0, _), EndState::Incomplete(n)) => if s.buffer().len() == 0 && s.is_last_slice() {
+            (s, (0, _), EndState::Incomplete(n)) => if s.is_last_slice() {
                 s.ret(result)
             } else {
                 s.incomplete(n)
@@ -243,7 +243,7 @@ impl BoundedRange for RangeFrom<usize> {
             // We got at least n items
             (s, 0, EndState::Error(_, _))   => s.ret(result),
             // Nested parser incomplete, propagate if not at end
-            (s, 0, EndState::Incomplete(n)) => if s.buffer().len() == 0 && s.is_last_slice() {
+            (s, 0, EndState::Incomplete(n)) => if s.is_last_slice() {
                 s.ret(result)
             } else {
                 s.incomplete(n)
@@ -282,7 +282,7 @@ impl BoundedRange for RangeFull {
         match state {
             (s, (), EndState::Error(_, _))   => s.ret(result),
             // Nested parser incomplete, propagate if not at end
-            (s, (), EndState::Incomplete(n)) => if s.buffer().len() == 0 && s.is_last_slice() {
+            (s, (), EndState::Incomplete(n)) => if s.is_last_slice() {
                 s.ret(result)
             } else {
                 s.incomplete(n)
@@ -332,7 +332,7 @@ impl BoundedRange for RangeTo<usize> {
             // Inside of range, never outside
             (s, _, EndState::Error(_, _))   => s.ret(result),
             // Nested parser incomplete, propagate if not at end
-            (s, _, EndState::Incomplete(n)) => if s.buffer().len() == 0 && s.is_last_slice() {
+            (s, _, EndState::Incomplete(n)) => if s.is_last_slice() {
                 s.ret(result)
             } else {
                 s.incomplete(n)
