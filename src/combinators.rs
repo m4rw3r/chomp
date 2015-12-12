@@ -195,21 +195,15 @@ pub fn sep_by<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, mut p: R, mut sep: F)
     // If we have parsed at least one item
     let mut item = false;
     // Add sep in front of p if we have read at least one item
-    let parser   = |i| (if item { sep(i).map(|_| ()) } else { i.ret(()) }).then(&mut p).inspect(|_| item = true);
-    let mut iter = Iter::new(i, parser);
-
-    let result: T = FromIterator::from_iter(iter.by_ref());
-
-    match iter.end_state() {
-        (s, EndState::Error(_, _))   => s.ret(result),
-        // Nested parser incomplete, propagate
-        // Only propagate if we can read more data
-        (s, EndState::Incomplete(n)) => if s.is_last_slice() {
-            s.ret(result)
+    let parser   = |i| (if item {
+            sep(i).map(|_| ())
         } else {
-            s.incomplete(n)
-        },
-    }
+            i.ret(())
+        })
+        .then(&mut p)
+        .inspect(|_| item = true);
+
+    b_many(i, .., parser)
 }
 
 
@@ -243,32 +237,16 @@ pub fn sep_by1<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, mut p: R, mut sep: F
         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
     // If we have parsed at least one item
     let mut item = false;
-    // Wrap to end borrow of item
-    let (result, state): (T, _) = {
-        // Add sep in front of p if we have read at least one item
-        let parser   = |i| (if item { sep(i).map(|_| ()) } else { i.ret(()) }).then(&mut p).inspect(|_| item = true);
-        let mut iter = Iter::new(i, parser);
+    // Add sep in front of p if we have read at least one item
+    let parser   = |i| (if item {
+            sep(i).map(|_| ())
+        } else {
+            i.ret(())
+        })
+        .then(&mut p)
+        .inspect(|_| item = true);
 
-        (FromIterator::from_iter(iter.by_ref()), iter.end_state())
-    };
-
-    if !item {
-        match state {
-            (s, EndState::Error(b, e))   => s.replace(b).err(e),
-            (s, EndState::Incomplete(n)) => s.incomplete(n),
-        }
-    } else {
-        match state {
-            (s, EndState::Error(_, _))   => s.ret(result),
-            // Nested parser incomplete, propagate
-            // Only propagate if we can read more data
-            (s, EndState::Incomplete(n)) => if s.is_last_slice() {
-                s.ret(result)
-            } else {
-                s.incomplete(n)
-            },
-        }
-    }
+    b_many(i, 1.., parser)
 }
 
 /// Applies the parser `R` multiple times until the parser `F` succeeds and returns a value
