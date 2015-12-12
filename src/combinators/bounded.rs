@@ -169,6 +169,11 @@ pub trait BoundedRange {
             U: 'a,
             F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
             T: FromIterator<U>;
+
+    #[inline]
+    fn skip_many<'a, I, T, E, F>(self, Input<'a, I>, F) -> ParseResult<'a, I, (), E>
+      where T: 'a,
+            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E>;
 }
 
 impl BoundedRange for Range<usize> {
@@ -224,6 +229,38 @@ impl BoundedRange for Range<usize> {
             (s, (_, _), EndState::Incomplete(n)) => s.incomplete(n),
         }
     }
+
+    #[inline]
+    fn skip_many<'a, I, T, E, F>(self, mut i: Input<'a, I>, mut f: F) -> ParseResult<'a, I, (), E>
+      where T: 'a,
+            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+        // Closed on left side, open on right
+        let (mut min, mut max) = (self.start, max(self.end, 1) - 1);
+
+        loop {
+            if max == 0 {
+                break;
+            }
+
+            match f(i.clone()).into_inner() {
+                State::Data(b, _)    => {
+                    min  = if min == 0 { 0 } else { min - 1 };
+                    max -= 1;
+
+                    i = b
+                },
+                State::Error(b, e)   => if min == 0 {
+                    break;
+                } else {
+                    // Not enough iterations
+                    return i.replace(b).err(e);
+                },
+                State::Incomplete(n) => return i.incomplete(n),
+            }
+        }
+
+        i.ret(())
+    }
 }
 
 impl BoundedRange for RangeFrom<usize> {
@@ -271,6 +308,33 @@ impl BoundedRange for RangeFrom<usize> {
             (s, _, EndState::Incomplete(n)) => s.incomplete(n),
         }
     }
+
+    #[inline]
+    fn skip_many<'a, I, T, E, F>(self, mut i: Input<'a, I>, mut f: F) -> ParseResult<'a, I, (), E>
+      where T: 'a,
+            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+        // Closed on left side, open on right
+        let mut min = self.start;
+
+        loop {
+            match f(i.clone()).into_inner() {
+                State::Data(b, _)    => {
+                    min  = if min == 0 { 0 } else { min - 1 };
+
+                    i = b
+                },
+                State::Error(b, e)   => if min == 0 {
+                    break;
+                } else {
+                    // Not enough iterations
+                    return i.replace(b).err(e);
+                },
+                State::Incomplete(n) => return i.incomplete(n),
+            }
+        }
+
+        i.ret(())
+    }
 }
 
 impl BoundedRange for RangeFull {
@@ -306,6 +370,21 @@ impl BoundedRange for RangeFull {
                 s.incomplete(n)
             },
         }
+    }
+
+    #[inline]
+    fn skip_many<'a, I, T, E, F>(self, mut i: Input<'a, I>, mut f: F) -> ParseResult<'a, I, (), E>
+      where T: 'a,
+            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+        loop {
+            match f(i.clone()).into_inner() {
+                State::Data(b, _)    => i = b,
+                State::Error(_, _)   => break,
+                State::Incomplete(n) => return i.incomplete(n),
+            }
+        }
+
+        i.ret(())
     }
 }
 
@@ -357,6 +436,33 @@ impl BoundedRange for RangeTo<usize> {
             },
         }
     }
+
+    #[inline]
+    fn skip_many<'a, I, T, E, F>(self, mut i: Input<'a, I>, mut f: F) -> ParseResult<'a, I, (), E>
+      where T: 'a,
+            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+        // [0, n)
+        let mut max = max(self.end, 1) - 1;
+
+        loop {
+            if max == 0 {
+                break;
+            }
+
+            match f(i.clone()).into_inner() {
+                State::Data(b, _)    => {
+                    max -= 1;
+
+                    i = b
+                },
+                // Always ok to end iteration
+                State::Error(_, _)   => break,
+                State::Incomplete(n) => return i.incomplete(n),
+            }
+        }
+
+        i.ret(())
+    }
 }
 
 impl BoundedRange for usize {
@@ -403,6 +509,36 @@ impl BoundedRange for usize {
             (s, _, EndState::Incomplete(n)) => s.incomplete(n),
         }
     }
+
+    #[inline]
+    fn skip_many<'a, I, T, E, F>(self, mut i: Input<'a, I>, mut f: F) -> ParseResult<'a, I, (), E>
+      where T: 'a,
+            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+        let mut n = self;
+
+        loop {
+            if n == 0 {
+                break;
+            }
+
+            match f(i.clone()).into_inner() {
+                State::Data(b, _)    => {
+                    n -= 1;
+
+                    i = b
+                },
+                State::Error(b, e)   => if n == 0 {
+                    break;
+                } else {
+                    // Not enough iterations
+                    return i.replace(b).err(e);
+                },
+                State::Incomplete(n) => return i.incomplete(n),
+            }
+        }
+
+        i.ret(())
+    }
 }
 
 #[inline]
@@ -413,4 +549,12 @@ pub fn many<'a, I, T, E, F, U, R>(i: Input<'a, I>, r: R, f: F) -> ParseResult<'a
         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
         T: FromIterator<U> {
     BoundedRange::parse_many(r, i, f)
+}
+
+#[inline]
+pub fn skip_many<'a, I, T, E, F, R>(i: Input<'a, I>, r: R, f: F) -> ParseResult<'a, I, (), E>
+  where T: 'a,
+        R: BoundedRange,
+        F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+    BoundedRange::skip_many(r, i, f)
 }

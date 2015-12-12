@@ -302,18 +302,10 @@ pub fn many_till<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, p: R, end: F) -> P
 /// assert_eq!(skip_many(p, |i| token(i, b'a')).bind(|i, _| token(i, b'b')).unwrap(), b'b');
 /// ```
 #[inline]
-pub fn skip_many<'a, I, T, E, F>(mut i: Input<'a, I>, mut f: F) -> ParseResult<'a, I, (), E>
+pub fn skip_many<'a, I, T, E, F>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, (), E>
   where T: 'a,
         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
-    loop {
-        match f(i.clone()).into_inner() {
-            State::Data(b, _)    => i = b,
-            State::Error(_, _)   => break,
-            State::Incomplete(n) => return i.incomplete(n),
-        }
-    }
-
-    i.ret(())
+    bounded::skip_many(i, .., f)
 }
 
 /// Runs the given parser until it fails, discarding matched input, expects at least one match.
