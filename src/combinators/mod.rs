@@ -1,5 +1,7 @@
 //! Basic combinators.
 
+pub mod bounded;
+
 use std::iter::FromIterator;
 
 use {ParseResult, Input};
@@ -7,9 +9,6 @@ use {ParseResult, Input};
 use primitives::State;
 use primitives::{IntoInner, InputBuffer, InputClone};
 use iter::{EndStateTill, IterTill};
-
-pub mod bounded;
-
 
 /// Applies the parser ``p`` exactly ``num`` times, propagating any error or incomplete state.
 ///
@@ -104,7 +103,7 @@ pub fn or<'a, I, T, E, F, G>(i: Input<'a, I>, f: F, g: G) -> ParseResult<'a, I, 
 /// Parses many instances of ``f`` until it does no longer match, returning all matches.
 ///
 /// Note: If the last parser succeeds on the last input item then this parser is still considered
-/// incomplete as there might be more data to fill.
+/// incomplete if the input flag END_OF_INPUT is not set as there might be more data to fill.
 ///
 /// Note: Allocates data.
 ///
