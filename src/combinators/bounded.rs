@@ -65,24 +65,31 @@ macro_rules! run_from_iter(
     }
 );
 
-/// Macro to implement a parser iterator, it provides the ability to add an extra state variable
-/// into it and also provide a size_hint as well as a pre- and on-next hooks.
-macro_rules! impl_iter {
-    ( $iter_name:ident ( $data_ty:ty ) {
-        size_hint($size_hint_self:ident) $size_hint:block
+/// Macro to implement and run a parser iterator, it provides the ability to add an extra state
+/// variable into it and also provide a size_hint as well as a pre- and on-next hooks.
+macro_rules! run_iter {
+    (
+        input:     $input:expr,
+        parser:    $parser:expr,
+        state:     $data_ty:ty : $data:expr,
 
+        size_hint($size_hint_self:ident) $size_hint:block
         next($next_self:ident) {
             pre $pre_next:block
             on  $on_next:block
         }
-    } ) => {
+
+        => $result:ident : $t:ty {
+             $($pat:pat => $arm:expr),*
+        }
+    ) => { {
         enum EndState<'a, I, E>
           where I: 'a {
             Error(&'a [I], E),
             Incomplete(usize),
         }
 
-        struct $iter_name<'a, I, T, E, F>
+        struct Iter<'a, I, T, E, F>
           where I: 'a,
                 T: 'a,
                 E: 'a,
@@ -98,30 +105,30 @@ macro_rules! impl_iter {
             _t:     PhantomData<T>,
         }
 
-        impl<'a, I, T, E, F> $iter_name<'a, I, T, E, F>
+        impl<'a, I, T, E, F> Iter<'a, I, T, E, F>
           where I: 'a,
                 T: 'a,
                 E: 'a,
                 F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
-            #[inline(always)]
+            #[inline]
             fn end_state(self) -> (Input<'a, I>, $data_ty, EndState<'a, I, E>) {
                 (self.buf, self.data, self.state)
             }
         }
 
-        impl<'a, I, T, E, F> Iterator for $iter_name<'a, I, T, E, F>
+        impl<'a, I, T, E, F> Iterator for Iter<'a, I, T, E, F>
           where I: 'a,
                 T: 'a,
                 E: 'a,
                 F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
             type Item = T;
 
-            #[inline(always)]
+            #[inline]
             fn size_hint(&$size_hint_self) -> (usize, Option<usize>) {
                 $size_hint
             }
 
-            #[inline(always)]
+            #[inline]
             fn next(&mut $next_self) -> Option<Self::Item> {
                 $pre_next
 
@@ -146,19 +153,21 @@ macro_rules! impl_iter {
                 }
             }
         }
-    };
-    ( $iter_name:ident ( $data_ty:ty ) {
-        size_hint($size_hint_self:ident) $size_hint:block
-    } ) => {
-        impl_iter!($iter_name ( $data_ty ) {
-            size_hint ( $size_hint_self ) $size_hint
 
-            next(self) {
-                pre {}
-                on  {}
-            }
-        })
-    };
+        let mut iter = Iter {
+            state:  EndState::Incomplete(1),
+            parser: $parser,
+            buf:    $input,
+            data:   $data,
+            _t:     PhantomData,
+        };
+
+        let ($result, state) = run_from_iter!(iter as $t);
+
+        match state {
+            $($pat => $arm),*
+        }
+    } }
 }
 
 /// Trait for applying a parser multiple times based on a range.
@@ -206,7 +215,12 @@ impl BoundedRange for Range<usize> {
             U: 'a,
             F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
             T: FromIterator<U> {
-        impl_iter!(ToIter((usize, usize)) {
+        run_iter!{
+            input:  i,
+            parser: f,
+            // Range is closed on left side, open on right, ie. [self.start, self.end)
+            state:  (usize, usize): (self.start, max(self.end, 1) - 1),
+
             size_hint(self) {
                 (self.data.0, Some(self.data.1))
             }
@@ -222,34 +236,23 @@ impl BoundedRange for Range<usize> {
                     self.data.1 -= 1;
                 }
             }
-        });
 
-        let mut iter = ToIter {
-            state:  EndState::Incomplete(1),
-            parser: f,
-            buf:    i,
-            // Range is closed on left side, open on right, ie. [self.start, self.end)
-            data:   (self.start, max(self.end, 1) - 1),
-            _t:     PhantomData,
-        };
-
-        let (result, state) = run_from_iter!(iter as T);
-
-        match state {
-            // Got all occurrences of the parser
-            (s, (0, 0), _) => s.ret(result),
-            // Ok, last parser failed and we have reached minimum, we have iterated all.
-            // Return remainder of buffer and the collected result
-            (s, (0, _), EndState::Error(_, _))   => s.ret(result),
-            // Nested parser incomplete but reached at least minimum, propagate if not at end
-            (s, (0, _), EndState::Incomplete(n)) => if s.is_last_slice() {
-                s.ret(result)
-            } else {
-                s.incomplete(n)
-            },
-            // Did not reach minimum, propagate
-            (s, (_, _), EndState::Error(b, e))   => s.replace(b).err(e),
-            (s, (_, _), EndState::Incomplete(n)) => s.incomplete(n),
+            => result : T {
+                // Got all occurrences of the parser
+                (s, (0, 0), _) => s.ret(result),
+                // Ok, last parser failed and we have reached minimum, we have iterated all.
+                // Return remainder of buffer and the collected result
+                (s, (0, _), EndState::Error(_, _))   => s.ret(result),
+                // Nested parser incomplete but reached at least minimum, propagate if not at end
+                (s, (0, _), EndState::Incomplete(n)) => if s.is_last_slice() {
+                    s.ret(result)
+                } else {
+                    s.incomplete(n)
+                },
+                // Did not reach minimum, propagate
+                (s, (_, _), EndState::Error(b, e))   => s.replace(b).err(e),
+                (s, (_, _), EndState::Incomplete(n)) => s.incomplete(n)
+            }
         }
     }
 
@@ -298,7 +301,12 @@ impl BoundedRange for RangeFrom<usize> {
             U: 'a,
             F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
             T: FromIterator<U> {
-        impl_iter!(FromIter(usize) {
+        run_iter!{
+            input:  i,
+            parser: f,
+            // Inclusive
+            state:  usize: self.start,
+
             size_hint(self) {
                 (self.data, None)
             }
@@ -309,31 +317,20 @@ impl BoundedRange for RangeFrom<usize> {
                     self.data = if self.data == 0 { 0 } else { self.data - 1 };
                 }
             }
-        });
 
-        let mut iter = FromIter {
-            state:  EndState::Incomplete(1),
-            parser: f,
-            buf:    i,
-            // Inclusive
-            data:   self.start,
-            _t:     PhantomData,
-        };
-
-        let (result, state) = run_from_iter!(iter as T);
-
-        match state {
-            // We got at least n items
-            (s, 0, EndState::Error(_, _))   => s.ret(result),
-            // Nested parser incomplete, propagate if not at end
-            (s, 0, EndState::Incomplete(n)) => if s.is_last_slice() {
-                s.ret(result)
-            } else {
-                s.incomplete(n)
-            },
-            // Items still remaining, propagate
-            (s, _, EndState::Error(b, e))   => s.replace(b).err(e),
-            (s, _, EndState::Incomplete(n)) => s.incomplete(n),
+            => result : T {
+                // We got at least n items
+                (s, 0, EndState::Error(_, _))   => s.ret(result),
+                // Nested parser incomplete, propagate if not at end
+                (s, 0, EndState::Incomplete(n)) => if s.is_last_slice() {
+                    s.ret(result)
+                } else {
+                    s.incomplete(n)
+                },
+                // Items still remaining, propagate
+                (s, _, EndState::Error(b, e))   => s.replace(b).err(e),
+                (s, _, EndState::Incomplete(n)) => s.incomplete(n)
+            }
         }
     }
 
@@ -377,31 +374,29 @@ impl BoundedRange for RangeFull {
             U: 'a,
             F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
             T: FromIterator<U> {
-        impl_iter!(ManyIter(()) {
+        run_iter!{
+            input:  i,
+            parser: f,
+            state:  (): (),
+
             size_hint(self) {
                 (0, None)
             }
-        });
 
-        let mut iter = ManyIter {
-            state:  EndState::Incomplete(1),
-            parser: f,
-            buf:    i,
-            // No data required
-            data:   (),
-            _t:     PhantomData,
-        };
+            next(self) {
+                pre {}
+                on  {}
+            }
 
-        let (result, state) = run_from_iter!(iter as T);
-
-        match state {
-            (s, (), EndState::Error(_, _))   => s.ret(result),
-            // Nested parser incomplete, propagate if not at end
-            (s, (), EndState::Incomplete(n)) => if s.is_last_slice() {
-                s.ret(result)
-            } else {
-                s.incomplete(n)
-            },
+            => result : T {
+                (s, (), EndState::Error(_, _))   => s.ret(result),
+                // Nested parser incomplete, propagate if not at end
+                (s, (), EndState::Incomplete(n)) => if s.is_last_slice() {
+                    s.ret(result)
+                } else {
+                    s.incomplete(n)
+                }
+            }
         }
     }
 
@@ -432,7 +427,12 @@ impl BoundedRange for RangeTo<usize> {
             U: 'a,
             F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
             T: FromIterator<U> {
-        impl_iter!(ToIter(usize) {
+        run_iter!{
+            input:  i,
+            parser: f,
+            // Exclusive range [0, end)
+            state:  usize:  max(self.end, 1) - 1,
+
             size_hint(self) {
                 (0, Some(self.data))
             }
@@ -447,30 +447,19 @@ impl BoundedRange for RangeTo<usize> {
                     self.data  -= 1;
                 }
             }
-        });
 
-        let mut iter = ToIter {
-            state:  EndState::Incomplete(1),
-            parser: f,
-            buf:    i,
-            // Exclusive range [0, end)
-            data:   max(self.end, 1) - 1,
-            _t:     PhantomData,
-        };
-
-        let (result, state) = run_from_iter!(iter as T);
-
-        match state {
-            // Either error or incomplete after the end
-            (s, 0, _)                       => s.ret(result),
-            // Inside of range, never outside
-            (s, _, EndState::Error(_, _))   => s.ret(result),
-            // Nested parser incomplete, propagate if not at end
-            (s, _, EndState::Incomplete(n)) => if s.is_last_slice() {
-                s.ret(result)
-            } else {
-                s.incomplete(n)
-            },
+            => result : T {
+                // Either error or incomplete after the end
+                (s, 0, _)                       => s.ret(result),
+                // Inside of range, never outside
+                (s, _, EndState::Error(_, _))   => s.ret(result),
+                // Nested parser incomplete, propagate if not at end
+                (s, _, EndState::Incomplete(n)) => if s.is_last_slice() {
+                    s.ret(result)
+                } else {
+                    s.incomplete(n)
+                }
+            }
         }
     }
 
@@ -513,7 +502,12 @@ impl BoundedRange for usize {
             U: 'a,
             F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
             T: FromIterator<U> {
-        impl_iter!(ToIter(usize) {
+        run_iter!{
+            input:  i,
+            parser: f,
+            // Excatly self
+            state:  usize: self,
+
             size_hint(self) {
                 (self.data, Some(self.data))
             }
@@ -528,26 +522,15 @@ impl BoundedRange for usize {
                     self.data  -= 1;
                 }
             }
-        });
 
-        let mut iter = ToIter {
-            state:  EndState::Incomplete(1),
-            parser: f,
-            buf:    i,
-            // Excatly self
-            data:   self,
-            _t:     PhantomData,
-        };
-
-        let (result, state) = run_from_iter!(iter as T);
-
-        match state {
-            // Got exact
-            (s, 0, _)                       => s.ret(result),
-            // We have got too few items, propagate error
-            (s, _, EndState::Error(b, e))   => s.replace(b).err(e),
-            // Nested parser incomplete, propagate
-            (s, _, EndState::Incomplete(n)) => s.incomplete(n),
+            => result : T {
+                // Got exact
+                (s, 0, _)                       => s.ret(result),
+                // We have got too few items, propagate error
+                (s, _, EndState::Error(b, e))   => s.replace(b).err(e),
+                // Nested parser incomplete, propagate
+                (s, _, EndState::Incomplete(n)) => s.incomplete(n)
+            }
         }
     }
 
