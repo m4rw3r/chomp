@@ -569,6 +569,17 @@ impl BoundedRange for usize {
     }
 }
 
+/// Applies the parser `F` multiple times until it fails or the maximum value of the range has
+/// been reached, collecting the successful values into a `T: FromIterator`.
+///
+/// Propagates errors if the minimum number of iterations has not been met
+///
+/// # Notes
+///
+/// * Will allocate depending on the `FromIterator` implementation.
+/// * Will never yield more items than the upper bound of the range.
+/// * If the last parser succeeds on the last input item then this parser is still considered
+///   incomplete if the input flag END_OF_INPUT is not set as there might be more data to fill.
 #[inline]
 pub fn many<'a, I, T, E, F, U, R>(i: Input<'a, I>, r: R, f: F) -> ParseResult<'a, I, T, E>
   where I: Copy,
@@ -579,6 +590,16 @@ pub fn many<'a, I, T, E, F, U, R>(i: Input<'a, I>, r: R, f: F) -> ParseResult<'a
     BoundedRange::parse_many(r, i, f)
 }
 
+/// Applies the parser `F` multiple times until it fails or the maximum value of the range has
+/// been reached, throwing away any produced value.
+///
+/// Propagates errors if the minimum number of iterations has not been met
+///
+/// # Notes
+///
+/// * Will never yield more items than the upper bound of the range.
+/// * If the last parser succeeds on the last input item then this parser is still considered
+///   incomplete if the input flag END_OF_INPUT is not set as there might be more data to fill.
 #[inline]
 pub fn skip_many<'a, I, T, E, F, R>(i: Input<'a, I>, r: R, f: F) -> ParseResult<'a, I, (), E>
   where T: 'a,
