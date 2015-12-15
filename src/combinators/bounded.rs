@@ -29,147 +29,6 @@ use std::cmp::max;
 use {Input, ParseResult};
 use primitives::{InputClone, InputBuffer, IntoInner, State};
 
-/// Internal macro to provide speedup for `FromIterator::from_iter`.
-///
-/// Needed as of rustc 1.7.0-nightly (81ae8be71 2015-12-09).
-macro_rules! run_from_iter(
-    ( $iter:ident as $r_ty:ty ) => {
-        {
-            // Dummy variable to tie the scope of the iteration into the current scope,
-            // this causes rustc to inline `Iterator::next` into this scope including
-            // `FromIterator::from_iter`.
-            // This is probably how it works, #[inline] and #[inline(always)] do not affect it as
-            // of rustc 1.7.0-nightly (81ae8be71 2015-12-09).
-            let mut item = false;
-
-            // the inspect() is useless here, but ties the inner scope of the loop to the current
-            // scope which will make it inline `Iterator::next`.
-            let result: T = FromIterator::from_iter($iter.by_ref().inspect(|_| item = true));
-
-            // Oddly enough, no inspect() is much much slower:
-            //
-            // ```
-            // let result: $r_ty = FromIterator::from_iter($iter.by_ref());
-            // ```
-            //
-            // The above code is only faster in very very small benchmarks, anything larger than
-            // the benchmarks for many (ie. multiple `many(i, any)`) will most likely be slower
-            // when using the above line.
-
-            // The performance difference is definitely noticeable in benchmarks, parsing 10k bytes of
-            // any type and just storing them in a Vec is 10x slower on current nightly
-            // (rustc 1.7.0-nightly (81ae8be71 2015-12-09)).
-
-            (result, $iter.end_state())
-        }
-    }
-);
-
-/// Macro to implement and run a parser iterator, it provides the ability to add an extra state
-/// variable into it and also provide a size_hint as well as a pre- and on-next hooks.
-macro_rules! run_iter {
-    (
-        input:     $input:expr,
-        parser:    $parser:expr,
-        state:     $data_ty:ty : $data:expr,
-
-        size_hint($size_hint_self:ident) $size_hint:block
-        next($next_self:ident) {
-            pre $pre_next:block
-            on  $on_next:block
-        }
-
-        => $result:ident : $t:ty {
-             $($pat:pat => $arm:expr),*
-        }
-    ) => { {
-        enum EndState<'a, I, E>
-          where I: 'a {
-            Error(&'a [I], E),
-            Incomplete(usize),
-        }
-
-        struct Iter<'a, I, T, E, F>
-          where I: 'a,
-                T: 'a,
-                E: 'a,
-                F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
-            /// Last state of the parser
-            state:  EndState<'a, I, E>,
-            /// Parser to execute once for each iteration
-            parser: F,
-            /// Remaining buffer
-            buf:    Input<'a, I>,
-            /// Nested state
-            data:   $data_ty,
-            _t:     PhantomData<T>,
-        }
-
-        impl<'a, I, T, E, F> Iter<'a, I, T, E, F>
-          where I: 'a,
-                T: 'a,
-                E: 'a,
-                F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
-            #[inline]
-            fn end_state(self) -> (Input<'a, I>, $data_ty, EndState<'a, I, E>) {
-                (self.buf, self.data, self.state)
-            }
-        }
-
-        impl<'a, I, T, E, F> Iterator for Iter<'a, I, T, E, F>
-          where I: 'a,
-                T: 'a,
-                E: 'a,
-                F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
-            type Item = T;
-
-            #[inline]
-            fn size_hint(&$size_hint_self) -> (usize, Option<usize>) {
-                $size_hint
-            }
-
-            #[inline]
-            fn next(&mut $next_self) -> Option<Self::Item> {
-                $pre_next
-
-                match ($next_self.parser)($next_self.buf.clone()).into_inner() {
-                    State::Data(b, v) => {
-                        $next_self.buf    = b;
-
-                        $on_next
-
-                        Some(v)
-                    },
-                    State::Error(b, e) => {
-                        $next_self.state = EndState::Error(b, e);
-
-                        None
-                    },
-                    State::Incomplete(n) => {
-                        $next_self.state = EndState::Incomplete(n);
-
-                        None
-                    },
-                }
-            }
-        }
-
-        let mut iter = Iter {
-            state:  EndState::Incomplete(1),
-            parser: $parser,
-            buf:    $input,
-            data:   $data,
-            _t:     PhantomData,
-        };
-
-        let ($result, state) = run_from_iter!(iter as $t);
-
-        match state {
-            $($pat => $arm),*
-        }
-    } }
-}
-
 /// Trait for applying a parser multiple times based on a range.
 pub trait BoundedRange {
     /// Applies the parser `F` multiple times until it fails or the maximum value of the range has
@@ -206,6 +65,27 @@ pub trait BoundedRange {
     fn skip_many<'a, I, T, E, F>(self, Input<'a, I>, F) -> ParseResult<'a, I, (), E>
       where T: 'a,
             F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E>;
+
+    /// Applies the parser `P` multiple times until the parser `F` succeeds and returns a value
+    /// populated by the values yielded by `P`. Consumes the matched part of `F`. If `F` does not
+    /// succeed within the given range `R` this combinator will propagate any failure from `P`.
+    ///
+    /// # Notes
+    ///
+    /// * Will allocate depending on the `FromIterator` implementation.
+    /// * Use `combinators::bounded::many_till` instead of calling this trait method directly.
+    /// * Must never yield more items than the upper bound of the range.
+    /// * If the last parser succeeds on the last input item then this combinator is still considered
+    ///   incomplete unless the parser `F` matches or the lower bound has not been met.
+    #[inline]
+    fn many_till<'a, I, T, E, R, F, U, N, V>(self, i: Input<'a, I>, p: R, end: F) -> ParseResult<'a, I, T, E>
+      where I: Copy,
+            U: 'a,
+            V: 'a,
+            N: 'a,
+            T: FromIterator<U>,
+            R: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
+            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N>;
 }
 
 impl BoundedRange for Range<usize> {
@@ -292,6 +172,60 @@ impl BoundedRange for Range<usize> {
 
         i.ret(())
     }
+
+    #[inline]
+    fn many_till<'a, I, T, E, R, F, U, N, V>(self, i: Input<'a, I>, p: R, end: F) -> ParseResult<'a, I, T, E>
+      where I: Copy,
+            U: 'a,
+            V: 'a,
+            N: 'a,
+            T: FromIterator<U>,
+            R: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
+            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
+        run_iter_till!{
+            input:  i,
+            parser: p,
+            end:    end,
+            // Range is closed on left side, open on right, ie. [self.start, self.end)
+            state:  (usize, usize): (self.start, max(self.end, 1) - 1),
+
+            size_hint(self) {
+                (self.data.0, Some(self.data.1))
+            }
+
+            next(self) {
+                pre {
+                    if self.data.0 == 0 {
+                        // We have reached minimum, we can attempt to end now
+                        iter_till_end_test!(self);
+                    }
+
+                    // Maximum reached, stop iteration and check error state
+                    if self.data.1 == 0 {
+                        // Attempt to make a successful end
+                        iter_till_end_test!(self);
+
+                        return None;
+                    }
+                }
+                on {
+                    self.data.0  = if self.data.0 == 0 { 0 } else { self.data.0 - 1 };
+                    self.data.1 -= 1;
+                }
+            }
+
+            => result : T {
+                // Got all occurrences of the parser
+                (s, (0, _), EndStateTill::EndSuccess)    => s.ret(result),
+                // Did not reach minimum or a failure, propagate
+                (s, (_, _), EndStateTill::Error(b, e))   => s.replace(b).err(e),
+                (s, (_, _), EndStateTill::Incomplete(n)) => s.incomplete(n),
+                // We cannot reach this since we only run the end test once we have reached the
+                // minimum number of matches
+                (_, (_, _), EndStateTill::EndSuccess)    => unreachable!()
+            }
+        }
+    }
 }
 
 impl BoundedRange for RangeFrom<usize> {
@@ -365,6 +299,51 @@ impl BoundedRange for RangeFrom<usize> {
 
         i.ret(())
     }
+
+    #[inline]
+    fn many_till<'a, I, T, E, R, F, U, N, V>(self, i: Input<'a, I>, p: R, end: F) -> ParseResult<'a, I, T, E>
+      where I: Copy,
+            U: 'a,
+            V: 'a,
+            N: 'a,
+            T: FromIterator<U>,
+            R: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
+            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
+        run_iter_till!{
+            input:  i,
+            parser: p,
+            end:    end,
+            // Range is closed on left side, unbounded on right
+            state:  usize: self.start,
+
+            size_hint(self) {
+                (self.data, None)
+            }
+
+            next(self) {
+                pre {
+                    if self.data == 0 {
+                        // We have reached minimum, we can attempt to end now
+                        iter_till_end_test!(self);
+                    }
+                }
+                on {
+                    self.data = if self.data == 0 { 0 } else { self.data - 1 };
+                }
+            }
+
+            => result : T {
+                // Got all occurrences of the parser
+                (s, 0, EndStateTill::EndSuccess)    => s.ret(result),
+                // Did not reach minimum or a failure, propagate
+                (s, _, EndStateTill::Error(b, e))   => s.replace(b).err(e),
+                (s, _, EndStateTill::Incomplete(n)) => s.incomplete(n),
+                // We cannot reach this since we only run the end test once we have reached the
+                // minimum number of matches
+                (_, _, EndStateTill::EndSuccess)    => unreachable!()
+            }
+        }
+    }
 }
 
 impl BoundedRange for RangeFull {
@@ -417,6 +396,42 @@ impl BoundedRange for RangeFull {
         }
 
         i.ret(())
+    }
+
+    #[inline]
+    fn many_till<'a, I, T, E, R, F, U, N, V>(self, i: Input<'a, I>, p: R, end: F) -> ParseResult<'a, I, T, E>
+      where I: Copy,
+            U: 'a,
+            V: 'a,
+            N: 'a,
+            T: FromIterator<U>,
+            R: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
+            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
+        run_iter_till!{
+            input:  i,
+            parser: p,
+            end:    end,
+            state:  (): (),
+
+            size_hint(self) {
+                (0, None)
+            }
+
+            next(self) {
+                pre {
+                    // Can end at any time
+                    iter_till_end_test!(self);
+                }
+                on  {}
+            }
+
+            => result : T {
+                (s, (), EndStateTill::EndSuccess)    => s.ret(result),
+                (s, (), EndStateTill::Error(b, e))   => s.replace(b).err(e),
+                // Nested parser incomplete, propagate if not at end
+                (s, (), EndStateTill::Incomplete(n)) => s.incomplete(n)
+            }
+        }
     }
 }
 
@@ -493,6 +508,54 @@ impl BoundedRange for RangeTo<usize> {
 
         i.ret(())
     }
+
+    #[inline]
+    fn many_till<'a, I, T, E, R, F, U, N, V>(self, i: Input<'a, I>, p: R, end: F) -> ParseResult<'a, I, T, E>
+      where I: Copy,
+            U: 'a,
+            V: 'a,
+            N: 'a,
+            T: FromIterator<U>,
+            R: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
+            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
+        run_iter_till!{
+            input:  i,
+            parser: p,
+            end:    end,
+            // [0, self.end)
+            state:  usize: max(self.end, 1) - 1,
+
+            size_hint(self) {
+                (0, Some(self.data))
+            }
+
+            next(self) {
+                pre {
+                    // Can end at any time
+                    iter_till_end_test!(self);
+
+                    // Maximum reached, stop iteration and check error state
+                    if self.data == 0 {
+                        return None;
+                    }
+                }
+                on {
+                    self.data -= 1;
+                }
+            }
+
+            => result : T {
+                // Got all occurrences of the parser
+                (s, 0, EndStateTill::EndSuccess)    => s.ret(result),
+                // Did not reach minimum or a failure, propagate
+                (s, _, EndStateTill::Error(b, e))   => s.replace(b).err(e),
+                (s, _, EndStateTill::Incomplete(n)) => s.incomplete(n),
+                // We cannot reach this since we only run the end test once we have reached the
+                // minimum number of matches
+                (_, _, EndStateTill::EndSuccess)    => unreachable!()
+            }
+        }
+    }
 }
 
 impl BoundedRange for usize {
@@ -567,6 +630,52 @@ impl BoundedRange for usize {
 
         i.ret(())
     }
+
+    #[inline]
+    fn many_till<'a, I, T, E, R, F, U, N, V>(self, i: Input<'a, I>, p: R, end: F) -> ParseResult<'a, I, T, E>
+      where I: Copy,
+            U: 'a,
+            V: 'a,
+            N: 'a,
+            T: FromIterator<U>,
+            R: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
+            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
+        run_iter_till!{
+            input:  i,
+            parser: p,
+            end:    end,
+            state:  usize: self,
+
+            size_hint(self) {
+                (self.data, Some(self.data))
+            }
+
+            next(self) {
+                pre {
+                    if self.data == 0 {
+                        // Attempt to make a successful end
+                        iter_till_end_test!(self);
+
+                        return None;
+                    }
+                }
+                on {
+                    self.data -= 1;
+                }
+            }
+
+            => result : T {
+                // Got all occurrences of the parser
+                (s, 0, EndStateTill::EndSuccess)    => s.ret(result),
+                // Did not reach minimum or a failure, propagate
+                (s, _, EndStateTill::Error(b, e))   => s.replace(b).err(e),
+                (s, _, EndStateTill::Incomplete(n)) => s.incomplete(n),
+                // We cannot reach this since we only run the end test once we have reached the
+                // minimum number of matches
+                (_, _, EndStateTill::EndSuccess)    => unreachable!()
+            }
+        }
+    }
 }
 
 /// Applies the parser `F` multiple times until it fails or the maximum value of the range has
@@ -606,6 +715,29 @@ pub fn skip_many<'a, I, T, E, F, R>(i: Input<'a, I>, r: R, f: F) -> ParseResult<
         R: BoundedRange,
         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
     BoundedRange::skip_many(r, i, f)
+}
+
+/// Applies the parser `P` multiple times until the parser `F` succeeds and returns a value
+/// populated by the values yielded by `P`. Consumes the matched part of `F`. If `F` does not
+/// succeed within the given range `R` this combinator will propagate any failure from `P`.
+///
+/// # Notes
+///
+/// * Will allocate depending on the `FromIterator` implementation.
+/// * Will never yield more items than the upper bound of the range.
+/// * If the last parser succeeds on the last input item then this combinator is still considered
+///   incomplete unless the parser `F` matches or the lower bound has not been met.
+#[inline]
+pub fn many_till<'a, I, T, E, R, F, U, N, P, V>(i: Input<'a, I>, r: R, p: P, end: F) -> ParseResult<'a, I, T, E>
+  where I: Copy,
+        U: 'a,
+        V: 'a,
+        N: 'a,
+        R: BoundedRange,
+        T: FromIterator<U>,
+        P: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
+        F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
+    BoundedRange::many_till(r, i, p, end)
 }
 
 #[cfg(test)]

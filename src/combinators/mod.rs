@@ -1,5 +1,8 @@
 //! Basic combinators.
 
+#[macro_use]
+mod macros;
+
 pub mod bounded;
 
 use std::iter::FromIterator;
@@ -8,7 +11,6 @@ use {ParseResult, Input};
 
 use primitives::State;
 use primitives::{IntoInner, InputBuffer, InputClone};
-use iter::{EndStateTill, IterTill};
 
 /// Applies the parser ``p`` exactly ``num`` times, propagating any error or incomplete state.
 ///
@@ -273,17 +275,7 @@ pub fn many_till<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, p: R, end: F) -> P
         T: FromIterator<U>,
         R: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
-    let mut iter = IterTill::new(i, p, end);
-
-    let result: T = FromIterator::from_iter(iter.by_ref());
-
-    match iter.end_state() {
-        (s, EndStateTill::EndSuccess)   => s.ret(result),
-        // Nested parser error, propagate
-        (s, EndStateTill::Error(b, e))   => s.replace(b).err(e),
-        // Nested parser incomplete, propagate
-        (s, EndStateTill::Incomplete(n)) => s.incomplete(n),
-    }
+    bounded::many_till(i, .., p, end)
 }
 
 /// Runs the given parser until it fails, discarding matched input.
