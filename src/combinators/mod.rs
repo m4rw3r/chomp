@@ -1,13 +1,16 @@
 //! Basic combinators.
 
+#[macro_use]
+mod macros;
+
+pub mod bounded;
+
 use std::iter::FromIterator;
 
 use {ParseResult, Input};
 
 use primitives::State;
 use primitives::{IntoInner, InputBuffer, InputClone};
-use iter::{EndState, EndStateTill, Iter, IterTill};
-
 
 /// Applies the parser ``p`` exactly ``num`` times, propagating any error or incomplete state.
 ///
@@ -42,25 +45,7 @@ pub fn count<'a, I, T, E, F, U>(i: Input<'a, I>, num: usize, p: F) -> ParseResul
         U: 'a,
         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
         T: FromIterator<U> {
-    // If we have gotten an item, if this is false after from_iter we have failed
-    let mut count = 0;
-    let mut iter  = Iter::new(i, p);
-
-    let result: T      = FromIterator::from_iter(iter.by_ref()
-                                                 .take(num)
-                                                 .inspect(|_| count = count + 1 ));
-    let (buffer, last) = iter.end_state();
-
-    if count == num {
-        buffer.ret(result)
-    } else {
-        // Can only be less than num here since take() limits it.
-        // Just propagate the last state from the iterator.
-        match last {
-            EndState::Incomplete(n) => buffer.incomplete(n),
-            EndState::Error(b, e)     => buffer.replace(b).err(e),
-        }
-    }
+    bounded::many(i, num, p)
 }
 
 /// Tries the parser ``f``, on success it yields the parsed value, on failure ``default`` will be
@@ -120,7 +105,7 @@ pub fn or<'a, I, T, E, F, G>(i: Input<'a, I>, f: F, g: G) -> ParseResult<'a, I, 
 /// Parses many instances of ``f`` until it does no longer match, returning all matches.
 ///
 /// Note: If the last parser succeeds on the last input item then this parser is still considered
-/// incomplete as there might be more data to fill.
+/// incomplete if the input flag END_OF_INPUT is not set as there might be more data to fill.
 ///
 /// Note: Allocates data.
 ///
@@ -144,21 +129,7 @@ pub fn many<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E
         U: 'a,
         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
         T: FromIterator<U> {
-    let mut iter = Iter::new(i, f);
-
-    let result: T = FromIterator::from_iter(iter.by_ref());
-
-    match iter.end_state() {
-        // Ok, last parser failed, we have iterated all.
-        // Return remainder of buffer and the collected result
-        (s, EndState::Error(_, _))   => s.ret(result),
-        // Nested parser incomplete, propagate
-        (s, EndState::Incomplete(n)) => if s.buffer().len() == 0 && s.is_last_slice() {
-            s.ret(result)
-        } else {
-            s.incomplete(n)
-        },
-    }
+    bounded::many(i, .., f)
 }
 
 /// Parses at least one instance of ``f`` and continues until it does no longer match,
@@ -191,29 +162,7 @@ pub fn many1<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, 
         U: 'a,
         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
         T: FromIterator<U> {
-    // If we managed to parse anything
-    let mut item = false;
-    // If we have gotten an item, if this is false after from_iter we have failed
-    let mut iter = Iter::new(i, f);
-
-    let result: T = FromIterator::from_iter(iter.by_ref().inspect(|_| item = true ));
-
-    if !item {
-        match iter.end_state() {
-            (s, EndState::Error(b, e))   => s.replace(b).err(e),
-            (s, EndState::Incomplete(n)) => s.incomplete(n),
-        }
-    } else {
-        match iter.end_state() {
-            (s, EndState::Error(_, _))   => s.ret(result),
-            // TODO: Indicate potentially more than 1?
-            (s, EndState::Incomplete(n)) => if s.buffer().len() == 0 && s.is_last_slice() {
-                s.ret(result)
-            } else {
-                s.incomplete(n)
-            },
-        }
-    }
+    bounded::many(i, 1.., f)
 }
 
 /// Applies the parser `R` zero or more times, separated by the parser `F`. All matches from `R`
@@ -247,21 +196,15 @@ pub fn sep_by<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, mut p: R, mut sep: F)
     // If we have parsed at least one item
     let mut item = false;
     // Add sep in front of p if we have read at least one item
-    let parser   = |i| (if item { sep(i).map(|_| ()) } else { i.ret(()) }).then(&mut p).inspect(|_| item = true);
-    let mut iter = Iter::new(i, parser);
-
-    let result: T = FromIterator::from_iter(iter.by_ref());
-
-    match iter.end_state() {
-        (s, EndState::Error(_, _))   => s.ret(result),
-        // Nested parser incomplete, propagate
-        // Only propagate if we can read more data
-        (s, EndState::Incomplete(n)) => if s.is_last_slice() {
-            s.ret(result)
+    let parser   = |i| (if item {
+            sep(i).map(|_| ())
         } else {
-            s.incomplete(n)
-        },
-    }
+            i.ret(())
+        })
+        .then(&mut p)
+        .inspect(|_| item = true);
+
+    bounded::many(i, .., parser)
 }
 
 
@@ -295,32 +238,16 @@ pub fn sep_by1<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, mut p: R, mut sep: F
         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
     // If we have parsed at least one item
     let mut item = false;
-    // Wrap to end borrow of item
-    let (result, state): (T, _) = {
-        // Add sep in front of p if we have read at least one item
-        let parser   = |i| (if item { sep(i).map(|_| ()) } else { i.ret(()) }).then(&mut p).inspect(|_| item = true);
-        let mut iter = Iter::new(i, parser);
+    // Add sep in front of p if we have read at least one item
+    let parser   = |i| (if item {
+            sep(i).map(|_| ())
+        } else {
+            i.ret(())
+        })
+        .then(&mut p)
+        .inspect(|_| item = true);
 
-        (FromIterator::from_iter(iter.by_ref()), iter.end_state())
-    };
-
-    if !item {
-        match state {
-            (s, EndState::Error(b, e))   => s.replace(b).err(e),
-            (s, EndState::Incomplete(n)) => s.incomplete(n),
-        }
-    } else {
-        match state {
-            (s, EndState::Error(_, _))   => s.ret(result),
-            // Nested parser incomplete, propagate
-            // Only propagate if we can read more data
-            (s, EndState::Incomplete(n)) => if s.is_last_slice() {
-                s.ret(result)
-            } else {
-                s.incomplete(n)
-            },
-        }
-    }
+    bounded::many(i, 1.., parser)
 }
 
 /// Applies the parser `R` multiple times until the parser `F` succeeds and returns a value
@@ -348,17 +275,7 @@ pub fn many_till<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, p: R, end: F) -> P
         T: FromIterator<U>,
         R: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
-    let mut iter = IterTill::new(i, p, end);
-
-    let result: T = FromIterator::from_iter(iter.by_ref());
-
-    match iter.end_state() {
-        (s, EndStateTill::EndSuccess)   => s.ret(result),
-        // Nested parser error, propagate
-        (s, EndStateTill::Error(b, e))   => s.replace(b).err(e),
-        // Nested parser incomplete, propagate
-        (s, EndStateTill::Incomplete(n)) => s.incomplete(n),
-    }
+    bounded::many_till(i, .., p, end)
 }
 
 /// Runs the given parser until it fails, discarding matched input.
@@ -376,17 +293,10 @@ pub fn many_till<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, p: R, end: F) -> P
 /// assert_eq!(skip_many(p, |i| token(i, b'a')).bind(|i, _| token(i, b'b')).unwrap(), b'b');
 /// ```
 #[inline]
-pub fn skip_many<'a, I, T, E, F>(mut i: Input<'a, I>, mut f: F) -> ParseResult<'a, I, (), E>
-  where T: 'a, F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
-    loop {
-        match f(i.clone()).into_inner() {
-            State::Data(b, _)    => i = b,
-            State::Error(_, _)   => break,
-            State::Incomplete(n) => return i.incomplete(n),
-        }
-    }
-
-    i.ret(())
+pub fn skip_many<'a, I, T, E, F>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, (), E>
+  where T: 'a,
+        F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+    bounded::skip_many(i, .., f)
 }
 
 /// Runs the given parser until it fails, discarding matched input, expects at least one match.
@@ -420,26 +330,9 @@ pub fn skip_many<'a, I, T, E, F>(mut i: Input<'a, I>, mut f: F) -> ParseResult<'
 /// assert_eq!(p(i).unwrap(), b'b');
 /// ```
 #[inline]
-pub fn skip_many1<'a, I, T, E, F>(mut i: Input<'a, I>, mut f: F) -> ParseResult<'a, I, (), E>
+pub fn skip_many1<'a, I, T, E, F>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, (), E>
   where T: 'a, F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
-    let mut n = false;
-
-    loop {
-        match f(i.clone()).into_inner() {
-            State::Data(b, _)    => {
-                n = true;
-                i = b;
-            },
-            State::Error(b, e)   => return if !n  {
-                // Error during first attempt, propagate
-                i.replace(b).err(e)
-            } else {
-                // Not the first attempt, exit skip_many1
-                i.ret(())
-            },
-            State::Incomplete(n) => return i.incomplete(n),
-        }
-    }
+    bounded::skip_many(i, 1.., f)
 }
 
 /// Returns the result of the given parser as well as the slice which matched it.
@@ -504,6 +397,85 @@ mod test {
     use parsers::{any, token, string};
 
     #[test]
+    fn many_test() {
+        let r: State<_, Vec<_>, _> = many(new(DEFAULT, b""), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+        let r: State<_, Vec<_>, _> = many(new(DEFAULT, b"a"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+        let r: State<_, Vec<_>, _> = many(new(DEFAULT, b"aa"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+
+        let r: State<_, Vec<_>, _> = many(new(DEFAULT, b"bbb"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(DEFAULT, b"bbb"), vec![]));
+        let r: State<_, Vec<_>, _> = many(new(DEFAULT, b"abb"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(DEFAULT, b"bb"), vec![b'a']));
+        let r: State<_, Vec<_>, _> = many(new(DEFAULT, b"aab"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(DEFAULT, b"b"), vec![b'a', b'a']));
+
+        let r: State<_, Vec<_>, _> = many(new(END_OF_INPUT, b""), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(END_OF_INPUT, b""), vec![]));
+        let r: State<_, Vec<_>, _> = many(new(END_OF_INPUT, b"a"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(END_OF_INPUT, b""), vec![b'a']));
+        let r: State<_, Vec<_>, _> = many(new(END_OF_INPUT, b"aa"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(END_OF_INPUT, b""), vec![b'a', b'a']));
+
+        let r: State<_, Vec<_>, _> = many(new(END_OF_INPUT, b"aab"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(END_OF_INPUT, b"b"), vec![b'a', b'a']));
+    }
+
+    #[test]
+    fn many1_test() {
+        let r: State<_, Vec<_>, _> = many1(new(DEFAULT, b""), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+        let r: State<_, Vec<_>, _> = many1(new(DEFAULT, b"a"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+        let r: State<_, Vec<_>, _> = many1(new(DEFAULT, b"aa"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+
+        let r: State<_, Vec<_>, _> = many1(new(DEFAULT, b"bbb"), |i| token(i, b'a').map_err(|_| "token_error")).into_inner();
+        assert_eq!(r, State::Error(b"bbb", "token_error"));
+        let r: State<_, Vec<_>, _> = many1(new(DEFAULT, b"abb"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(DEFAULT, b"bb"), vec![b'a']));
+        let r: State<_, Vec<_>, _> = many1(new(DEFAULT, b"aab"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(DEFAULT, b"b"), vec![b'a', b'a']));
+
+        let r: State<_, Vec<_>, _> = many1(new(END_OF_INPUT, b""), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+        let r: State<_, Vec<_>, _> = many1(new(END_OF_INPUT, b"a"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(END_OF_INPUT, b""), vec![b'a']));
+        let r: State<_, Vec<_>, _> = many1(new(END_OF_INPUT, b"aa"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(END_OF_INPUT, b""), vec![b'a', b'a']));
+
+        let r: State<_, Vec<_>, _> = many1(new(END_OF_INPUT, b"aab"), |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(END_OF_INPUT, b"b"), vec![b'a', b'a']));
+    }
+
+    #[test]
+    fn count_test() {
+        let r: State<_, Vec<_>, _> = count(new(DEFAULT, b""), 3,  |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+        let r: State<_, Vec<_>, _> = count(new(DEFAULT, b"a"), 3,  |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+        let r: State<_, Vec<_>, _> = count(new(DEFAULT, b"aa"), 3,  |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+        let r: State<_, Vec<_>, _> = count(new(DEFAULT, b"aaa"), 3,  |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(DEFAULT, b""), vec![b'a', b'a', b'a']));
+        let r: State<_, Vec<_>, _> = count(new(DEFAULT, b"aaaa"), 3,  |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(DEFAULT, b"a"), vec![b'a', b'a', b'a']));
+
+        let r: State<_, Vec<_>, _> = count(new(END_OF_INPUT, b""), 3,  |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+        let r: State<_, Vec<_>, _> = count(new(END_OF_INPUT, b"a"), 3,  |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+        let r: State<_, Vec<_>, _> = count(new(END_OF_INPUT, b"aa"), 3,  |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Incomplete(1));
+        let r: State<_, Vec<_>, _> = count(new(END_OF_INPUT, b"aaa"), 3,  |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(END_OF_INPUT, b""), vec![b'a', b'a', b'a']));
+        let r: State<_, Vec<_>, _> = count(new(END_OF_INPUT, b"aaaa"), 3,  |i| token(i, b'a')).into_inner();
+        assert_eq!(r, State::Data(new(END_OF_INPUT, b"a"), vec![b'a', b'a', b'a']));
+    }
+
+    #[test]
     fn skip_many1_test() {
         assert_eq!(skip_many1(new(DEFAULT, b"aabc"), |i| token(i, b'a')).into_inner(), State::Data(new(DEFAULT, b"bc"), ()));
         assert_eq!(skip_many1(new(DEFAULT, b"abc"), |i| token(i, b'a')).into_inner(), State::Data(new(DEFAULT, b"bc"), ()));
@@ -512,8 +484,7 @@ mod test {
         assert_eq!(skip_many1(new(END_OF_INPUT, b"aabc"), |i| token(i, b'a')).into_inner(), State::Data(new(END_OF_INPUT, b"bc"), ()));
         assert_eq!(skip_many1(new(END_OF_INPUT, b"abc"), |i| token(i, b'a')).into_inner(), State::Data(new(END_OF_INPUT, b"bc"), ()));
         assert_eq!(skip_many1(new(END_OF_INPUT, b"bc"), |i| i.err::<(), _>("error")).into_inner(), State::Error(b"bc", "error"));
-        // token is responsible for the incomplete
-        assert_eq!(skip_many1(new(END_OF_INPUT, b"aaa"), |i| token(i, b'a')).into_inner(), State::Incomplete(1));
+        assert_eq!(skip_many1(new(END_OF_INPUT, b"aaa"), |i| token(i, b'a')).into_inner(), State::Data(new(END_OF_INPUT, b""), ()));
     }
 
     #[test]

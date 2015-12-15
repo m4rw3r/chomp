@@ -184,7 +184,6 @@ extern crate conv;
 #[macro_use]
 mod macros;
 mod input;
-mod iter;
 mod parse_result;
 
 pub mod ascii;
