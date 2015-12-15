@@ -36,6 +36,10 @@ pub trait BoundedRange {
     ///
     /// Propagates errors if the minimum number of iterations has not been met
     ///
+    /// # Panics
+    ///
+    /// Will panic if the end of the range is smaller than the start of the range.
+    ///
     /// # Notes
     ///
     /// * Will allocate depending on the `FromIterator` implementation.
@@ -55,6 +59,10 @@ pub trait BoundedRange {
     ///
     /// Propagates errors if the minimum number of iterations has not been met
     ///
+    /// # Panics
+    ///
+    /// Will panic if the end of the range is smaller than the start of the range.
+    ///
     /// # Notes
     ///
     /// * Must never yield more items than the upper bound of the range.
@@ -69,6 +77,10 @@ pub trait BoundedRange {
     /// Applies the parser `P` multiple times until the parser `F` succeeds and returns a value
     /// populated by the values yielded by `P`. Consumes the matched part of `F`. If `F` does not
     /// succeed within the given range `R` this combinator will propagate any failure from `P`.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the end of the range is smaller than the start of the range.
     ///
     /// # Notes
     ///
@@ -692,6 +704,10 @@ impl BoundedRange for usize {
 ///
 /// Propagates errors if the minimum number of iterations has not been met
 ///
+/// # Panics
+///
+/// Will panic if the end of the range is smaller than the start of the range.
+///
 /// # Notes
 ///
 /// * Will allocate depending on the `FromIterator` implementation.
@@ -713,6 +729,10 @@ pub fn many<'a, I, T, E, F, U, R>(i: Input<'a, I>, r: R, f: F) -> ParseResult<'a
 ///
 /// Propagates errors if the minimum number of iterations has not been met
 ///
+/// # Panics
+///
+/// Will panic if the end of the range is smaller than the start of the range.
+///
 /// # Notes
 ///
 /// * Will never yield more items than the upper bound of the range.
@@ -729,6 +749,10 @@ pub fn skip_many<'a, I, T, E, F, R>(i: Input<'a, I>, r: R, f: F) -> ParseResult<
 /// Applies the parser `P` multiple times until the parser `F` succeeds and returns a value
 /// populated by the values yielded by `P`. Consumes the matched part of `F`. If `F` does not
 /// succeed within the given range `R` this combinator will propagate any failure from `P`.
+///
+/// # Panics
+///
+/// Will panic if the end of the range is smaller than the start of the range.
 ///
 /// # Notes
 ///
