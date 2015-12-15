@@ -95,6 +95,9 @@ impl BoundedRange for Range<usize> {
             U: 'a,
             F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
             T: FromIterator<U> {
+        // Range does not perform this assertion
+        assert!(self.start <= self.end);
+
         run_iter!{
             input:  i,
             parser: f,
@@ -140,6 +143,9 @@ impl BoundedRange for Range<usize> {
     fn skip_many<'a, I, T, E, F>(self, mut i: Input<'a, I>, mut f: F) -> ParseResult<'a, I, (), E>
       where T: 'a,
             F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+        // Range does not perform this assertion
+        assert!(self.start <= self.end);
+
         // Closed on left side, open on right
         let (mut min, mut max) = (self.start, max(self.end, 1) - 1);
 
@@ -182,6 +188,9 @@ impl BoundedRange for Range<usize> {
             T: FromIterator<U>,
             R: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
             F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
+        // Range does not perform this assertion
+        assert!(self.start <= self.end);
+
         run_iter_till!{
             input:  i,
             parser: p,
@@ -749,6 +758,7 @@ mod test {
 
     use super::{
         many,
+        many_till,
         skip_many,
     };
 
@@ -1200,5 +1210,25 @@ mod test {
         assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"b"), ()));
         let r = skip_many(new(END_OF_INPUT, b"aaab"), 2, |i| token(i, b'a'));
         assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"ab"), ()));
+    }
+
+    #[test]
+    #[should_panic]
+    fn panic_many_range_lt() {
+        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"aaaab"), 2..1, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"ab"), vec![b'a', b'a', b'a']));
+    }
+
+    #[test]
+    #[should_panic]
+    fn panic_skip_many_range_lt() {
+        assert_eq!(skip_many(new(DEFAULT, b"aaaab"), 2..1, |i| token(i, b'a')).into_inner(), State::Data(new(DEFAULT, b"ab"), ()));
+    }
+
+    #[test]
+    #[should_panic]
+    fn panic_many_till_range_lt() {
+        let r: ParseResult<_, Vec<_>, _> = many_till(new(DEFAULT, b"aaaab"), 2..1, |i| token(i, b'a'), |i| token(i, b'b'));
+        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"ab"), vec![b'a', b'a', b'a']));
     }
 }
