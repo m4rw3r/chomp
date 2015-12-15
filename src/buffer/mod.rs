@@ -48,7 +48,7 @@ pub use self::buffer::{
 
 /// Error type for parsing using the `Stream` trait.
 #[derive(Debug)]
-pub enum ParseError<'a, I, E>
+pub enum StreamError<'a, I, E>
   where I: 'a {
     /// An error occurred in the parser, the given slice indicates the part which failed.
     ParseError(&'a [I], E),
@@ -64,15 +64,15 @@ pub enum ParseError<'a, I, E>
     Retry,
 }
 
-impl<'a, I, E> PartialEq for ParseError<'a, I, E>
+impl<'a, I, E> PartialEq for StreamError<'a, I, E>
   where E: PartialEq, I: PartialEq {
     #[inline]
-    fn eq(&self, other: &ParseError<'a, I, E>) -> bool {
+    fn eq(&self, other: &StreamError<'a, I, E>) -> bool {
         match (self, other) {
-            (&ParseError::ParseError(ref b1, ref e1), &ParseError::ParseError(ref b2, ref e2)) => b1 == b2 && e1 == e2,
-            (&ParseError::Incomplete(n1), &ParseError::Incomplete(n2)) => n1 == n2,
-            (&ParseError::EndOfInput, &ParseError::EndOfInput) => true,
-            (&ParseError::Retry, &ParseError::Retry) => true,
+            (&StreamError::ParseError(ref b1, ref e1), &StreamError::ParseError(ref b2, ref e2)) => b1 == b2 && e1 == e2,
+            (&StreamError::Incomplete(n1), &StreamError::Incomplete(n2)) => n1 == n2,
+            (&StreamError::EndOfInput, &StreamError::EndOfInput) => true,
+            (&StreamError::Retry, &StreamError::Retry) => true,
             _ => false,
         }
     }
@@ -83,7 +83,7 @@ pub trait Stream<'a, 'i> {
     type Item: 'i;
 
     #[inline]
-    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, ParseError<'i, Self::Item, E>>
+    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, StreamError<'i, Self::Item, E>>
       where F: FnOnce(Input<'i, Self::Item>) -> ParseResult<'i, Self::Item, T, E>,
             T: 'i,
             E: 'i;

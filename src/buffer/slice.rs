@@ -2,7 +2,7 @@ use primitives::input;
 use primitives::{State, InputBuffer, IntoInner};
 
 use {Input, ParseResult};
-use buffer::{IntoStream, ParseError, Stream};
+use buffer::{IntoStream, StreamError, Stream};
 
 /// Stream implementation for immutable slices.
 ///
@@ -82,12 +82,12 @@ impl<'a, 'i, I: 'i> Stream<'a, 'i> for SliceStream<'i, I> {
     type Item = I;
 
     #[inline]
-    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, ParseError<'i, Self::Item, E>>
+    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, StreamError<'i, Self::Item, E>>
       where F: FnOnce(Input<'i, Self::Item>) -> ParseResult<'i, Self::Item, T, E>,
             T: 'i,
             E: 'i {
         if self.is_empty() {
-            return Err(ParseError::EndOfInput);
+            return Err(StreamError::EndOfInput);
         }
 
         match f(input::new(input::END_OF_INPUT, &self.slice[self.pos..])).into_inner() {
@@ -102,9 +102,9 @@ impl<'a, 'i, I: 'i> Stream<'a, 'i> for SliceStream<'i, I> {
                 // TODO: Detail this behaviour, maybe make it configurable
                 self.pos += self.len() - remainder.len();
 
-                Err(ParseError::ParseError(remainder, err))
+                Err(StreamError::ParseError(remainder, err))
             },
-            State::Incomplete(n) => Err(ParseError::Incomplete(n + self.len())),
+            State::Incomplete(n) => Err(StreamError::Incomplete(n + self.len())),
         }
     }
 }

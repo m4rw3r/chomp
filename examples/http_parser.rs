@@ -17,7 +17,7 @@ use std::env;
 
 use chomp::*;
 
-use chomp::buffer::{Source, Stream, ParseError};
+use chomp::buffer::{Source, Stream, StreamError};
 
 #[derive(Debug)]
 struct Request<'a> {
@@ -137,10 +137,10 @@ fn main() {
 
     loop {
         match i.parse(request) {
-            Ok(_)                       => n += 1,
-            Err(ParseError::Retry)      => {}, // Needed to refill buffer when necessary
-            Err(ParseError::EndOfInput) => break,
-            Err(e)                      => { panic!("{:?}", e); }
+            Ok(_)                        => n += 1,
+            Err(StreamError::Retry)      => {}, // Needed to refill buffer when necessary
+            Err(StreamError::EndOfInput) => break,
+            Err(e)                       => { panic!("{:?}", e); }
         }
     }
 
