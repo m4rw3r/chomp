@@ -17,11 +17,9 @@ use primitives::InputBuffer;
 /// If the buffer length is 0 this parser is considered incomplete.
 ///
 /// ```
-/// use chomp::{Input, any};
+/// use chomp::{parse_only, any};
 ///
-/// let p = Input::new(b"abc");
-///
-/// assert_eq!(any(p).unwrap(), b'a');
+/// assert_eq!(parse_only(any, b"abc"), Ok(b'a'));
 /// ```
 #[inline]
 pub fn any<I: Copy>(i: Input<I>) -> SimpleResult<I, I> {
@@ -39,11 +37,9 @@ pub fn any<I: Copy>(i: Input<I>) -> SimpleResult<I, I> {
 /// If the buffer length is 0 this parser is considered incomplete.
 ///
 /// ```
-/// use chomp::{Input, satisfy};
+/// use chomp::{parse_only, satisfy};
 ///
-/// let p = Input::new(b"abc");
-///
-/// assert_eq!(satisfy(p, |c| c == b'a').unwrap(), b'a');
+/// assert_eq!(parse_only(|i| satisfy(i, |c| c == b'a'), b"abc"), Ok(b'a'));
 /// ```
 #[inline]
 pub fn satisfy<I: Copy, F>(i: Input<I>, f: F) -> SimpleResult<I, I>
@@ -63,13 +59,13 @@ pub fn satisfy<I: Copy, F>(i: Input<I>, f: F) -> SimpleResult<I, I>
 /// ```
 /// use std::ascii::AsciiExt;
 ///
-/// use chomp::{Input, satisfy_with};
+/// use chomp::{parse_only, satisfy_with};
 ///
-/// let i = Input::new(b"testing");
+/// let r = parse_only(
+///     |i| satisfy_with(i, |c| AsciiExt::to_ascii_uppercase(&c), |c| c == b'T'),
+///     b"testing");
 ///
-/// let r = satisfy_with(i, |c| AsciiExt::to_ascii_uppercase(&c), |c| c == b'T');
-///
-/// assert_eq!(r.unwrap(), b'T')
+/// assert_eq!(r, Ok(b'T'));
 /// ```
 #[inline]
 pub fn satisfy_with<I: Copy, T: Clone, F, P>(i: Input<I>, f: F, p: P) -> SimpleResult<I, T>
@@ -96,11 +92,9 @@ pub fn satisfy_with<I: Copy, T: Clone, F, P>(i: Input<I>, f: F, p: P) -> SimpleR
 /// If the buffer length is 0 this parser is considered incomplete.
 ///
 /// ```
-/// use chomp::{Input, token};
+/// use chomp::{parse_only, token};
 ///
-/// let p = Input::new(b"abc");
-///
-/// assert_eq!(token(p, b'a').unwrap(), b'a');
+/// assert_eq!(parse_only(|i| token(i, b'a'), b"abc"), Ok(b'a'));
 /// ```
 #[inline]
 pub fn token<I: Copy + PartialEq>(i: Input<I>, t: I) -> SimpleResult<I, I> {
@@ -118,15 +112,9 @@ pub fn token<I: Copy + PartialEq>(i: Input<I>, t: I) -> SimpleResult<I, I> {
 /// If the buffer length is 0 this parser is considered incomplete.
 ///
 /// ```
-/// use chomp::{Input, not_token};
+/// use chomp::{parse_only, not_token};
 ///
-/// let p1 = Input::new(b"abc");
-///
-/// assert_eq!(not_token(p1, b'b').unwrap(), b'a');
-///
-/// let p2 = Input::new(b"abc");
-///
-/// assert_eq!(not_token(p2, b'b').unwrap(), b'a');
+/// assert_eq!(parse_only(|i| not_token(i, b'b'), b"abc"), Ok(b'a'));
 /// ```
 #[inline]
 pub fn not_token<I: Copy + PartialEq>(i: Input<I>, t: I) -> SimpleResult<I, I> {
@@ -145,15 +133,11 @@ pub fn not_token<I: Copy + PartialEq>(i: Input<I>, t: I) -> SimpleResult<I, I> {
 /// This parser is never considered incomplete.
 ///
 /// ```
-/// use chomp::{Input, peek};
+/// use chomp::{parse_only, peek};
 ///
-/// let p1 = Input::new(b"abc");
+/// assert_eq!(parse_only(peek, b"abc"), Ok(Some(b'a')));
 ///
-/// assert_eq!(peek(p1).unwrap(), Some(b'a'));
-///
-/// let p2 = Input::new(b"");
-///
-/// assert_eq!(peek(p2).unwrap(), None);
+/// assert_eq!(parse_only(peek, b""), Ok(None));
 /// ```
 #[inline]
 pub fn peek<I: Copy>(i: Input<I>) -> SimpleResult<I, Option<I>> {
@@ -167,11 +151,9 @@ pub fn peek<I: Copy>(i: Input<I>) -> SimpleResult<I, Option<I>> {
 /// If the buffer length is 0 this parser is considered incomplete.
 ///
 /// ```
-/// use chomp::{Input, peek_next};
+/// use chomp::{parse_only, peek_next};
 ///
-/// let p1 = Input::new(b"abc");
-///
-/// assert_eq!(peek_next(p1).unwrap(), b'a');
+/// assert_eq!(parse_only(peek_next, b"abc"), Ok(b'a'));
 /// ```
 #[inline]
 pub fn peek_next<I: Copy>(i: Input<I>) -> SimpleResult<I, I> {
@@ -186,11 +168,9 @@ pub fn peek_next<I: Copy>(i: Input<I>) -> SimpleResult<I, I> {
 /// If the buffer length is less than ``num`` this parser is considered incomplete.
 ///
 /// ```
-/// use chomp::{Input, take};
+/// use chomp::{parse_only, take};
 ///
-/// let p = Input::new(b"abcd");
-///
-/// assert_eq!(take(p, 3).unwrap(), b"abc");
+/// assert_eq!(parse_only(|i| take(i, 3), b"abcd"), Ok(&b"abc"[..]));
 /// ```
 #[inline]
 pub fn take<I: Copy>(i: Input<I>, num: usize) -> SimpleResult<I, &[I]> {
@@ -209,21 +189,21 @@ pub fn take<I: Copy>(i: Input<I>, num: usize) -> SimpleResult<I, &[I]> {
 /// more input which needs to be matched.
 ///
 /// ```
-/// use chomp::{Input, take_while};
+/// use chomp::{parse_only, take_while};
 ///
-/// let p = Input::new(b"abcdcba");
+/// let r = parse_only(|i| take_while(i, |c| c == b'a' || c == b'b'), b"abcdcba");
 ///
-/// assert_eq!(take_while(p, |c| c == b'a' || c == b'b').unwrap(), b"ab");
+/// assert_eq!(r, Ok(&b"ab"[..]));
 /// ```
 ///
 /// Without managing to match anything:
 ///
 /// ```
-/// use chomp::{Input, take_while};
+/// use chomp::{parse_only, take_while};
 ///
-/// let p = Input::new(b"abcdcba");
+/// let r = parse_only(|i| take_while(i, |c| c == b'z'), b"abcdcba");
 ///
-/// assert_eq!(take_while(p, |c| c == b'z').unwrap(), b"");
+/// assert_eq!(r, Ok(&b""[..]));
 /// ```
 #[inline]
 pub fn take_while<I: Copy, F>(i: Input<I>, f: F) -> SimpleResult<I, &[I]>
@@ -252,11 +232,11 @@ pub fn take_while<I: Copy, F>(i: Input<I>, f: F) -> SimpleResult<I, &[I]>
 /// more input which needs to be matched. If zero items were matched an error will be returned.
 ///
 /// ```
-/// use chomp::{Input, take_while1};
+/// use chomp::{parse_only, take_while1};
 ///
-/// let p = Input::new(b"abcdcba");
+/// let r = parse_only(|i| take_while1(i, |c| c == b'a' || c == b'b'), b"abcdcba");
 ///
-/// assert_eq!(take_while1(p, |c| c == b'a' || c == b'b').unwrap(), b"ab");
+/// assert_eq!(r, Ok(&b"ab"[..]));
 /// ```
 #[inline]
 pub fn take_while1<I: Copy, F>(i: Input<I>, f: F) -> SimpleResult<I, &[I]>
@@ -286,11 +266,11 @@ pub fn take_while1<I: Copy, F>(i: Input<I>, f: F) -> SimpleResult<I, &[I]>
 /// more input which needs to be matched.
 ///
 /// ```
-/// use chomp::{Input, take_till};
+/// use chomp::{parse_only, take_till};
 ///
-/// let p = Input::new(b"abcdef");
+/// let r = parse_only(|i| take_till(i, |c| c == b'd'), b"abcdef");
 ///
-/// assert_eq!(take_till(p, |c| c == b'd').unwrap(), b"abc");
+/// assert_eq!(r, Ok(&b"abc"[..]));
 /// ```
 #[inline]
 pub fn take_till<I: Copy, F>(i: Input<I>, f: F) -> SimpleResult<I, &[I]>
@@ -309,17 +289,15 @@ pub fn take_till<I: Copy, F>(i: Input<I>, f: F) -> SimpleResult<I, &[I]>
 /// the predicate returns `None`.
 ///
 /// ```
-/// use chomp::{Input, scan};
+/// use chomp::{parse_only, scan};
 ///
-/// let p = Input::new(b"/*test*of*scan*/ foo");
-///
-/// let r = scan(p, false, |s, c| match (s, c) {
+/// let p = |i| scan(i, false, |s, c| match (s, c) {
 ///     (true, b'/') => None,
 ///     (_,    b'*') => Some(true),
 ///     (_, _)       => Some(false),
 /// });
 ///
-/// assert_eq!(r.unwrap(), b"/*test*of*scan*");
+/// assert_eq!(parse_only(p, b"/*test*of*scan*/ foo"), Ok(&b"/*test*of*scan*"[..]));
 /// ```
 #[inline]
 pub fn scan<I: Copy, S, F>(i: Input<I>, s: S, mut f: F) -> SimpleResult<I, &[I]>
@@ -338,17 +316,14 @@ pub fn scan<I: Copy, S, F>(i: Input<I>, s: S, mut f: F) -> SimpleResult<I, &[I]>
 /// Like `scan` but generalized to return the final state of the scanner.
 ///
 /// ```
-/// use chomp::{Input, run_scanner};
+/// use chomp::{parse_only, run_scanner};
 ///
-///
-/// let p = Input::new(b"/*test*of*scan*/ foo");
-///
-/// let r = run_scanner(p, 0, |s, c| match (s, c) {
+/// let p = |i| run_scanner(i, 0, |s, c| match (s, c) {
 ///     (b'*', b'/') => None,
 ///     (_,    c)    => Some(c),
 /// });
 ///
-/// assert_eq!(r.unwrap(), (&b"/*test*of*scan*"[..], b'*'));
+/// assert_eq!(parse_only(p, b"/*test*of*scan*/ foo"), Ok((&b"/*test*of*scan*"[..], b'*')));
 /// ```
 #[inline]
 // TODO: Remove Copy bound on S
@@ -368,11 +343,9 @@ pub fn run_scanner<I: Copy, S: Copy, F>(i: Input<I>, s: S, mut f: F) -> SimpleRe
 /// Matches the remainder of the buffer and returns it, always succeeds.
 ///
 /// ```
-/// use chomp::{Input, take_remainder};
+/// use chomp::{parse_only, take_remainder};
 ///
-/// let p = Input::new(b"abcd");
-///
-/// assert_eq!(take_remainder(p).unwrap(), b"abcd");
+/// assert_eq!(parse_only(take_remainder, b"abcd"), Ok(&b"abcd"[..]));
 /// ```
 #[inline]
 pub fn take_remainder<I: Copy>(i: Input<I>) -> SimpleResult<I, &[I]> {
@@ -380,7 +353,7 @@ pub fn take_remainder<I: Copy>(i: Input<I>) -> SimpleResult<I, &[I]> {
     // Last slice and we have just read everything of it, replace with zero-sized slice:
     //
     // Hack to avoid branch and overflow, does not matter where this zero-sized slice is
-    // allocated
+    // allocated as long as it is the same origin slice
     i.replace(&b[..0]).ret(b)
 }
 
@@ -390,11 +363,9 @@ pub fn take_remainder<I: Copy>(i: Input<I>) -> SimpleResult<I, &[I]> {
 /// incomplete.
 ///
 /// ```
-/// use chomp::{Input, string};
+/// use chomp::{parse_only, string};
 ///
-/// let p = Input::new(b"abcdef");
-///
-/// assert_eq!(string(p, b"abc").unwrap(), b"abc");
+/// assert_eq!(parse_only(|i| string(i, b"abc"), b"abcdef"), Ok(&b"abc"[..]));
 /// ```
 #[inline]
 pub fn string<'a, 'b, I: Copy + PartialEq>(i: Input<'a, I>, s: &'b [I])
@@ -419,13 +390,11 @@ pub fn string<'a, 'b, I: Copy + PartialEq>(i: Input<'a, I>, s: &'b [I])
 /// Matches the end of the input.
 ///
 /// ```
-/// use chomp::{Input, token, eof};
+/// use chomp::{parse_only, token, eof};
 ///
-/// let i = Input::new(b"a");
+/// let r = parse_only(|i| token(i, b'a').then(eof), b"a");
 ///
-/// let r = token(i, b'a').bind(|i, _| eof(i));
-///
-/// assert_eq!(r.unwrap(), ());
+/// assert_eq!(r, Ok(()));
 /// ```
 #[inline]
 pub fn eof<I>(i: Input<I>) -> SimpleResult<I, ()> {

@@ -15,10 +15,8 @@
 //! ```
 //! # #[macro_use] extern crate chomp;
 //! # fn main() {
-//! use chomp::{Input, ParseResult, Error};
+//! use chomp::{Input, U8Result, parse_only};
 //! use chomp::{take_while1, token};
-//!
-//! let i = Input::new("martin wernstål\n".as_bytes());
 //!
 //! #[derive(Debug, Eq, PartialEq)]
 //! struct Name<'a> {
@@ -26,7 +24,7 @@
 //!     last:  &'a [u8],
 //! }
 //!
-//! fn name(i: Input<u8>) -> ParseResult<u8, Name, Error<u8>> {
+//! fn name(i: Input<u8>) -> U8Result<Name> {
 //!     parse!{i;
 //!         let first = take_while1(|c| c != b' ');
 //!                     token(b' ');  // skipping this char
@@ -39,7 +37,10 @@
 //!     }
 //! }
 //!
-//! assert_eq!(name(i).unwrap(), Name{first: b"martin", last: "wernstål".as_bytes()});
+//! assert_eq!(parse_only(name, "Martin Wernstål\n".as_bytes()), Ok(Name{
+//!     first: b"Martin",
+//!     last: "Wernstål".as_bytes()
+//! }));
 //! # }
 //! ```
 //!
@@ -91,16 +92,16 @@
 //! ```
 //! # #[macro_use] extern crate chomp;
 //! # fn main() {
-//! # use chomp::{Input, satisfy};
-//! # let r = parse!{Input::new(b"h");
+//! # use chomp::{Input, satisfy, parse_only};
+//! # let r = parse_only(parser!{
 //! satisfy(|c| {
 //!     match c {
 //!         b'c' | b'h' | b'a' | b'r' => true,
 //!         _ => false,
 //!     }
 //! })
-//! # };
-//! # assert_eq!(r.unwrap(), b'h');
+//! # }, b"h");
+//! # assert_eq!(r, Ok(b'h'));
 //! # }
 //! ```
 //!
@@ -142,7 +143,7 @@
 //!
 //! ```
 //! # #[macro_use] extern crate chomp;
-//! # use chomp::{Input, satisfy, string, token, U8Result};
+//! # use chomp::{Input, parse_only, satisfy, string, token, U8Result};
 //! fn f(i: Input<u8>) -> U8Result<(u8, u8, u8)> {
 //!     parse!{i;
 //!         let a = digit();
@@ -156,8 +157,8 @@
 //!     satisfy(i, |c| b'0' <= c && c <= b'9').map(|c| c - b'0')
 //! }
 //! # fn main() {
-//! #     let r = f(Input::new(b"33missiles"));
-//! #     assert_eq!(r.unwrap(), (3, 3, 6));
+//! #     let r = parse_only(f, b"33missiles");
+//! #     assert_eq!(r, Ok((3, 3, 6)));
 //! # }
 //! ```
 //!

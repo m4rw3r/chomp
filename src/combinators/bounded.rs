@@ -7,13 +7,12 @@
 //!
 //! ```
 //! use chomp::combinators::bounded::many;
-//! use chomp::{Input, ParseResult, any};
+//! use chomp::{parse_only, any};
 //!
-//! let i = Input::new(b"abcd");
 //! // Read any character 2 or 3 times
-//! let r: ParseResult<_, Vec<_>, _> = many(i, 2..4, any);
+//! let r: Result<Vec<_>, _> = parse_only(|i| many(i, 2..4, any), b"abcd");
 //!
-//! assert_eq!(r.unwrap(), vec![b'a', b'b', b'c']);
+//! assert_eq!(r, Ok(vec![b'a', b'b', b'c']));
 //! ```
 
 use std::marker::PhantomData;

@@ -18,10 +18,8 @@
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use chomp::{Input, Error};
+/// use chomp::{Error, parse_only};
 /// use chomp::{take_while1, token};
-///
-/// let i = Input::new("Martin Wernstål\n".as_bytes());
 ///
 /// #[derive(Debug, Eq, PartialEq)]
 /// struct Name<'a> {
@@ -29,7 +27,7 @@
 ///     last:  &'a [u8],
 /// }
 ///
-/// let r = parse!{i;
+/// let r = |i| parse!{i;
 ///     let first = take_while1(|c| c != b' ');
 ///                 token(b' ');
 ///     let last  = take_while1(|c| c != b'\n');
@@ -40,7 +38,10 @@
 ///     }
 /// };
 ///
-/// assert_eq!(r.unwrap(), Name{first: b"Martin", last: "Wernstål".as_bytes()});
+/// assert_eq!(parse_only(r, "Martin Wernstål\n".as_bytes()), Ok(Name{
+///     first: b"Martin",
+///     last: "Wernstål".as_bytes()
+/// }));
 /// # }
 /// ```
 ///
@@ -146,7 +147,6 @@ macro_rules! __parse_internal {
         { $i.bind(|i, $v:$v_ty| __parse_internal!{ i; $($tail)* }) };
 
     // EXPR          = ( BIND ';' | THEN ';' )* (RET | ERR | THEN)
-    // TODO: Any way to prevent BIND from being the last?
 
     // BIND          = 'let' VAR '=' ACTION
     ( $i:expr ; let $($tail:tt)* ) =>
@@ -174,16 +174,13 @@ macro_rules! __parse_internal {
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use chomp::{Input};
-/// use chomp::{or, string};
+/// use chomp::{parse_only, or, string};
 ///
-/// let i = Input::new(b"ac");
-///
-/// let r = parse!{i;
+/// let r = parser!{
 ///   or(parser!{string(b"ab")},
 ///      parser!{string(b"ac")})};
 ///
-/// assert_eq!(r.unwrap(), b"ac");
+/// assert_eq!(parse_only(r, b"ac"), Ok(&b"ac"[..]));
 /// # }
 /// ```
 #[macro_export]

@@ -105,14 +105,14 @@ impl<'a, I> Input<'a, I> {
     /// # Example
     ///
     /// ```
-    /// use chomp::Input;
+    /// use chomp::parse_only;
     ///
-    /// let i = Input::new(b"some state");
+    /// let r = parse_only(|i|
+    ///     // Annotate the error type
+    ///     i.ret::<_, ()>("Wohoo, success!"),
+    ///     b"some input");
     ///
-    /// // Annotate the error type
-    /// let r = i.ret::<_, ()>("Wohoo, success!");
-    ///
-    /// assert_eq!(r.unwrap(), "Wohoo, success!");
+    /// assert_eq!(r, Ok("Wohoo, success!"));
     /// ```
     #[inline]
     pub fn ret<T, E = ()>(self, t: T) -> ParseResult<'a, I, T, E> {
@@ -126,14 +126,14 @@ impl<'a, I> Input<'a, I> {
     /// # Example
     ///
     /// ```
-    /// use chomp::Input;
+    /// use chomp::{ParseError, parse_only};
     ///
-    /// let i = Input::new(b"some state");
+    /// let r = parse_only(|i|
+    ///     // Annotate the value type
+    ///     i.err::<(), _>("Something went wrong"),
+    ///     b"some input");
     ///
-    /// // Annotate the value type
-    /// let r = i.err::<(), _>("Something went wrong");
-    ///
-    /// assert_eq!(r.unwrap_err(), "Something went wrong");
+    /// assert_eq!(r, Err(ParseError::Error(b"some input", "Something went wrong")));
     /// ```
     #[inline]
     pub fn err<T, E>(self, e: E) -> ParseResult<'a, I, T, E> {
@@ -153,22 +153,23 @@ impl<'a, I> Input<'a, I> {
 
     /// Converts a `Result` into a `ParseResult`, preserving parser state.
     ///
+    /// To convert an `Option` into a `ParseResult` it is recommended to use
+    /// [`Option::ok_or`](https://doc.rust-lang.org/std/option/enum.Option.html#method.ok_or)
+    /// or [`Option::ok_or_else`](https://doc.rust-lang.org/std/option/enum.Option.html#method.ok_or_else)
+    /// in combination with this method.
+    ///
     /// # Examples
     ///
     /// ```
-    /// use chomp::Input;
+    /// use chomp::{ParseError, parse_only};
     ///
-    /// let r = Input::new(b"test").from_result::<_, ()>(Ok("foo"));
+    /// let r = parse_only(|i| i.from_result::<_, ()>(Ok("foo")), b"test");
     ///
-    /// assert_eq!(r.unwrap(), "foo");
-    /// ```
+    /// assert_eq!(r, Ok("foo"));
     ///
-    /// ```
-    /// use chomp::Input;
+    /// let r = parse_only(|i| i.from_result::<(), _>(Err("error message")), b"test");
     ///
-    /// let r = Input::new(b"test").from_result::<(), _>(Err("error message"));
-    ///
-    /// assert_eq!(r.unwrap_err(), "error message");
+    /// assert_eq!(r, Err(ParseError::Error(&b"test"[..], "error message")));
     /// ```
     #[inline]
     pub fn from_result<T, E>(self, r: Result<T, E>) -> ParseResult<'a, I, T, E> {
@@ -221,10 +222,11 @@ impl<'a, I: 'a> InputClone for Input<'a, I> {
 /// # Example
 ///
 /// ```
-/// use chomp::{Input, take};
-/// use chomp::primitives::InputBuffer;
+/// use chomp::take;
+/// use chomp::primitives::input;
+/// use chomp::primitives::{InputBuffer, IntoInner, State};
 ///
-/// let i = Input::new(b"Testing");
+/// let i = input::new(input::END_OF_INPUT, b"Testing");
 ///
 /// assert_eq!(i.buffer(), b"Testing");
 /// assert_eq!(i.is_last_slice(), true);
@@ -234,7 +236,7 @@ impl<'a, I: 'a> InputClone for Input<'a, I> {
 ///
 /// let r = take(j, 4);
 ///
-/// assert_eq!(r.unwrap(), b"Test");
+/// assert_eq!(r.into_inner(), State::Data(input::new(input::END_OF_INPUT, b""), &b"Test"[..]));
 /// ```
 impl<'a, I: 'a> InputBuffer<'a> for Input<'a, I> {
     type Item = I;
