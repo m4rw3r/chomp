@@ -184,6 +184,7 @@ extern crate conv;
 #[macro_use]
 mod macros;
 mod input;
+mod parse;
 mod parse_result;
 
 pub mod ascii;
@@ -224,6 +225,10 @@ pub use parsers::{
 };
 pub use parsers::Error;
 pub use input::Input;
+pub use parse::{
+    ParseError,
+    parse_only,
+};
 pub use parse_result::{
     ParseResult,
     SimpleResult,
