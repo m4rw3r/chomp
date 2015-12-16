@@ -606,7 +606,7 @@ mod test {
                 i.ret(bytes.iter().fold(0, |a, b| a * 10 + (b - b'0') as usize)))
         }
 
-        let i = Input::new(b"123.4567 ");
+        let i = new(END_OF_INPUT, b"123.4567 ");
 
         let p = decimal(i).bind(|i, real|
             token(i, b'.').bind(|i, _|
@@ -615,29 +615,26 @@ mod test {
 
         let d: SimpleResult<_, _> = p.bind(|i, num| take_remainder(i)
                                            .bind(|i, r| i.ret((r, num))));
-        let (buf, state) = d.unwrap();
 
-        assert_eq!(buf, &[b' ']);
-        assert_eq!(state, (123, 4567));
+        assert_eq!(d.into_inner(), State::Data(new(END_OF_INPUT, b""), (&b" "[..], (123, 4567))));
     }
 
     #[test]
     fn parse_remainder_empty() {
-        let i = Input::new(b"");
+        let i = new(END_OF_INPUT, b"");
 
         let r = take_remainder(i);
 
-        assert_eq!(r.unwrap(), b"" as &[u8]);
+        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), &b""[..]));
     }
 
     #[test]
-    #[should_panic]
     fn take_while1_empty() {
-        let n = Input::new(b"");
+        let n = new(END_OF_INPUT, b"");
 
         let r = take_while1(n, |_| true);
 
-        assert_eq!(r.unwrap(), b"");
+        assert_eq!(r.into_inner(), State::Incomplete(1));
     }
 
     #[test]

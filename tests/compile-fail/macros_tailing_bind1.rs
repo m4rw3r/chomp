@@ -3,12 +3,18 @@
 #[macro_use]
 extern crate chomp;
 
-use chomp::{ParseResult, Input};
+use chomp::{ParseResult, Input, parse_only};
 
-fn main() {
+fn parser(i: Input<u8>) -> ParseResult<u8, u8, ()> {
     fn f(i: Input<u8>) -> ParseResult<u8, u8, ()> {
         i.ret(3)
     }
 
-    let r: ParseResult<u8, u8, ()> = parse!{Input::new(b"5"); let x = s -> s.ret(3)};
+    parse!{i;
+        let x = s -> s.ret(3)
+    }
+}
+
+fn main() {
+    let r = parse_only(parser, b"5");
 }
