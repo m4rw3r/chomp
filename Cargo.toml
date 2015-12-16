@@ -1,6 +1,6 @@
 [package]
 name          = "chomp"
-version       = "0.1.2"
+version       = "0.2.0"
 authors       = ["Martin Wernstål <m4rw3r@gmail.com>"]
 description   = "A fast monadic-style parser combinator designed to work on stable Rust."
 documentation = "http://m4rw3r.github.io/chomp"
@@ -11,6 +11,7 @@ keywords      = ["parser", "parser-combinators", "parsing", "streaming"]
 license       = "MIT"
 
 include = [
+    "benches/**/*.rs",
     "examples/**/*.rs",
     "src/**/*.rs",
     "tests/**/*.rs",
@@ -21,14 +22,14 @@ include = [
 
 [dependencies]
 bitflags = "0.3.3"
-conv = { version = "0.3", default-features = false }
+conv     = { version = "0.3", default-features = false }
+
 # Technically a dev-dependency, but dev-dependencies are not allowed to be optional,
 # compiletest_rs fails to compile on stable and beta
-compiletest_rs = { version = "0.0.10", optional = true }
+compiletest_rs = { version = "0.0.11", optional = true }
 
 [features]
-default = ["verbose_error"]
-# Feature for running extra (compiletime fail) tests on nightly
-unstable = ["compiletest_rs"]
-
+default       = ["verbose_error"]
 verbose_error = []
+# Feature for running extra (compiletime fail) tests on nightly
+unstable      = ["compiletest_rs"]

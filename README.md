@@ -19,7 +19,7 @@ Add the following line to the dependencies section of your `Cargo.toml`:
 
 ```toml
 [dependencies]
-chomp = "0.1.0"
+chomp = "0.2.0"
 ```
 
 ##Usage
@@ -80,7 +80,7 @@ For more documentation, see the rust-doc output.
 #[macro_use]
 extern crate chomp;
 
-use chomp::{Input, ParseResult, Error};
+use chomp::{Input, U8Result, parse_only};
 use chomp::{take_while1, token};
 
 #[derive(Debug, Eq, PartialEq)]
@@ -89,21 +89,24 @@ struct Name<'a> {
     last:  &'a [u8],
 }
 
-fn main() {
-    let i = Input::new("Martin Wernstål\n".as_bytes());
-
-    let r = parse!{i;
+fn name(i: Input<u8>) -> U8Result<Name> {
+    parse!{i;
         let first = take_while1(|c| c != b' ');
-                    token(b' ');
+                    token(b' ');  // skipping this char
         let last  = take_while1(|c| c != b'\n');
 
-        ret @ _, Error<_>: Name{
+        ret Name{
             first: first,
             last:  last,
         }
-    };
+    }
+}
 
-     assert_eq!(r.unwrap(), Name{first: b"Martin", last: "Wernstål".as_bytes()});
+fn main() {
+    assert_eq!(parse_only(name, "Martin Wernstål\n".as_bytes()), Ok(Name{
+        first: b"Martin",
+        last: "Wernstål".as_bytes()
+    }));
 }
 ```
 

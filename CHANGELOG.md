@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
-## [Unreleased]
+## [0.2.0] - 2015-12-16
 
 ### Added
 
@@ -24,6 +24,18 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 - **Backwards-incompatible:** `buffer::ParseError` has been renamed to `buffer::StreamError` to not
   conflict with the simple `ParseError`.
 - Slightly improved performance for `count`, `many`, `many1`, `sep_by`, `sep_by1`.
+
+### Deprecated
+
+- `Input::new`
+
+  Use `parse_only` or `buffer::SliceStream` to parse a slice instead. For any advanced usage create
+  an `Input` using `primitives::input::new`.
+
+- `ParseResult::unwrap`, `ParseResult::unwrap_err`, `ParseResult::expect`
+
+  Use `parse_only` or the `buffer::Stream` implementations to obtain a `Result` instead of acting
+  on the `ParseResult` directly.
 
 ## [0.1.2] - 2015-12-02
 
