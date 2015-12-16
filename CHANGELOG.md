@@ -7,6 +7,7 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 
+- `parse_only`: Runs a given parser on a finite input.
 - `combinators::bounded::many`: combinator applying a parser within a range bound, storing the data
   in a `T: FromIterator`.
 - `combinators::bounded::skip_many`: combinator applying a parser within a range bound, throwing
