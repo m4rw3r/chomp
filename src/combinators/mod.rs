@@ -12,7 +12,7 @@ use {ParseResult, Input};
 use primitives::State;
 use primitives::{IntoInner, InputBuffer, InputClone};
 
-/// Applies the parser ``p`` exactly ``num`` times, propagating any error or incomplete state.
+/// Applies the parser ``p`` exactly ``num`` times collecting all items into `T: FromIterator`.
 ///
 #[cfg_attr(feature = "verbose_error", doc = "
 ```
@@ -94,7 +94,8 @@ pub fn or<'a, I, T, E, F, G>(i: Input<'a, I>, f: F, g: G) -> ParseResult<'a, I, 
     }
 }
 
-/// Parses many instances of ``f`` until it does no longer match, returning all matches.
+/// Parses many instances of ``f`` until it does no longer match, collecting all matches into the
+/// type `T: FromIterator`.
 ///
 /// Note: If the last parser succeeds on the last input item then this parser is still considered
 /// incomplete if the input flag END_OF_INPUT is not set as there might be more data to fill.
@@ -121,8 +122,8 @@ pub fn many<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E
     bounded::many(i, .., f)
 }
 
-/// Parses at least one instance of ``f`` and continues until it does no longer match,
-/// returning all matches.
+/// Parses at least one instance of ``f`` and continues until it does no longer match, collecting
+/// all matches into the type `T: FromIterator`.
 ///
 /// Note: If the last parser succeeds on the last input item then this parser is still considered
 /// incomplete as there might be more data to fill.
@@ -151,7 +152,7 @@ pub fn many1<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, 
 }
 
 /// Applies the parser `R` zero or more times, separated by the parser `F`. All matches from `R`
-/// will be collected into the type `T` implementing `IntoIterator`.
+/// will be collected into the type `T: FromIterator`.
 ///
 /// If the separator or parser registers error or incomplete this parser stops and yields the
 /// collected value.
@@ -192,7 +193,7 @@ pub fn sep_by<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, mut p: R, mut sep: F)
 
 
 /// Applies the parser `R` one or more times, separated by the parser `F`. All matches from `R`
-/// will be collected into the type `T` implementing `IntoIterator`.
+/// will be collected into the type `T: FromIterator`.
 ///
 /// If the separator or parser registers error or incomplete this parser stops and yields the
 /// collected value if at least one item has been read.
@@ -231,8 +232,8 @@ pub fn sep_by1<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, mut p: R, mut sep: F
     bounded::many(i, 1.., parser)
 }
 
-/// Applies the parser `R` multiple times until the parser `F` succeeds and returns a value
-/// populated by the values yielded by `R`. Consumes the matched part of `F`.
+/// Applies the parser `R` multiple times until the parser `F` succeeds and returns a
+/// `T: FromIterator` populated by the values yielded by `R`. Consumes the matched part of `F`.
 ///
 /// This parser is considered incomplete if the parser `R` is considered incomplete.
 ///

@@ -88,6 +88,11 @@ pub fn new<I>(state: InputMode, buffer: &[I]) -> Input<I> {
 impl<'a, I> Input<'a, I> {
     /// Creates a new `Input` to start parsing with.
     ///
+    /// # Deprecated
+    ///
+    /// Use `parse_only` or `buffer::SliceStream` to parse a slice instead. For any advanced usage
+    /// create an `Input` using `primitives::input::new`.
+    ///
     /// # Note
     ///
     /// This should only be used for simple examples, for anything more advanced look at the
