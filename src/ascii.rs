@@ -73,12 +73,10 @@ pub fn is_alphanumeric(c: u8) -> bool {
 /// # Example
 ///
 /// ```
-/// use chomp::Input;
+/// use chomp::parse_only;
 /// use chomp::ascii::skip_whitespace;
 ///
-/// let i = Input::new(b" \t ");
-///
-/// assert_eq!(skip_whitespace(i).unwrap(), ());
+/// assert_eq!(parse_only(skip_whitespace, b" \t "), Ok(()));
 /// ```
 #[inline]
 pub fn skip_whitespace(i: Input<u8>) -> U8Result<()> {
@@ -94,14 +92,10 @@ pub fn skip_whitespace(i: Input<u8>) -> U8Result<()> {
 /// # Example
 ///
 /// ```
-/// use chomp::Input;
+/// use chomp::parse_only;
 /// use chomp::ascii::digit;
 ///
-/// let i = Input::new(b"1");
-///
-/// let r = digit(i);
-///
-/// assert_eq!(r.unwrap(), b'1');
+/// assert_eq!(parse_only(digit, b"1"), Ok(b'1'));
 /// ```
 #[inline]
 pub fn digit(i: Input<u8>) -> U8Result<u8> {
@@ -118,14 +112,12 @@ pub fn digit(i: Input<u8>) -> U8Result<u8> {
 /// # Example
 ///
 /// ```
-/// use chomp::{Input, ParseResult};
+/// use chomp::parse_only;
 /// use chomp::ascii::{decimal, signed};
 ///
-/// let i = Input::new(b"-123");
+/// let r: Result<i16, _> = parse_only(|i| signed(i, decimal), b"-123");
 ///
-/// let r: ParseResult<_, i16, _> = signed(i, decimal);
-///
-/// assert_eq!(r.unwrap(), -123i16);
+/// assert_eq!(r, Ok(-123i16));
 /// ```
 #[inline]
 pub fn signed<T, F>(i: Input<u8>, f: F) -> U8Result<T>
@@ -147,14 +139,14 @@ pub fn signed<T, F>(i: Input<u8>, f: F) -> U8Result<T>
 /// # Example
 ///
 /// ```
-/// use chomp::Input;
+/// use chomp::parse_only;
 /// use chomp::ascii::decimal;
 ///
-/// let i = Input::new(b"123");
+/// let r = parse_only(|i| {
+///     decimal::<u8>(i)
+/// }, b"123");
 ///
-/// let r = decimal::<u8>(i);
-///
-/// assert_eq!(r.unwrap(), 123u8);
+/// assert_eq!(r, Ok(123u8));
 /// ```
 #[inline]
 pub fn decimal<T: Copy + ValueFrom<u8, Err=NoError> + Add<Output=T> + Mul<Output=T>>(i: Input<u8>) -> U8Result<T> {

@@ -106,28 +106,31 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
     /// # Examples
     ///
     /// ```
-    /// use chomp::{Input, Error};
+    /// use chomp::parse_only;
     ///
-    /// let p = Input::new(b"test").ret("data".to_owned());
-    /// // Explicitly state the error type
-    /// let r = p.bind::<_, _, ()>(|i, x| i.ret(x + " here!"));
+    /// let r = parse_only(|i| {
+    ///         i.ret("data".to_owned())
+    ///         // Explicitly state the error type
+    ///          .bind::<_, _, ()>(|i, x| i.ret(x + " here!"))
+    ///     },
+    ///     b"test");
     ///
-    /// assert_eq!(r.unwrap(), "data here!");
+    /// assert_eq!(r, Ok("data here!".to_owned()));
     /// ```
     ///
-    /// Using a function which wraps the expression will both make it easier to compose and also
-    /// provides the type-hint for the error in the function signature:
+    /// Wrapping the expression in a function will both make it easier to compose and also provides
+    /// the type-hint for the error in the function signature:
     ///
     /// ```
-    /// use chomp::{Input, ParseResult};
+    /// use chomp::{Input, ParseResult, parse_only};
     ///
     /// fn parser(i: Input<u8>, n: i32) -> ParseResult<u8, i32, ()> {
     ///     i.ret(n + 10)
     /// }
     ///
-    /// let p = Input::new(b"test").ret(23);
+    /// let r = parse_only(|i| i.ret(23).bind(parser), b"test");
     ///
-    /// assert_eq!(p.bind(parser).unwrap(), 33);
+    /// assert_eq!(r, Ok(33));
     /// ```
     #[inline]
     pub fn bind<F, U, V = E>(self, f: F) -> ParseResult<'a, I, U, V>
@@ -154,17 +157,17 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
     /// # Example
     ///
     /// ```
-    /// use chomp::{Input, U8Result};
+    /// use chomp::{Input, U8Result, parse_only};
     ///
     /// fn g(i: Input<u8>) -> U8Result<&'static str> {
     ///     i.ret("testing!")
     /// }
     ///
-    /// let p1 = Input::new(b"data").ret("initial state");
-    /// let p2 = Input::new(b"data").ret("initial state");
+    /// let r1 = parse_only(|i| i.ret("initial state").bind(|i, _| g(i)), b"data");
+    /// let r2 = parse_only(|i| i.ret("initial state").then(g), b"data");
     ///
-    /// assert_eq!(p1.bind(|i, _| g(i)).unwrap(), "testing!");
-    /// assert_eq!(p2.then(g).unwrap(), "testing!");
+    /// assert_eq!(r1, Ok("testing!"));
+    /// assert_eq!(r2, Ok("testing!"));
     /// ```
     #[inline]
     pub fn then<F, U, V = E>(self, f: F) -> ParseResult<'a, I, U, V>
@@ -178,19 +181,17 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
     /// # Example
     ///
     /// ```
-    /// use chomp::{Input, any};
+    /// use chomp::{parse_only, any};
     ///
-    /// let i = Input::new(b"abc");
+    /// let r = parse_only(|i| any(i).map(|c| c + 12), b"abc");
     ///
-    /// let r = any(i).map(|c| c + 12);
-    ///
-    /// assert_eq!(r.unwrap(), b'm');
+    /// assert_eq!(r, Ok(b'm'));
     /// ```
     #[inline]
     pub fn map<U, F>(self, f: F) -> ParseResult<'a, I, U, E>
       where F: FnOnce(T) -> U {
         match self.0 {
-            State::Data(i, t) => ParseResult(State::Data(i, f(t))),
+            State::Data(i, t)    => ParseResult(State::Data(i, f(t))),
             State::Error(i, e)   => ParseResult(State::Error(i, e)),
             State::Incomplete(n) => ParseResult(State::Incomplete(n)),
         }
@@ -201,20 +202,19 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
     /// # Example
     ///
     /// ```
-    /// use chomp::Input;
+    /// use chomp::{ParseError, parse_only};
     ///
-    /// let i = Input::new(b"foo");
+    /// let r = parse_only(|i| i.err::<(), _>("this is")
+    ///          .map_err(|e| e.to_owned() + " an error"),
+    ///          b"foo");
     ///
-    /// let r = i.err::<(), _>("this is")
-    ///          .map_err(|e| e.to_owned() + " an error");
-    ///
-    /// assert_eq!(r.unwrap_err(), "this is an error");
+    /// assert_eq!(r, Err(ParseError::Error(b"foo", "this is an error".to_owned())));
     /// ```
     #[inline]
     pub fn map_err<V, F>(self, f: F) -> ParseResult<'a, I, T, V>
       where F: FnOnce(E) -> V {
         match self.0 {
-            State::Data(i, t) => ParseResult(State::Data(i, t)),
+            State::Data(i, t)    => ParseResult(State::Data(i, t)),
             State::Error(i, e)   => ParseResult(State::Error(i, f(e))),
             State::Incomplete(n) => ParseResult(State::Incomplete(n)),
         }
@@ -226,13 +226,13 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
     /// # Example
     ///
     /// ```
-    /// use chomp::{Input, take_while};
+    /// use chomp::{parse_only, take_while};
     ///
-    /// let i = Input::new(b"test and more");
-    ///
-    /// let r = take_while(i, |c| c != b' ').inspect(|b| {
+    /// let r = parse_only(|i| take_while(i, |c| c != b' ').inspect(|b| {
     ///     println!("{:?}", b); // Prints "test"
-    /// });
+    /// }), b"test and more");
+    ///
+    /// assert_eq!(r, Ok(&b"test"[..]));
     /// ```
     #[inline]
     pub fn inspect<F>(self, f: F) -> ParseResult<'a, I, T, E>
@@ -247,6 +247,11 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
 
 impl<'a, I, T, E: fmt::Debug> ParseResult<'a, I, T, E> {
     /// Unwraps a parse result, yielding the content of the success-state.
+    ///
+    /// # Deprecated
+    ///
+    /// Use `parse_only` or `buffer::Stream` implementations to obtain a `Result` instead of acting
+    /// on the `ParseResult` directly.
     ///
     /// # Panics
     ///
@@ -293,6 +298,11 @@ impl<'a, I, T, E: fmt::Debug> ParseResult<'a, I, T, E> {
 
     /// Unwraps a parse result, yielding the contents of the success state.
     ///
+    /// # Deprecated
+    ///
+    /// Use `parse_only` or `buffer::Stream` implementations to obtain a `Result` instead of acting
+    /// on the `ParseResult` directly.
+    ///
     /// # Panics
     ///
     /// Panics if the parse result is in an error-state or if the parsing is incomplete. Will
@@ -320,6 +330,11 @@ impl<'a, I, T, E: fmt::Debug> ParseResult<'a, I, T, E> {
 
 impl<'a, I, T: fmt::Debug, E> ParseResult<'a, I, T, E> {
     /// Unwraps a parse result, yielding the contents of the error state.
+    ///
+    /// # Deprecated
+    ///
+    /// Use `parse_only` or `buffer::Stream` implementations to obtain a `Result` instead of acting
+    /// on the `ParseResult` directly.
     ///
     /// # Panics
     ///
@@ -381,7 +396,7 @@ impl<'a, I, T: fmt::Debug, E> ParseResult<'a, I, T, E> {
 /// # Example
 ///
 /// ```
-/// use chomp::{Input, ParseResult, take};
+/// use chomp::{Input, ParseResult, parse_only, take};
 /// use chomp::primitives::{InputClone, IntoInner, State};
 ///
 /// // Version of option() which also catches incomplete
@@ -395,11 +410,9 @@ impl<'a, I, T: fmt::Debug, E> ParseResult<'a, I, T, E> {
 ///     }
 /// }
 ///
-/// let i = Input::new(b"foo");
+/// let r = parse_only(|i| my_combinator(i, |i| take(i, 10), &b"test"[..]), b"foo");
 ///
-/// let r = my_combinator(i, |i| take(i, 10), &b"test"[..]);
-///
-/// assert_eq!(r.unwrap(), b"test");
+/// assert_eq!(r, Ok(&b"test"[..]));
 /// ```
 impl<'a, I, T, E> IntoInner for ParseResult<'a, I, T, E> {
     type Inner = State<'a, I, T, E>;
