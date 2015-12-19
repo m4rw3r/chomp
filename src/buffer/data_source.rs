@@ -4,6 +4,7 @@ use std::io;
 
 /// Abstraction over `io::Read`, `Iterator` and others.
 pub trait DataSource {
+    /// The type of items this data source produces.
     type Item;
 
     /// Populates the supplied buffer with data, returns the number of items written.
@@ -26,11 +27,13 @@ pub trait DataSource {
 pub struct ReadDataSource<R: io::Read>(R);
 
 impl<R: io::Read> ReadDataSource<R> {
+    /// Creates a new `ReadDataSource` from a `Read` instance.
     #[inline]
     pub fn new(inner: R) -> Self {
         ReadDataSource(inner)
     }
 
+    /// Consumes self to reveal the underlying `Read` instance.
     #[inline]
     pub fn into_inner(self) -> R {
         self.0
@@ -48,14 +51,17 @@ impl<R: io::Read> DataSource for ReadDataSource<R> {
 
 /// Implementation of `DataSource` for `Iterator`.
 // TODO: Tests
+#[derive(Debug)]
 pub struct IteratorDataSource<I: Iterator>(I);
 
 impl<I: Iterator> IteratorDataSource<I> {
+    /// Creates a new `IteratorDataSource` from an `Iterator` instance.
     #[inline]
     pub fn new(inner: I) -> Self {
         IteratorDataSource(inner)
     }
 
+    /// Consumes self to reveal the underlying `Iterator` instance.
     #[inline]
     pub fn into_inner(self) -> I {
         self.0

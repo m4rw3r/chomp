@@ -80,8 +80,14 @@ impl<'a, I, E> PartialEq for StreamError<'a, I, E>
 
 /// Trait wrapping the state management in reading from a data source while parsing.
 pub trait Stream<'a, 'i> {
+    /// The input item type, usually depending on which `DataSource` is used.
     type Item: 'i;
 
+    /// Attempts to run the supplied parser `F` once on the currently populated data in this
+    /// stream, providing a borrow of the inner data storage.
+    ///
+    /// If a `StreamError::Retry` is returned the consuming code it should just retry the action
+    /// (the implementation might require a separate call to refill the stream).
     #[inline]
     fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, StreamError<'i, Self::Item, E>>
       where F: FnOnce(Input<'i, Self::Item>) -> ParseResult<'i, Self::Item, T, E>,
@@ -91,9 +97,12 @@ pub trait Stream<'a, 'i> {
 
 /// Trait for conversion into a `Stream`.
 pub trait IntoStream<'a, 'i> {
+    /// The input item type provided by the stream.
     type Item: 'i;
+    /// The `Stream` instance type.
     type Into: Stream<'a, 'i, Item=Self::Item>;
 
+    /// Convert self into a `Stream`.
     #[inline]
     fn into_stream(self) -> Self::Into;
 }

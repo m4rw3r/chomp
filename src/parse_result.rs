@@ -19,9 +19,14 @@ pub enum State<'a, I: 'a, T, E>
   where I: 'a,
         T: 'a,
         E: 'a {
+    /// Successful parser state, first item is the input state and the second item is the contained
+    /// value.
     Data(Input<'a, I>, T),
+    /// Parse error state, first item is a slice from where the error occurred in the input buffer
+    /// to the end of the input buffer and the second item is the error value.
     Error(&'a [I], E),
-    /// The number of additional items requested
+    /// Incomplete state, a parser attempted to request more data than available in the slice, the
+    /// provided number is a guess at how many items are needed.
     Incomplete(usize),
 }
 
@@ -31,6 +36,7 @@ pub enum State<'a, I: 'a, T, E>
 ///
 /// Only used by fundamental parsers and combinators.
 pub trait IntoInner {
+    /// The inner type to be revealed.
     type Inner;
 
     /// **Primitive:** Consumes self and reveals the inner state.

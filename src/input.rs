@@ -33,6 +33,7 @@ pub trait InputClone {
 /// Only used by fundamental parsers and combinators.
 ///
 pub trait InputBuffer<'a> {
+    /// The type of each element of the buffer.
     type Item: 'a;
 
     /// Reveals the internal buffer containig the remainder of the input.

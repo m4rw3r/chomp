@@ -6,7 +6,9 @@ use primitives::input;
 #[derive(Debug, Eq, PartialEq)]
 pub enum ParseError<'a, I, E>
   where I: 'a {
+    /// A parse error occurred.
     Error(&'a [I], E),
+    /// The parser attempted to read more data than available.
     Incomplete(usize),
 }
 

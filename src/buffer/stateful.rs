@@ -41,6 +41,7 @@ pub struct Source<S: DataSource, B: Buffer<S::Item>> {
 }
 
 impl<R: io::Read> Source<ReadDataSource<R>, FixedSizeBuffer<u8>> {
+    /// Creates a new `Source` from a `Read` instance with the default `FixedSizeBuffer` settings.
     #[inline]
     pub fn new(source: R) -> Self {
         Self::with_buffer(ReadDataSource::new(source), FixedSizeBuffer::new())
@@ -48,6 +49,7 @@ impl<R: io::Read> Source<ReadDataSource<R>, FixedSizeBuffer<u8>> {
 }
 
 impl<R: io::Read, B: Buffer<u8>> Source<ReadDataSource<R>, B> {
+    /// Creates a new `Source` from `Read` and buffer instances.
     #[inline]
     pub fn from_read(source: R, buffer: B) -> Self {
         Self::with_buffer(ReadDataSource::new(source), buffer)
@@ -55,6 +57,7 @@ impl<R: io::Read, B: Buffer<u8>> Source<ReadDataSource<R>, B> {
 }
 
 impl<I: Iterator, B: Buffer<I::Item>> Source<IteratorDataSource<I>, B> {
+    /// Creates a new `Source` from `Iterator` and `Buffer` instances.
     #[inline]
     pub fn from_iter(source: I, buffer: B) -> Self {
         Self::with_buffer(IteratorDataSource::new(source), buffer)
@@ -62,6 +65,7 @@ impl<I: Iterator, B: Buffer<I::Item>> Source<IteratorDataSource<I>, B> {
 }
 
 impl<S: DataSource, B: Buffer<S::Item>> Source<S, B> {
+    /// Creates a new `Source` from `DataSource` and `Buffer` instances.
     #[inline]
     pub fn with_buffer(source: S, buffer: B) -> Self {
         Source {
@@ -115,7 +119,7 @@ impl<S: DataSource, B: Buffer<S::Item>> Source<S, B> {
         })
     }
 
-    /// the number of bytes left in the buffer.
+    /// Returns the number of bytes left in the buffer which have not yet been parsed.
     #[inline]
     pub fn len(&self) -> usize {
         self.buffer.len()
@@ -127,6 +131,9 @@ impl<S: DataSource, B: Buffer<S::Item>> Source<S, B> {
         self.state.contains(END_OF_INPUT) && self.len() == 0
     }
 
+    /// Returns the capacity of the underlying buffer.
+    ///
+    /// This is the maximum number of input items the buffer can store.
     #[inline]
     pub fn capacity(&self) -> usize {
         self.buffer.capacity()
@@ -139,6 +146,9 @@ impl<S: DataSource, B: Buffer<S::Item>> Source<S, B> {
     }
 
     /// Resets the buffer state, keeping the current buffer contents and cursor position.
+    ///
+    /// This is useful when streaming data and more data has been made available on a
+    /// socket/stream.
     #[inline]
     pub fn reset(&mut self) {
         self.state = ParserState::empty();
