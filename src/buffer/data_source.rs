@@ -22,6 +22,7 @@ pub trait DataSource {
 
 /// Implementation of `DataSource` for `io::Read` instances.
 // TODO: Tests
+#[derive(Debug)]
 pub struct ReadDataSource<R: io::Read>(R);
 
 impl<R: io::Read> ReadDataSource<R> {

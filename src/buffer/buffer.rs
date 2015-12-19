@@ -170,6 +170,7 @@ impl<I: Copy> Buffer<I> for FixedSizeBuffer<I> {
 ///
 /// Will not decrease in size.
 // TODO: Tests
+#[derive(Debug)]
 pub struct GrowingBuffer<I: Copy> {
     /// Backing memory.
     buffer:    Vec<I>,
