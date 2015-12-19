@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## [0.2.1] - 2015-12-20
+
+### Changes
+
+* `buffer::GrowingBuffer` and `buffer::data_source::ReadDataSource` now derive `Debug`.
+* Rustdoc for public items previously lacking any documentation.
+
 ## [0.2.0] - 2015-12-16
 
 ### Added
