@@ -54,13 +54,13 @@
 /// Statement ::= Bind ';'
 ///             | Expr ';'
 /// Bind      ::= 'let' Var '=' Expr
-/// Var       ::= $ident ':' $ty
-///             | $pat
+/// Var       ::= $pat
+///             | $ident ':' $ty
 ///
 /// Expr      ::= Term
 ///             | Named Operator Expr
-///             | '(' Expr ')' Operator Expr
 ///             | '(' Expr ')'
+///             | '(' Expr ')' Operator Expr
 /// /* Needs to be followed by , or ; because of trailing $expr on Ret, Err and Inline.
 ///    Alternatively be wrapped in parentheses */
 /// Term      ::= Ret
@@ -191,44 +191,65 @@ macro_rules! __parse_internal_or {
 macro_rules! __parse_internal {
     // Internal rules
 
-    // NEST creates a closure with the first parameter $input and then the user-defined argument
-    // $name with the expression $e.
-    // Needed to allow $ident : $ty
-    ( @NEST($input:ident,         _,                 $e:expr) ) => { |$input, _               | $e };
-    ( @NEST($input:ident, $name:pat,                 $e:expr) ) => { |$input, $name           | $e };
-    ( @NEST($input:ident, $name:ident : $name_ty:ty, $e:expr) ) => { |$input, $name : $name_ty| $e };
+    // BIND ties an expression together with the following statement
+    // The four versions are needed to allow $pat, $ident:$ty, _ and the empty case
+    ( @BIND(($input:expr ; $($var:tt)*)               $($exp:tt)+)              ) => { __parse_internal!{@EXPR($input) $($exp)* } };
+    ( @BIND(($input:expr ; _)                         $($exp:tt)+) $($tail:tt)+ ) => { __parse_internal!{@EXPR($input) $($exp)* }.bind(|i, _| __parse_internal!{i; $($tail)* }) };
+    ( @BIND(($input:expr ; $name:pat)                 $($exp:tt)+) $($tail:tt)+ ) => { __parse_internal!{@EXPR($input) $($exp)* }.bind(|i, $name| __parse_internal!{i; $($tail)* }) };
+    ( @BIND(($input:expr ; $name:ident : $name_ty:ty) $($exp:tt)+) $($tail:tt)+ ) => { __parse_internal!{@EXPR($input) $($exp)* }.bind(|i, $name : $name_ty| __parse_internal!{i; $($tail)* }) };
 
-    // Term Ret
-    ( @BIND($input:expr ; _) ret @ $t_ty:ty , $e_ty:ty : $e:expr ) => { $input.ret::<$t_ty, $e_ty>($e) };
-    ( @BIND($input:expr ; _) ret $e:expr )                         => { $input.ret($e) };
-    // Expr Term Ret
-    ( @BIND($input:expr ; $($var:tt)+) ret @ $t_ty:ty , $e_ty:ty : $e:expr ; $($tail:tt)* ) => { $input.ret::<$t_ty, $e_ty>($e).bind(__parse_internal!{@NEST(i, $($var)+, __parse_internal!{i; $($tail)*})}) };
-    ( @BIND($input:expr ; $($var:tt)+) ret $e:expr ; $($tail:tt)* )                         => { $input.ret($e).bind(__parse_internal!{@NEST(i, $($var)+, __parse_internal!{i; $($tail)* })}) };
+    // Ret ::= "ret" Typed
+    ( @EXPR($input:expr) ret @ $t_ty:ty , $e_ty:ty : $e:expr ) => { $input.ret::<$t_ty, $e_ty>($e) };
+    //       | "ret" $expr
+    ( @EXPR($input:expr) ret $e:expr )                         => { $input.ret($e) };
 
-    // Term Err
-    ( @BIND($input:expr ; _) err @ $t_ty:ty , $e_ty:ty : $e:expr ) => { $input.err::<$t_ty, $e_ty>($e) };
-    ( @BIND($input:expr ; _) err $e:expr )                         => { $input.err($e) };
-    // Expr Term Err
-    ( @BIND($input:expr ; $($var:tt)+) err @ $t_ty:ty , $e_ty:ty : $e:expr ; $($tail:tt)* ) => { $input.err::<$t_ty, $e_ty>($e).bind(__parse_internal!{@NEST(i, $($var)+, __parse_internal!{i; $($tail)*})}) };
-    ( @BIND($input:expr ; $($var:tt)+) err $e:expr ; $($tail:tt)* )                         => { $input.err($e).bind(__parse_internal!{@NEST(i, $($var)+, __parse_internal!{i; $($tail)* })}) };
+    // Err ::= "err" Typed
+    ( @EXPR($input:expr) err @ $t_ty:ty , $e_ty:ty : $e:expr ) => { $input.err::<$t_ty, $e_ty>($e) };
+    //       | "err" $expr
+    ( @EXPR($input:expr) err $e:expr )                         => { $input.err($e) };
 
-    // Term Inline
-    ( @BIND($input:expr ; _) $state:ident -> $e:expr ) => { { let $state = $input; $e } };
-    // Expr Term Inline
-    ( @BIND($input:expr ; $($var:tt)+) $state:ident -> $e:expr ; $($tail:tt)* ) => { { let $state = $input; $e }.bind(__parse_internal!{@NEST(i, $($var)+, __parse_internal!{i; $($tail)*})}) };
+    // Inline ::= $ident "->" $expr
+    ( @EXPR($input:expr) $state:ident -> $e:expr ) => { { let $state = $input; $e } };
 
-    // Term Named
-    ( @BIND($input:expr ; _) $func:ident ( $($param:expr),* $(,)*) ) => { $func($input, $($param),*) };
-    // Expr Term Named
-    ( @BIND($input:expr ; $($var:tt)+) $func:ident ( $($param:expr),* $(,)*) ; $($tail:tt)* ) => { $func($input, $($param),*).bind(__parse_internal!{@NEST(i, $($var)+, __parse_internal!{i; $($tail)*})}) };
-    // Expr Term (Named Operator Expr)
-    ( @BIND($input:expr ; $($var:tt)+) $func:ident ( $($param:expr),* $(,)*) <|> $($tail:tt)* ) => { __parse_internal_or!($input, |i| $func(i, $($param),*), |i| __parse_internal!{i; $($tail)*}) };
+    // Named ::= $ident '(' ($expr ',')* (',')* ')'
+    ( @EXPR($input:expr) $func:ident ( $($param:expr),* $(,)*) ) => { $func($input, $($param),*) };
 
-    // Bind
-    ( $input:expr ; let $name:pat = $($tail:tt)+ ) => { __parse_internal!{@BIND($input; $name) $($tail)+} };
-    ( $input:expr ; let $name:ident : $name_ty:ty = $($tail:tt)+ ) => { __parse_internal!{@BIND($input; $name:$name_ty) $($tail)+} };
-    // Expr
-    ( $input:expr ; $($tail:tt)+ ) => { __parse_internal!{@BIND($input; _) $($tail)+} };
+    // TODO: Currently all Expr operators are right associative
+    // in Haskell the following operators are left associative:
+    // <|>  infixl 3
+    // <*   infixl 4
+    // >>   infixl 1
+
+    // Expr ::= Named "<|>" Expr
+    ( @EXPR($input:expr) $func:ident ( $($param:expr),* $(,)*) <|> $($tail:tt)* ) => { __parse_internal_or!($input, |i| $func(i, $($param),*), |i| __parse_internal!{@EXPR(i) $($tail)*}) };
+    //        | Named "<*" Expr
+    ( @EXPR($input:expr) $func:ident ( $($param:expr),* $(,)*) <* $($tail:tt)* ) => { $func($input, $($param),*).bind(|i, v| __parse_internal!{@EXPR(i) $($tail)*}.map(|_| v)) };
+    //        | Named ">>" Expr
+    ( @EXPR($input:expr) $func:ident ( $($param:expr),* $(,)*) >> $($tail:tt)* ) => { $func($input, $($param),*).bind(|i, _| __parse_internal!{@EXPR(i) $($tail)*}) };
+    //        | '(' Expr ')'
+    ( @EXPR($input:expr) ( $($exp:tt)+ ) ) => { __parse_internal!{@EXPR($input) $($exp)*} };
+    //        | '(' Expr ')' "<|>" Expr
+    ( @EXPR($input:expr) ( $($exp:tt)+ ) <|> $($tail:tt)* ) => { __parse_internal_or!($input, |i| __parse_internal!{@EXPR(i) $($exp)+}, |i| __parse_internal!{@EXPR(i) $($tail)*}) };
+    //        | '(' Expr ')' "<*" Expr
+    ( @EXPR($input:expr) ( $($exp:tt)+ ) <* $($tail:tt)* ) => { __parse_internal!{@EXPR($input) $($exp)+}.bind(|i, v| __parse_internal!{@EXPR(i) $($tail)*}.map(|_| v)) };
+    //        | '(' Expr ')' ">>" Expr
+    ( @EXPR($input:expr) ( $($exp:tt)+ ) >> $($tail:tt)* ) => { __parse_internal!{@EXPR($input) $($exp)+}.bind(|i, _| __parse_internal!{@EXPR(i) $($tail)*}) };
+
+    // STATEMENT eats and groups a full parse! expression until the next ;
+    ( @STATEMENT($args:tt $($data:tt)*) )               => { __parse_internal!{ @BIND($args $($data)*) } };
+    ( @STATEMENT($args:tt $($data:tt)*) ; $($tail:tt)*) => { __parse_internal!{ @BIND($args $($data)*) $($tail)*} };
+    // Recurse to eat until ; or end
+    // TODO: Add more cases to prevent as many iterations
+    ( @STATEMENT($args:tt $($data:tt)*) $tok:tt $($tail:tt)* ) => { __parse_internal!{ @STATEMENT($args $($data)* $tok) $($tail)* } };
+
+    // Statement ::= Bind ';'
+    //             | Expr ';'
+    //           ::= 'let' $pat '=' Expr
+    ( $input:expr ; let $name:pat = $($tail:tt)+ ) => { __parse_internal!{@STATEMENT(($input; $name)) $($tail)+} };
+    //             | 'let' $ident ':' $ty '=' Expr
+    ( $input:expr ; let $name:ident : $name_ty:ty = $($tail:tt)+ ) => { __parse_internal!{@STATEMENT(($input; $name:$name_ty)) $($tail)+} };
+    //           ::= Expr ';'
+    ( $input:expr ; $($tail:tt)+ ) => { __parse_internal!{@STATEMENT(($input; _)) $($tail)+} };
 
 
     // Empty
@@ -915,8 +936,6 @@ mod test {
         let i = Input(123);
 
         let r1 = parse!{i; fail() <|> doit(); next() };
-        // Currently failing on this since it is interpreted as
-        // doit() <|> (fail() >> next())
         let r2 = parse!{i; doit() <|> fail(); next() };
         let r3 = parse!{i; fail() <|> fail(); next() };
 
@@ -928,13 +947,13 @@ mod test {
 // Statement ::= Bind ';'
 //             | Expr ';'
 // Bind      ::= 'let' Var '=' Expr
-// Var       ::= $ident ':' $ty
-//             | $pat
+// Var       ::= $pat
+//             | $ident ':' $ty
 //
 // Expr      ::= Term
 //             | Named Operator Expr
-//             | '(' Expr ')' Operator Expr
 //             | '(' Expr ')'
+//             | '(' Expr ')' Operator Expr
 // /* Needs to be followed by , or ; because of trailing $expr on Ret, Err and Inline.
 //    Alternatively be wrapped in parentheses */
 // Term      ::= Ret
