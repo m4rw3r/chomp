@@ -84,110 +84,18 @@ macro_rules! parse {
     ( $($t:tt)* ) => { __parse_internal!{ $($t)* } };
 }
 
-/*
+/// Internal rule to create an or-combinator, separate macro so that tests can override it.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __parse_internal_or {
+    ($input:expr, $lhs:expr, $rhs:expr) => { $crate::combinators::or($input, $lhs, $rhs) };
+}
+
 /// Actual implementation of the parse macro, hidden to make the documentation easier to read.
 ///
 /// Patterns starting with @ symbols are internal rules, used by other parts of the macro.
 #[macro_export]
 #[doc(hidden)]
-macro_rules! __parse_internal {
-    // RET_TYPED     = '@' $ty ',' $ty ':' $expr
-    ( @RET($i:expr); @ $t_ty:ty , $e_ty:ty : $e:expr ) =>
-        { $i.ret::<$t_ty, $e_ty>($e) };
-
-    // RET_PLAIN     = $expr
-    ( @RET($i:expr); $e:expr ) =>
-        { $i.ret($e) };
-
-    // ERR_TYPED     = '@' $ty ',' $ty ':' $expr
-    ( @ERR($i:expr); @ $t_ty:ty , $e_ty:ty : $e:expr ) =>
-        { $i.err::<$t_ty, $e_ty>($e) };
-
-    // ERR_PLAIN     = $expr
-    ( @ERR($i:expr); $e:expr ) =>
-        { $i.err($e) };
-
-    // VAR           = $ident ':' $ty | $pat
-    // pattern must be before ident
-    // @ACTION_NONTERM will intentionally fail if there are no more tokens following the bind
-    ( @BIND($i:expr); $v:pat              = $($t:tt)* ) =>
-        { __parse_internal!{ @ACTION_NONTERM($i, $v      ); $($t)* } };
-    ( @BIND($i:expr); $v:ident : $v_ty:ty = $($t:tt)* ) =>
-        { __parse_internal!{ @ACTION_NONTERM($i, $v:$v_ty); $($t)* } };
-
-    // ACTION        = INLINE_ACTION | NAMED_ACTION
-
-    // INLINE_ACTION = $ident '->' $expr
-    // version with expression following, nonterminal:
-    ( @ACTION($i:expr, $($v:tt)*); $m:ident -> $e:expr ; $($t:tt)*) =>
-        { __parse_internal!{ @CONCAT({ let $m = $i; $e }, $($v)*); $($t)* } };
-    // intentionally fail if there are no more tokens
-    ( @ACTION_NONTERM($i:expr, $($v:tt)*); $m:ident -> $e:expr ; $($t:tt)*) =>
-        { __parse_internal!{ @CONCAT({ let $m = $i; $e }, $($v)*); $($t)* } };
-    // terminal:
-    ( @ACTION($i:expr, $($v:tt)*); $m:ident -> $e:expr ) =>
-        { { let $m = $i; $e } };
-
-    // NAMED_ACTION  = $ident '(' ($expr ',')* ','? ')'
-    // version with expression following, nonterminal:
-    ( @ACTION($i:expr, $($v:tt)*); $f:ident ( $($p:expr),* $(,)*) ; $($t:tt)* ) =>
-        { __parse_internal!{ @CONCAT($f($i, $($p),*), $($v)*); $($t)*} };
-    // intentionally fail if there are no more tokens
-    ( @ACTION_NONTERM($i:expr, $($v:tt)*); $f:ident ( $($p:expr),* $(,)*) ; $($t:tt)* ) =>
-        { __parse_internal!{ @CONCAT($f($i, $($p),*), $($v)*); $($t)*} };
-    // terminal:
-    ( @ACTION($i:expr, $($v:tt)*); $f:ident ( $($p:expr),* $(,)*) ) =>
-        { $f($i, $($p),*) };
-
-    // Ties an expression together with the next, using the bind operator
-    // invoked from @ACTION and @BIND (via @ACTION)
-    // three variants are needed to coerce the tt-list into a parameter token
-    // an additional three variants are needed to handle tailing semicolons, if there is nothing
-    // else to expand, do not use bind
-    ( @CONCAT($i:expr, _); ) =>
-        { $i };
-    ( @CONCAT($i:expr, _); $($tail:tt)+ ) =>
-        { $i.bind(|i, _| __parse_internal!{ i; $($tail)* }) };
-    ( @CONCAT($i:expr, $v:pat); ) =>
-        { $i };
-    ( @CONCAT($i:expr, $v:pat); $($tail:tt)+ ) =>
-        { $i.bind(|i, $v| __parse_internal!{ i; $($tail)* }) };
-    ( @CONCAT($i:expr, $v:ident : $v_ty:ty); ) =>
-        { $i };
-    ( @CONCAT($i:expr, $v:ident : $v_ty:ty); $($tail:tt)+ ) =>
-        { $i.bind(|i, $v:$v_ty| __parse_internal!{ i; $($tail)* }) };
-
-    // EXPR          = ( BIND ';' | THEN ';' )* (RET | ERR | THEN)
-
-    // BIND          = 'let' VAR '=' ACTION
-    ( $i:expr ; let $($tail:tt)* ) =>
-        { __parse_internal!{ @BIND($i); $($tail)+ } };
-    // RET           = 'ret' ( RET_TYPED | RET_PLAIN )
-    ( $i:expr ; ret $($tail:tt)+ ) =>
-        { __parse_internal!{ @RET($i); $($tail)+ } };
-    // ERR           = 'err' ( ERR_TYPED | ERR_PLAIN )
-    ( $i:expr ; err $($tail:tt)+ ) =>
-        { __parse_internal!{ @ERR($i); $($tail)+ } };
-    // THEN          = ACTION
-    // needs to be last since it is the most general
-    ( $i:expr ; $($tail:tt)+ ) =>
-        { __parse_internal!{ @ACTION($i, _); $($tail)+ } };
-
-    // Terminals:
-    ( $i:expr ; ) => { $i };
-    ( $i:expr )   => { $i };
-}
-*/
-
-/// Internal rule to create an or-combinator, separate macro so that tests can override it.
-#[doc(hidden)]
-#[macro_export]
-macro_rules! __parse_internal_or {
-    ($input:expr, $lhs:expr, $rhs:expr) => { $crate::combinators::or($input, $lhs, $rhs) };
-}
-
-#[doc(hidden)]
-#[macro_export]
 macro_rules! __parse_internal {
     // Internal rules
 
