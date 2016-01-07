@@ -100,8 +100,9 @@ macro_rules! __parse_internal {
     // Internal rules
 
     // BIND ties an expression together with the following statement
-    // The four versions are needed to allow $pat, $ident:$ty, _ and the empty case
-    ( @BIND(($input:expr ; $($var:tt)*)               $($exp:tt)+)              ) => { __parse_internal!{@EXPR($input) $($exp)* } };
+    // The four versions are needed to allow $pat, $ident:$ty, _ and the empty case (no tailing
+    // allowed on the empty case)
+    ( @BIND(($input:expr ; _)                         $($exp:tt)+) )              => { __parse_internal!{@EXPR($input) $($exp)* } };
     ( @BIND(($input:expr ; _)                         $($exp:tt)+) $($tail:tt)+ ) => { __parse_internal!{@EXPR($input) $($exp)* }.bind(|i, _| __parse_internal!{i; $($tail)* }) };
     ( @BIND(($input:expr ; $name:pat)                 $($exp:tt)+) $($tail:tt)+ ) => { __parse_internal!{@EXPR($input) $($exp)* }.bind(|i, $name| __parse_internal!{i; $($tail)* }) };
     ( @BIND(($input:expr ; $name:ident : $name_ty:ty) $($exp:tt)+) $($tail:tt)+ ) => { __parse_internal!{@EXPR($input) $($exp)* }.bind(|i, $name : $name_ty| __parse_internal!{i; $($tail)* }) };

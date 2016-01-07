@@ -1,4 +1,4 @@
-// error-pattern:error: unexpected token: `@`
+// error-pattern:error: expected ident, found x
 
 #[macro_use]
 extern crate chomp;
