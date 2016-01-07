@@ -179,6 +179,14 @@ macro_rules! __parse_internal {
 }
 */
 
+/// Internal rule to create an or-combinator, separate macro so that tests can override it.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __parse_internal_or {
+    ($input:expr, $lhs:expr, $rhs:expr) => { $crate::combinators::or($input, $lhs, $rhs) };
+}
+
+#[doc(hidden)]
 #[macro_export]
 macro_rules! __parse_internal {
     // Internal rules
@@ -186,8 +194,8 @@ macro_rules! __parse_internal {
     // NEST creates a closure with the first parameter $input and then the user-defined argument
     // $name with the expression $e.
     // Needed to allow $ident : $ty
-    ( @NEST($input:ident, _, $e:expr) ) => { |$input, _| $e };
-    ( @NEST($input:ident, $name:pat, $e:expr) ) => { |$input, $name| $e };
+    ( @NEST($input:ident,         _,                 $e:expr) ) => { |$input, _               | $e };
+    ( @NEST($input:ident, $name:pat,                 $e:expr) ) => { |$input, $name           | $e };
     ( @NEST($input:ident, $name:ident : $name_ty:ty, $e:expr) ) => { |$input, $name : $name_ty| $e };
 
     // Term Ret
@@ -213,6 +221,8 @@ macro_rules! __parse_internal {
     ( @BIND($input:expr ; _) $func:ident ( $($param:expr),* $(,)*) ) => { $func($input, $($param),*) };
     // Expr Term Named
     ( @BIND($input:expr ; $($var:tt)+) $func:ident ( $($param:expr),* $(,)*) ; $($tail:tt)* ) => { $func($input, $($param),*).bind(__parse_internal!{@NEST(i, $($var)+, __parse_internal!{i; $($tail)*})}) };
+    // Expr Term (Named Operator Expr)
+    ( @BIND($input:expr ; $($var:tt)+) $func:ident ( $($param:expr),* $(,)*) <|> $($tail:tt)* ) => { __parse_internal_or!($input, |i| $func(i, $($param),*), |i| __parse_internal!{i; $($tail)*}) };
 
     // Bind
     ( $input:expr ; let $name:pat = $($tail:tt)+ ) => { __parse_internal!{@BIND($input; $name) $($tail)+} };
@@ -822,5 +832,124 @@ mod test {
         assert_eq!(r, Data::Value(321, 28));
     }
 
-    // TODO: Compilefail tests for trailing bind
+    /// Override the or-combinator used by parse! to make it possible to use the simplified
+    /// test-types.
+    macro_rules! __parse_internal_or {
+        ($input:expr, $lhs:expr, $rhs:expr) => {
+            {
+                let Input(i) = $input;
+
+                match ($lhs)(Input(i)) {
+                    Data::Value(j, t) => Data::Value(j, t),
+                    Data::Error(_, _) => ($rhs)(Input(i)),
+                }
+            }
+        };
+    }
+
+    #[test]
+    fn alt() {
+        fn fail(i: Input) -> Data<u32, ()> {
+            assert_eq!(i, Input(123));
+
+            Data::Error(456, ())
+        }
+        fn doit(i: Input) -> Data<u32, ()> {
+            assert_eq!(i, Input(123));
+
+            Data::Value(321, 2)
+        }
+
+        let i = Input(123);
+
+        let r1 = parse!{i; fail() <|> doit() };
+        let r2 = parse!{i; doit() <|> fail() };
+        let r3 = parse!{i; doit() <|> doit() };
+        let r4 = parse!{i; fail() <|> fail() };
+
+        assert_eq!(r1, Data::Value(321, 2));
+        assert_eq!(r2, Data::Value(321, 2));
+        assert_eq!(r3, Data::Value(321, 2));
+        assert_eq!(r4, Data::Error(456, ()));
+    }
+
+    #[test]
+    fn alt2() {
+        fn fail(i: Input) -> Data<u32, ()> {
+            assert_eq!(i, Input(123));
+
+            Data::Error(456, ())
+        }
+        fn doit(i: Input) -> Data<u32, ()> {
+            assert_eq!(i, Input(123));
+
+            Data::Value(321, 2)
+        }
+
+        let i = Input(123);
+
+        let r1 = parse!{i; fail() <|> fail() <|> doit() };
+
+        assert_eq!(r1, Data::Value(321, 2));
+    }
+
+    #[test]
+    fn chain_alt() {
+        fn fail(i: Input) -> Data<u32, ()> {
+            assert_eq!(i, Input(123));
+
+            Data::Error(456, ())
+        }
+        fn doit(i: Input) -> Data<u32, ()> {
+            assert_eq!(i, Input(123));
+
+            Data::Value(321, 2)
+        }
+        fn next(i: Input) -> Data<u32, ()> {
+            assert_eq!(i, Input(321));
+
+            Data::Value(322, 42)
+        }
+
+
+        let i = Input(123);
+
+        let r1 = parse!{i; fail() <|> doit(); next() };
+        // Currently failing on this since it is interpreted as
+        // doit() <|> (fail() >> next())
+        let r2 = parse!{i; doit() <|> fail(); next() };
+        let r3 = parse!{i; fail() <|> fail(); next() };
+
+        assert_eq!(r1, Data::Value(322, 42));
+        assert_eq!(r2, Data::Value(322, 42));
+        assert_eq!(r3, Data::Error(456, ()));
+    }
+// Block     ::= Statement* Expr
+// Statement ::= Bind ';'
+//             | Expr ';'
+// Bind      ::= 'let' Var '=' Expr
+// Var       ::= $ident ':' $ty
+//             | $pat
+//
+// Expr      ::= Term
+//             | Named Operator Expr
+//             | '(' Expr ')' Operator Expr
+//             | '(' Expr ')'
+// /* Needs to be followed by , or ; because of trailing $expr on Ret, Err and Inline.
+//    Alternatively be wrapped in parentheses */
+// Term      ::= Ret
+//             | Err
+//             | Inline
+//             | Named
+//
+// Ret       ::= "ret" Typed
+//             | "ret" $expr
+// Err       ::= "err" Typed
+//             | "err" $expr
+// Typed     ::= '@' $ty ',' $ty ':' $expr
+// Inline    ::= $ident "->" $expr
+// Named     ::= $ident '(' ($expr ',')* (',')* ')'
+// Operator  ::= "<|>"
+//             | "<*"
+//             | ">>"
 }
