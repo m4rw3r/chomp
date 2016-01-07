@@ -16,7 +16,7 @@ use buffer::{IntoStream, StreamError, Stream};
 ///
 /// let r = i.into_stream().parse(parser!{
 ///     token(b'f');
-///     take(2);
+///     take(2)
 /// });
 ///
 /// assert_eq!(r, Ok(b"oo" as &[u8]));
@@ -33,7 +33,7 @@ use buffer::{IntoStream, StreamError, Stream};
 ///
 /// let r = i.into_stream().parse(parser!{many(parser!{
 ///     token(b'f');
-///     take(2);
+///     take(2)
 /// })});
 ///
 /// assert_eq!(r, Ok(vec![b"oo" as &[u8], b"oo" as &[u8]]));

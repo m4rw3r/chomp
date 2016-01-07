@@ -50,33 +50,44 @@
 /// EBNF using `$ty`, `$expr`, `$ident` and `$pat` for the equivalent Rust macro patterns.
 ///
 /// ```text
-/// RET_TYPED     = '@' $ty ',' $ty ':' $expr
-/// RET_PLAIN     = $expr
+/// Block     ::= Statement* Expr
+/// Statement ::= Bind ';'
+///             | Expr ';'
+/// Bind      ::= 'let' Var '=' Expr
+/// Var       ::= $ident ':' $ty
+///             | $pat
 ///
-/// ERR_TYPED     = '@' $ty ',' $ty ':' $expr
-/// ERR_PLAIN     = $expr
+/// Expr      ::= Term
+///             | Named Operator Expr
+///             | '(' Expr ')' Operator Expr
+///             | '(' Expr ')'
+/// /* Needs to be followed by , or ; because of trailing $expr on Ret, Err and Inline.
+///    Alternatively be wrapped in parentheses */
+/// Term      ::= Ret
+///             | Err
+///             | Inline
+///             | Named
 ///
-/// VAR           = $ident ':' $ty | $pat
-/// ACTION        = INLINE_ACTION | NAMED_ACTION
-/// INLINE_ACTION = $ident '->' $expr
-/// NAMED_ACTION  = $ident '(' ($expr ',')* ','? ')'
-///
-/// BIND          = 'let' VAR '=' ACTION
-/// THEN          = ACTION
-///
-/// RET           = 'ret' ( RET_TYPED | RET_PLAIN )
-/// ERR           = 'err' ( ERR_TYPED | ERR_PLAIN )
-///
-/// EXPR          = ( BIND ';' | THEN ';' )* (RET | ERR | THEN)
+/// Ret       ::= "ret" Typed
+///             | "ret" $expr
+/// Err       ::= "err" Typed
+///             | "err" $expr
+/// Typed     ::= '@' $ty ',' $ty ':' $expr
+/// Inline    ::= $ident "->" $expr
+/// Named     ::= $ident '(' ($expr ',')* (',')* ')'
+/// Operator  ::= "<|>"
+///             | "<*"
+///             | ">>"
 /// ```
 #[macro_export]
 macro_rules! parse {
     ( $($t:tt)* ) => { __parse_internal!{ $($t)* } };
 }
 
+/*
 /// Actual implementation of the parse macro, hidden to make the documentation easier to read.
 ///
-/// Patterns starting with @ symbolds are internal rules, used by other parts of the macro.
+/// Patterns starting with @ symbols are internal rules, used by other parts of the macro.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __parse_internal {
@@ -165,6 +176,54 @@ macro_rules! __parse_internal {
     // Terminals:
     ( $i:expr ; ) => { $i };
     ( $i:expr )   => { $i };
+}
+*/
+
+#[macro_export]
+macro_rules! __parse_internal {
+    // Internal rules
+
+    // NEST creates a closure with the first parameter $input and then the user-defined argument
+    // $name with the expression $e.
+    // Needed to allow $ident : $ty
+    ( @NEST($input:ident, _, $e:expr) ) => { |$input, _| $e };
+    ( @NEST($input:ident, $name:pat, $e:expr) ) => { |$input, $name| $e };
+    ( @NEST($input:ident, $name:ident : $name_ty:ty, $e:expr) ) => { |$input, $name : $name_ty| $e };
+
+    // Term Ret
+    ( @BIND($input:expr ; _) ret @ $t_ty:ty , $e_ty:ty : $e:expr ) => { $input.ret::<$t_ty, $e_ty>($e) };
+    ( @BIND($input:expr ; _) ret $e:expr )                         => { $input.ret($e) };
+    // Expr Term Ret
+    ( @BIND($input:expr ; $($var:tt)+) ret @ $t_ty:ty , $e_ty:ty : $e:expr ; $($tail:tt)* ) => { $input.ret::<$t_ty, $e_ty>($e).bind(__parse_internal!{@NEST(i, $($var)+, __parse_internal!{i; $($tail)*})}) };
+    ( @BIND($input:expr ; $($var:tt)+) ret $e:expr ; $($tail:tt)* )                         => { $input.ret($e).bind(__parse_internal!{@NEST(i, $($var)+, __parse_internal!{i; $($tail)* })}) };
+
+    // Term Err
+    ( @BIND($input:expr ; _) err @ $t_ty:ty , $e_ty:ty : $e:expr ) => { $input.err::<$t_ty, $e_ty>($e) };
+    ( @BIND($input:expr ; _) err $e:expr )                         => { $input.err($e) };
+    // Expr Term Err
+    ( @BIND($input:expr ; $($var:tt)+) err @ $t_ty:ty , $e_ty:ty : $e:expr ; $($tail:tt)* ) => { $input.err::<$t_ty, $e_ty>($e).bind(__parse_internal!{@NEST(i, $($var)+, __parse_internal!{i; $($tail)*})}) };
+    ( @BIND($input:expr ; $($var:tt)+) err $e:expr ; $($tail:tt)* )                         => { $input.err($e).bind(__parse_internal!{@NEST(i, $($var)+, __parse_internal!{i; $($tail)* })}) };
+
+    // Term Inline
+    ( @BIND($input:expr ; _) $state:ident -> $e:expr ) => { { let $state = $input; $e } };
+    // Expr Term Inline
+    ( @BIND($input:expr ; $($var:tt)+) $state:ident -> $e:expr ; $($tail:tt)* ) => { { let $state = $input; $e }.bind(__parse_internal!{@NEST(i, $($var)+, __parse_internal!{i; $($tail)*})}) };
+
+    // Term Named
+    ( @BIND($input:expr ; _) $func:ident ( $($param:expr),* $(,)*) ) => { $func($input, $($param),*) };
+    // Expr Term Named
+    ( @BIND($input:expr ; $($var:tt)+) $func:ident ( $($param:expr),* $(,)*) ; $($tail:tt)* ) => { $func($input, $($param),*).bind(__parse_internal!{@NEST(i, $($var)+, __parse_internal!{i; $($tail)*})}) };
+
+    // Bind
+    ( $input:expr ; let $name:pat = $($tail:tt)+ ) => { __parse_internal!{@BIND($input; $name) $($tail)+} };
+    ( $input:expr ; let $name:ident : $name_ty:ty = $($tail:tt)+ ) => { __parse_internal!{@BIND($input; $name:$name_ty) $($tail)+} };
+    // Expr
+    ( $input:expr ; $($tail:tt)+ ) => { __parse_internal!{@BIND($input; _) $($tail)+} };
+
+
+    // Empty
+    ( $input:expr ) => { $input };
+    ( $input:expr ; ) => { $input };
 }
 
 /// Macro wrapping an invocation to ``parse!`` in a closure, useful for creating parsers inline.
@@ -398,17 +457,6 @@ mod test {
         let r = parse!(i; doit(22, 1); something(33, 2));
 
         assert_eq!(r, Data::Value(123, (33, 2)));
-    }
-
-    #[test]
-    fn tailing_semicolon() {
-        fn f(n: Input) -> Data<u32, ()> {
-            n.ret(3)
-        }
-
-        let r = parse!{Input(123); f(); };
-
-        assert_eq!(r, Data::Value(123, 3));
     }
 
     #[test]
