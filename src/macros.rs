@@ -157,7 +157,24 @@ macro_rules! __parse_internal {
     ( @STATEMENT($args:tt $($data:tt)*) )                    => { __parse_internal!{ @BIND($args $($data)*) } };
     ( @STATEMENT($args:tt $($data:tt)*) ; $($tail:tt)*)      => { __parse_internal!{ @BIND($args $($data)*) $($tail)*} };
     // Recurse to eat until ; or end
-    ( @STATEMENT($args:tt $($data:tt)*) $t:tt $($tail:tt)* ) => { __parse_internal!{@STATEMENT($args $($data)* $t) $($tail)*} };
+    // Technically could just use a single pattern for this recursion:
+    // ( @STATEMENT($args:tt $($data:tt)*) $t:tt $($tail:tt)* ) => { __parse_internal!{@STATEMENT($args $($data)* $t) $($tail)*} };
+    // But to avoid the recursion limit somewhat we have explicit cases for up to 7 tokens before ; or end:
+    ( @STATEMENT($args:tt $($data:tt)*) $t1:tt ) => { __parse_internal!{ @BIND($args $($data)* $t1) } };
+    ( @STATEMENT($args:tt $($data:tt)*) $t1:tt ; $($tail:tt)* ) => { __parse_internal!{ @BIND($args $($data)* $t1) $($tail)* } };
+    ( @STATEMENT($args:tt $($data:tt)*) $t1:tt $t2:tt ) => { __parse_internal!{ @BIND($args $($data)* $t1 $t2) } };
+    ( @STATEMENT($args:tt $($data:tt)*) $t1:tt $t2:tt ; $($tail:tt)* ) => { __parse_internal!{ @BIND($args $($data)* $t1 $t2) $($tail)* } };
+    ( @STATEMENT($args:tt $($data:tt)*) $t1:tt $t2:tt $t3:tt ) => { __parse_internal!{ @BIND($args $($data)* $t1 $t2 $t3) } };
+    ( @STATEMENT($args:tt $($data:tt)*) $t1:tt $t2:tt $t3:tt ; $($tail:tt)* ) => { __parse_internal!{ @BIND($args $($data)* $t1 $t2 $t3) $($tail)* } };
+    ( @STATEMENT($args:tt $($data:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt ) => { __parse_internal!{ @BIND($args $($data)* $t1 $t2 $t3 $t4) } };
+    ( @STATEMENT($args:tt $($data:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt ; $($tail:tt)* ) => { __parse_internal!{ @BIND($args $($data)* $t1 $t2 $t3 $t4) $($tail)* } };
+    ( @STATEMENT($args:tt $($data:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt ) => { __parse_internal!{ @BIND($args $($data)* $t1 $t2 $t3 $t4 $t5) } };
+    ( @STATEMENT($args:tt $($data:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt ; $($tail:tt)* ) => { __parse_internal!{ @BIND($args $($data)* $t1 $t2 $t3 $t4 $t5) $($tail)* } };
+    ( @STATEMENT($args:tt $($data:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt ) => { __parse_internal!{ @BIND($args $($data)* $t1 $t2 $t3 $t4 $t5 $t6) } };
+    ( @STATEMENT($args:tt $($data:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt ; $($tail:tt)* ) => { __parse_internal!{ @BIND($args $($data)* $t1 $t2 $t3 $t4 $t5 $t6) $($tail)* } };
+    ( @STATEMENT($args:tt $($data:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt ) => { __parse_internal!{ @STATEMENT($args $($data)* $t1 $t2 $t3 $t4 $t5 $t6 $t7) } };
+    ( @STATEMENT($args:tt $($data:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt ; $($tail:tt)* ) => { __parse_internal!{ @BIND($args $($data)* $t1 $t2 $t3 $t4 $t5 $t6 $t7) $($tail)* } };
+    ( @STATEMENT($args:tt $($data:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt $t8:tt $($tail:tt)* ) => { __parse_internal!{ @STATEMENT($args $($data)* $t1 $t2 $t3 $t4 $t5 $t6 $t7 $t8) $($tail)* } };
 
     // Statement ::= Bind ';'
     //             | Expr ';'
