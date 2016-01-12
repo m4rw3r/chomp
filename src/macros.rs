@@ -238,16 +238,22 @@ mod test {
           where F: FnOnce(Input, T) -> Data<U, V>,
                 V: From<E> {
             match self {
-                Data::Value(i, t) => f(Input(i), t).map_err(From::from),
+                // Embedded f(Input(i), t).map_err(From::from),
+                // reason is that the API parse! uses is only ret, err, bind and map (in addition
+                // to the __parse_internal_or macro).
+                Data::Value(i, t) => match f(Input(i), t) {
+                    Data::Value(i, t) => Data::Value(i, t),
+                    Data::Error(i, e) => Data::Error(i, From::from(e)),
+                },
                 Data::Error(i, e) => Data::Error(i, From::from(e)),
             }
         }
 
-        fn map_err<F, V>(self, f: F) -> Data<T, V>
-          where F: FnOnce(E) -> V {
+        fn map<F, U>(self, f: F) -> Data<U, E>
+          where F: FnOnce(T) -> U {
             match self {
-                Data::Value(i, t) => Data::Value(i, t),
-                Data::Error(i, e) => Data::Error(i, f(e)),
+                Data::Value(i, t) => Data::Value(i, f(t)),
+                Data::Error(i, e) => Data::Error(i, e),
             }
         }
     }
