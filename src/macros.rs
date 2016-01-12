@@ -57,20 +57,19 @@
 /// Var       ::= $pat
 ///             | $ident ':' $ty
 ///
+/// /* Expr is split this way to allow for operator precedence */
 /// Expr      ::= ExprAlt
-///             | ExprAlt ">>" Expr
+///             | ExprAlt   ">>" Expr
 /// ExprAlt   ::= ExprSkip
 ///             | ExprSkip "<|>" ExprAlt
 /// ExprSkip  ::= Term
-///             | Term "<*" ExprSkip
+///             | Term     "<*" ExprSkip
 ///
-/// /* Needs to be followed by , or ; because of trailing $expr on Ret, Err and Inline.
-///    Alternatively be wrapped in parentheses */
 /// Term      ::= Ret
 ///             | Err
+///             | '(' Expr ')'
 ///             | Inline
 ///             | Named
-///             | '(' Expr ')'
 ///
 /// Ret       ::= "ret" Typed
 ///             | "ret" $expr
@@ -124,12 +123,12 @@ macro_rules! __parse_internal {
     ( @TERM($input:expr) err @ $t_ty:ty , $e_ty:ty : $e:expr )   => { $input.err::<$t_ty, $e_ty>($e) };
     //       | "err" $expr
     ( @TERM($input:expr) err $e:expr )                           => { $input.err($e) };
+    // '(' Expr ')'
+    ( @TERM($input:expr) ( $($inner:tt)* ) )                     => { __parse_internal!{@EXPR($input;) $($inner)*} };
     // Inline ::= $ident "->" $expr
     ( @TERM($input:expr) $state:ident -> $e:expr )               => { { let $state = $input; $e } };
     // Named ::= $ident '(' ($expr ',')* (',')* ')'
     ( @TERM($input:expr) $func:ident ( $($param:expr),* $(,)*) ) => { $func($input, $($param),*) };
-    // '(' Expr ')'
-    ( @TERM($input:expr) ( $($inner:tt)* ) )                     => { __parse_internal!{@EXPR($input;) $($inner)*} };
 
     // EXPR groups by lowest priority item first which is then ">>"
     // Expr ::= ExprAlt
@@ -889,14 +888,17 @@ mod test {
 // Var       ::= $pat
 //             | $ident ':' $ty
 //
-// Expr      ::= Term
-//             | Named Operator Expr
-//             | '(' Expr ')'
-//             | '(' Expr ')' Operator Expr
-// /* Needs to be followed by , or ; because of trailing $expr on Ret, Err and Inline.
-//    Alternatively be wrapped in parentheses */
+// /* Expr is split this way to allow for operator precedence */
+// Expr      ::= ExprAlt
+//             | ExprAlt   ">>" Expr
+// ExprAlt   ::= ExprSkip
+//             | ExprSkip "<|>" ExprAlt
+// ExprSkip  ::= Term
+//             | Term     "<*" ExprSkip
+//
 // Term      ::= Ret
 //             | Err
+//             | '(' Expr ')'
 //             | Inline
 //             | Named
 //
@@ -907,7 +909,4 @@ mod test {
 // Typed     ::= '@' $ty ',' $ty ':' $expr
 // Inline    ::= $ident "->" $expr
 // Named     ::= $ident '(' ($expr ',')* (',')* ')'
-// Operator  ::= "<|>"
-//             | "<*"
-//             | ">>"
 }
