@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## [0.2.2] - 2016-01-13
+
+### Changes
+
+* `Input::ret`, `ParseResult::bind` and `ParseResult::then` no longer have type parameter
+  defaults. This change only affects people on nightly who have `type-parameter-defaults`
+  enabled. See Rust [pull request #30724](https://github.com/rust-lang/rust/pull/30724).
+
 ## [0.2.1] - 2015-12-20
 
 ### Changes
