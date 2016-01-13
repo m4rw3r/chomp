@@ -139,7 +139,7 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
     /// assert_eq!(r, Ok(33));
     /// ```
     #[inline]
-    pub fn bind<F, U, V = E>(self, f: F) -> ParseResult<'a, I, U, V>
+    pub fn bind<F, U, V>(self, f: F) -> ParseResult<'a, I, U, V>
       where F: FnOnce(Input<'a, I>, T) -> ParseResult<'a, I, U, V>,
             V: From<E> {
         match self.0 {
@@ -176,7 +176,7 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
     /// assert_eq!(r2, Ok("testing!"));
     /// ```
     #[inline]
-    pub fn then<F, U, V = E>(self, f: F) -> ParseResult<'a, I, U, V>
+    pub fn then<F, U, V>(self, f: F) -> ParseResult<'a, I, U, V>
       where F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, U, V>,
             V: From<E> {
         self.bind(|i, _| f(i))

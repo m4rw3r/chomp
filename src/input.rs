@@ -121,7 +121,7 @@ impl<'a, I> Input<'a, I> {
     /// assert_eq!(r, Ok("Wohoo, success!"));
     /// ```
     #[inline]
-    pub fn ret<T, E = ()>(self, t: T) -> ParseResult<'a, I, T, E> {
+    pub fn ret<T, E>(self, t: T) -> ParseResult<'a, I, T, E> {
         parse_result::new(State::Data(self, t))
     }
 
