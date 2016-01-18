@@ -171,7 +171,7 @@ macro_rules! __parse_internal {
     ( @STATEMENT($args:tt $($data:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt ; $($tail:tt)* )                    => { __parse_internal!{@BIND($args $($data)* $t1 $t2 $t3 $t4 $t5) $($tail)*} };
     ( @STATEMENT($args:tt $($data:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt )                            => { __parse_internal!{@BIND($args $($data)* $t1 $t2 $t3 $t4 $t5 $t6)} };
     ( @STATEMENT($args:tt $($data:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt ; $($tail:tt)* )             => { __parse_internal!{@BIND($args $($data)* $t1 $t2 $t3 $t4 $t5 $t6) $($tail)*} };
-    ( @STATEMENT($args:tt $($data:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt )                     => { __parse_internal!{@STATEMENT($args $($data)* $t1 $t2 $t3 $t4 $t5 $t6 $t7)} };
+    ( @STATEMENT($args:tt $($data:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt )                     => { __parse_internal!{@BIND($args $($data)* $t1 $t2 $t3 $t4 $t5 $t6 $t7)} };
     ( @STATEMENT($args:tt $($data:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt ; $($tail:tt)* )      => { __parse_internal!{@BIND($args $($data)* $t1 $t2 $t3 $t4 $t5 $t6 $t7) $($tail)*} };
     ( @STATEMENT($args:tt $($data:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt $t8:tt $($tail:tt)* ) => { __parse_internal!{@STATEMENT($args $($data)* $t1 $t2 $t3 $t4 $t5 $t6 $t7 $t8) $($tail)*} };
 
