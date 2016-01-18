@@ -13,7 +13,7 @@
 ///         i.ret(do_something(value))))
 /// ```
 ///
-/// # Example
+/// # Examples
 ///
 /// ```
 /// # #[macro_use] extern crate chomp;
@@ -45,7 +45,29 @@
 /// # }
 /// ```
 ///
-/// ## Grammar
+/// ```
+/// # #[macro_use] extern crate chomp;
+/// # fn main() {
+/// use chomp::{Input, U8Result, parse_only, string, token};
+/// use chomp::ascii::decimal;
+///
+/// fn parse_ip(i: Input<u8>) -> U8Result<(u8, u8, u8, u8)> {
+///     parse!{i;
+///                 string(b"ip:");
+///         let a = decimal() <* token(b'.');
+///         let b = decimal() <* token(b'.');
+///         let c = decimal() <* token(b'.');
+///         let d = decimal();
+///                 token(b';');
+///         ret (a, b, c, d)
+///     }
+/// }
+///
+/// assert_eq!(parse_only(parse_ip, b"ip:192.168.0.1;"), Ok((192, 168, 0, 1)));
+/// # }
+/// ```
+///
+/// # Grammar
 ///
 /// EBNF using `$ty`, `$expr`, `$ident` and `$pat` for the equivalent Rust macro patterns.
 ///
@@ -78,9 +100,167 @@
 /// Typed     ::= '@' $ty ',' $ty ':' $expr
 /// Inline    ::= $ident "->" $expr
 /// Named     ::= $ident '(' ($expr ',')* (',')* ')'
-/// Operator  ::= "<|>"
-///             | "<*"
-///             | ">>"
+/// ```
+///
+/// ## Statement
+///
+/// A statement is a line ending in a semicolon. This must be followed by either another statement
+/// or by an expression which ends the block.
+///
+/// ```
+/// # #[macro_use] extern crate chomp;
+/// # fn main() {
+/// # use chomp::ascii::decimal;
+/// # use chomp::{parse_only, Input, token, U8Result};
+/// # fn my_parser(i: Input<u8>) -> U8Result<u32> {
+/// parse!{i;
+///     token(b':');
+///     let n: u32 = decimal();
+///     ret n * 2
+/// }
+/// # }
+/// # assert_eq!(parse_only(my_parser, b":21"), Ok(42));
+/// # }
+/// ```
+///
+/// ### Bind
+///
+/// A bind statement uses a `let`-binding to bind a value of a parser-expression within the parsing
+/// context. The expression to the right of the equal-sign will be evaluated and if the parser is
+/// still in a success state the value will be bound to the pattern following `let`.
+///
+/// The patter can either just be an identifier but it can also be any irrefutable match-pattern,
+/// types can also be declared with `identifier: type` when necessary (eg. declare integer type
+/// used with the `decimal` parser).
+///
+/// ### Action
+///
+/// An action is any parser-expression, ended with a semicolon. This will be executed and its
+/// result will be discarded before proceeding to the next statement or the ending expression.
+/// Any error will exit early and will be propagated.
+///
+/// ## Expression
+///
+/// ### Named
+///
+/// A named action is like a function call, but will be expanded to include the parsing context
+/// (`Input`) as the first parameter. The syntax is currently limited to a rust identifier followed
+/// by a parameter list within parentheses. The parentheses are mandatory.
+///
+/// ```
+/// # #[macro_use] extern crate chomp;
+/// # fn main() {
+/// # use chomp::ascii::decimal;
+/// # use chomp::{parse_only, Input, token, U8Result};
+/// # fn my_parser(i: Input<u8>) -> U8Result<&'static str> {
+/// fn do_it<'i, 'a>(i: Input<'i, u8>, s: &'a str) -> U8Result<'i, &'a str> { i.ret(s) }
+///
+/// parse!{i;
+///     do_it("second parameter")
+/// }
+/// # }
+/// # assert_eq!(parse_only(my_parser, b":21"), Ok("second parameter"));
+/// # }
+/// ```
+///
+/// ### Ret and Err
+///
+/// ### Inline
+///
+/// An inline expression is essentially a closure where the parser state (`Input` type) is exposed.
+/// This is useful for doing eg. inline `match` statements or to delegate to another parser which
+/// requires some plain Rust logic:
+///
+/// ```
+/// # #[macro_use] extern crate chomp;
+/// # fn main() {
+/// # use chomp::{parse_only, Input, ParseResult};
+/// fn other_parser(i: Input<u8>) -> ParseResult<u8, &'static str, &'static str> {
+///     i.ret("Success!")
+/// }
+///
+/// let condition = true;
+///
+/// let p = parser!{
+///     state -> match condition {
+///         true  => other_parser(state),
+///         false => state.err("failure"),
+///     }
+/// };
+///
+/// assert_eq!(parse_only(p, b""), Ok("Success!"));
+/// # }
+/// ```
+///
+/// ### Operators
+///
+/// Expressions also supports using operators in between sub-expressions to make common actions
+/// more succint. These are infix operators with right associativity (ie. they are placed
+/// between expression terms and are grouped towards the right). The result of the expression as a
+/// whole will be deiced by the operator.
+///
+/// Ordered after operator precedence:
+///
+/// 1. `<*`, skip
+///
+///    Evaluates the parser to the left first and on success evaluates the parser on the right,
+///    skipping its result.
+///
+///    ```
+///    # #[macro_use] extern crate chomp;
+///    # fn main() {
+///    # use chomp::ascii::decimal; use chomp::{parse_only, token};
+///    let p = parser!{ decimal() <* token(b';') };
+///
+///    assert_eq!(parse_only(p, b"123;"), Ok(123u32));
+///    # }
+///    ```
+///
+/// 2. `<|>`, or
+///
+///    Attempts to evaluate the parser on the left and if that fails it will backtrack and retry
+///    with the parser on the right. Is equivalent to stacking `or` combinators.
+///
+///    ```
+///    # #[macro_use] extern crate chomp;
+///    # fn main() {
+///    # use chomp::{parse_only, token};
+///    let p = parser!{ token(b'a') <|> token(b'b') };
+///
+///    assert_eq!(parse_only(p, b"b"), Ok(b'b'));
+///    # }
+///    ```
+///
+/// 3. `>>`, then
+///
+///    Evaluates the parser to the left, then throws away any value and evaluates the parser on
+///    the right.
+///
+///    ```
+///    # #[macro_use] extern crate chomp;
+///    # fn main() {
+///    # use chomp::{parse_only, token};
+///    let p = parser!{ token(b'a') >> token(b';') };
+///
+///    assert_eq!(parse_only(p, b"a;"), Ok(b';'));
+///    # }
+///    ```
+///
+/// These operators correspond to the equivalent operators found in Haskell's `Alternative`,
+/// `Applicative` and `Monad` typeclasses, with the exception of being right-associative (the
+/// operators are left-associative in Haskell).
+///
+/// An Inline expression needs to be wrapped in parenthesis to parse (`$expr` pattern in macros
+/// require `;` or `,` to be terminated at the same nesting level):
+///
+/// ```
+/// # #[macro_use] extern crate chomp;
+/// # fn main() {
+/// # use chomp::{parse_only, token};
+/// let p = parser!{ (i -> i.err("foo")) <|> (i -> i.ret("bar")) };
+///
+/// assert_eq!(parse_only(p, b"a;"), Ok("bar"));
+/// # }
 /// ```
 #[macro_export]
 macro_rules! parse {
@@ -103,8 +283,8 @@ macro_rules! __parse_internal {
     // Internal rules
 
     // BIND ties an expression together with the following statement
-    // The four versions are needed to allow $pat, $ident:$ty, _ and the empty case (no tailing
-    // allowed on the empty case)
+    // The four versions are needed to allow the empty case (no tailing allowed on the empty
+    // case), _, $pat and $ident:$ty.
     ( @BIND(($input:expr ; _)                         $($exp:tt)+) )              => { __parse_internal!{@EXPR($input;) $($exp)* } };
     ( @BIND(($input:expr ; _)                         $($exp:tt)+) $($tail:tt)+ ) => { __parse_internal!{@EXPR($input;) $($exp)* }.bind(|i, _| __parse_internal!{i; $($tail)* }) };
     ( @BIND(($input:expr ; $name:pat)                 $($exp:tt)+) $($tail:tt)+ ) => { __parse_internal!{@EXPR($input;) $($exp)* }.bind(|i, $name| __parse_internal!{i; $($tail)* }) };
@@ -149,7 +329,7 @@ macro_rules! __parse_internal {
     ( @EXPR_SKIP($input:expr; $($lhs:tt)*) )                     => { __parse_internal!{@TERM($input) $($lhs)*} };
     //            | Term <* ExprSkip
     ( @EXPR_SKIP($input:expr; $($lhs:tt)*) <* $($tail:tt)* )     => { __parse_internal!{@TERM($input) $($lhs)*}.bind(|i, l| __parse_internal!{@EXPR_SKIP(i;) $($tail)*}.map(|_| l)) };
-    // recurse until <|> or end
+    // recurse until <* or end
     ( @EXPR_SKIP($input:expr; $($lhs:tt)*) $t1:tt $($tail:tt)* ) => { __parse_internal!{@EXPR_SKIP($input; $($lhs)* $t1) $($tail)*} };
 
     // STATEMENT eats and groups a full parse! expression until the next ;
