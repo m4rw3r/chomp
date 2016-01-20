@@ -268,6 +268,9 @@ macro_rules! parse {
 }
 
 /// Internal rule to create an or-combinator, separate macro so that tests can override it.
+///
+/// Cannot make a method on `Input` due to type-inference failures due to the exact implementation
+/// of `or` not being fully specified.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __parse_internal_or {
@@ -280,7 +283,7 @@ macro_rules! __parse_internal_or {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __parse_internal {
-    // Internal rules
+    // Internal rules:
 
     // BIND ties an expression together with the following statement
     // The four versions are needed to allow the empty case (no tailing allowed on the empty
@@ -292,9 +295,9 @@ macro_rules! __parse_internal {
 
     // Term ::= Ret
     //        | Err
+    //        | '(' Expr ')'
     //        | Inline
     //        | Named
-    //        | '(' Expr ')'
     // Ret ::= "ret" Typed
     ( @TERM($input:expr) ret @ $t_ty:ty , $e_ty:ty : $e:expr )   => { $input.ret::<$t_ty, $e_ty>($e) };
     //       | "ret" $expr
@@ -355,6 +358,8 @@ macro_rules! __parse_internal {
     ( @STATEMENT($args:tt $($data:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt ; $($tail:tt)* )      => { __parse_internal!{@BIND($args $($data)* $t1 $t2 $t3 $t4 $t5 $t6 $t7) $($tail)*} };
     ( @STATEMENT($args:tt $($data:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt $t8:tt $($tail:tt)* ) => { __parse_internal!{@STATEMENT($args $($data)* $t1 $t2 $t3 $t4 $t5 $t6 $t7 $t8) $($tail)*} };
 
+    // Public rules:
+
     // Statement ::= Bind ';'
     //             | Expr ';'
     //           ::= 'let' $pat '=' Expr
@@ -393,6 +398,21 @@ macro_rules! parser {
 
 #[cfg(test)]
 mod test {
+    /// Override the or-combinator used by parse! to make it possible to use the simplified
+    /// test-types.
+    macro_rules! __parse_internal_or {
+        ($input:expr, $lhs:expr, $rhs:expr) => {
+            {
+                let Input(i) = $input;
+
+                match ($lhs)(Input(i)) {
+                    Data::Value(j, t) => Data::Value(j, t),
+                    Data::Error(_, _) => ($rhs)(Input(i)),
+                }
+            }
+        };
+    }
+
     /// Simplified implementation of the emulated monad using linear types.
     #[derive(Debug, Eq, PartialEq)]
     struct Input(i64);
@@ -972,19 +992,30 @@ mod test {
         assert_eq!(r, Data::Value(321, 28));
     }
 
-    /// Override the or-combinator used by parse! to make it possible to use the simplified
-    /// test-types.
-    macro_rules! __parse_internal_or {
-        ($input:expr, $lhs:expr, $rhs:expr) => {
-            {
-                let Input(i) = $input;
+    #[test]
+    fn expr_ret() {
+        let i1 = Input(123);
+        let i2 = Input(123);
 
-                match ($lhs)(Input(i)) {
-                    Data::Value(j, t) => Data::Value(j, t),
-                    Data::Error(_, _) => ($rhs)(Input(i)),
-                }
-            }
-        };
+        let r1: Data<_, ()> = parse!{i1; let a = ret "test"; ret a};
+        let r2: Data<_, ()> = parse!{i2; ret "throwaway"; ret "foo"};
+
+        assert_eq!(r1, Data::Value(123, "test"));
+        assert_eq!(r2, Data::Value(123, "foo"));
+    }
+
+    #[test]
+    fn expr_err() {
+        let i1 = Input(123);
+        let i2 = Input(123);
+
+        let r1: Data<&str, &str> = parse!{i1; let a = err "error"; ret a};
+        // Necessary with type annotation here since the value type is not defined in the first
+        // statement in parse
+        let r2: Data<(), &str>   = parse!{i2; err @ (), _: "this"; err "not this"};
+
+        assert_eq!(r1, Data::Error(123, "error"));
+        assert_eq!(r2, Data::Error(123, "this"));
     }
 
     #[test]
@@ -1031,6 +1062,7 @@ mod test {
 
         let i = Input(123);
 
+
         let r1 = parse!{i; fail() <|> fail() <|> doit() };
 
         assert_eq!(r1, Data::Value(321, 2));
@@ -1067,6 +1099,256 @@ mod test {
         assert_eq!(r2, Data::Value(322, 42));
         assert_eq!(r3, Data::Error(456, ()));
     }
+
+    #[test]
+    fn precedence_skip_then() {
+        fn a(i: Input) -> Data<u32, ()> {
+            assert_eq!(i, Input(123));
+
+            Data::Value(321, 2)
+        }
+        fn b(i: Input) -> Data<u32, ()> {
+            assert_eq!(i, Input(321));
+
+            Data::Value(322, 42)
+        }
+        fn c(i: Input) -> Data<u32, ()> {
+            assert_eq!(i, Input(322));
+
+            Data::Value(323, 43)
+        }
+
+        let i1  = Input(123);
+        let i2  = Input(123);
+        let i3  = Input(123);
+        let i4  = Input(123);
+        let i5  = Input(123);
+        let i6  = Input(123);
+        let i7  = Input(123);
+        let i_8 = Input(123);
+        let i9  = Input(123);
+        let i10 = Input(123);
+        let i11 = Input(123);
+        let i12 = Input(123);
+
+        let r1  = parse!{i1; a() <* b() <* c()};
+        let r2  = parse!{i2; a() <* b() >> c()};
+        let r3  = parse!{i3; a() >> b() <* c()};
+        let r4  = parse!{i4; a() >> b() >> c()};
+
+        let r5  = parse!{i5;  (a() <* b()) <* c()};
+        let r6  = parse!{i6;   a() <* (b() <* c())};
+        let r7  = parse!{i7;  (a() <* b()) >> c()};
+        let r8  = parse!{i_8;  a() <* (b() >> c())};
+        let r9  = parse!{i9;  (a() >> b()) <* c()};
+        let r10 = parse!{i10;  a() >> (b() <* c())};
+        let r11 = parse!{i11; (a() >> b()) >> c()};
+        let r12 = parse!{i12;  a() >> (b() >> c())};
+
+        assert_eq!(r1, Data::Value(323, 2));
+        assert_eq!(r2, Data::Value(323, 43));
+        assert_eq!(r3, Data::Value(323, 42));
+        assert_eq!(r4, Data::Value(323, 43));
+
+        assert_eq!(r5,  Data::Value(323, 2));
+        assert_eq!(r6,  Data::Value(323, 2));
+        assert_eq!(r7,  Data::Value(323, 43));
+        assert_eq!(r8,  Data::Value(323, 2));
+        assert_eq!(r9,  Data::Value(323, 42));
+        assert_eq!(r10, Data::Value(323, 42));
+        assert_eq!(r11, Data::Value(323, 43));
+        assert_eq!(r12, Data::Value(323, 43));
+    }
+
+    #[test]
+    fn precedence_skip_alt() {
+        fn a(i: Input) -> Data<u32, ()> {
+            assert_eq!(i, Input(123));
+
+            Data::Value(321, 2)
+        }
+        fn b(i: Input) -> Data<u32, ()> {
+            assert_eq!(i, Input(321));
+
+            Data::Value(322, 42)
+        }
+        fn c(i: Input) -> Data<u32, ()> {
+            assert_eq!(i, Input(322));
+
+            Data::Value(323, 43)
+        }
+        // version of c following a:
+        fn c_a(i: Input) -> Data<u32, ()> {
+            assert_eq!(i, Input(321));
+
+            Data::Value(323, 43)
+        }
+
+        let i1  = Input(123);
+        let i2  = Input(123);
+        let i3  = Input(123);
+        let i4  = Input(123);
+        let i5  = Input(123);
+        let i6  = Input(123);
+        let i7  = Input(123);
+        let i_8 = Input(123);
+        let i9  = Input(123);
+        let i10 = Input(123);
+        let i11 = Input(123);
+        let i12 = Input(123);
+
+        let r1 = parse!{i1; a() <* b() <* c()};
+        let r2 = parse!{i2; a() <* b() <|> c()};
+        let r3 = parse!{i3; a() <|> b() <* c()};
+        let r4 = parse!{i4; a() <|> b() <|> c()};
+
+        let r5  = parse!{i5;  (a() <*  b()) <* c()};
+        let r6  = parse!{i6;  (a() <*  b()) <|> c()};
+        let r7  = parse!{i7;  (a() <|> b()) <* c_a()};
+        let r8  = parse!{i_8; (a() <|> b()) <|> c()};
+        let r9  = parse!{i9;   a() <*  (b() <* c())};
+        let r10 = parse!{i10;  a() <*  (b() <|> c())};
+        let r11 = parse!{i11;  a() <|> (b() <* c())};
+        let r12 = parse!{i12;  a() <|> (b() <|> c())};
+
+        assert_eq!(r1, Data::Value(323, 2));
+        assert_eq!(r2, Data::Value(322, 2));
+        assert_eq!(r3, Data::Value(321, 2));
+        assert_eq!(r4, Data::Value(321, 2));
+
+        assert_eq!(r5, Data::Value(323, 2));
+        assert_eq!(r6, Data::Value(322, 2));
+        assert_eq!(r7, Data::Value(323, 2));
+        assert_eq!(r8, Data::Value(321, 2));
+        assert_eq!(r9, Data::Value(323, 2));
+        assert_eq!(r10, Data::Value(322, 2));
+        assert_eq!(r11, Data::Value(321, 2));
+        assert_eq!(r12, Data::Value(321, 2));
+    }
+
+    #[test]
+    fn precedence_alt_then() {
+        fn a(i: Input) -> Data<u32, ()> {
+            assert_eq!(i, Input(123));
+
+            Data::Value(321, 2)
+        }
+        fn b(i: Input) -> Data<u32, ()> {
+            assert_eq!(i, Input(321));
+
+            Data::Value(322, 42)
+        }
+        fn c(i: Input) -> Data<u32, ()> {
+            assert_eq!(i, Input(322));
+
+            Data::Value(323, 43)
+        }
+        // version of c with check for a's state:
+        fn c_a(i: Input) -> Data<u32, ()> {
+            assert_eq!(i, Input(321));
+
+            Data::Value(323, 43)
+        }
+
+        let i1  = Input(123);
+        let i2  = Input(123);
+        let i3  = Input(123);
+        let i4  = Input(123);
+        let i5  = Input(123);
+        let i6  = Input(123);
+        let i7  = Input(123);
+        let i_8 = Input(123);
+        let i9  = Input(123);
+        let i10 = Input(123);
+        let i11 = Input(123);
+        let i12 = Input(123);
+
+        let r1 = parse!{i1; a() <|> b() <|> c()};
+        let r2 = parse!{i2; a() <|> b() >> c_a()};
+        let r3 = parse!{i3; a() >> b() <|> c()};
+        let r4 = parse!{i4; a() >> b() >> c()};
+
+        let r5  = parse!{i5;  (a() <|> b()) <|> c()};
+        let r6  = parse!{i6;  (a() <|> b()) >> c_a()};
+        let r7  = parse!{i7;  (a() >>  b()) <|> c()};
+        let r8  = parse!{i_8; (a() >>  b()) >> c()};
+        let r9  = parse!{i9;   a() <|> (b() <|> c())};
+        let r10 = parse!{i10;  a() <|> (b() >> c_a())};
+        let r11 = parse!{i11;  a() >>  (b() <|> c())};
+        let r12 = parse!{i12;  a() >>  (b() >> c())};
+
+        assert_eq!(r1, Data::Value(321, 2));
+        assert_eq!(r2, Data::Value(323, 43));
+        assert_eq!(r3, Data::Value(322, 42));
+        assert_eq!(r4, Data::Value(323, 43));
+
+        assert_eq!(r5, Data::Value(321, 2));
+        assert_eq!(r6, Data::Value(323, 43));
+        assert_eq!(r7, Data::Value(322, 42));
+        assert_eq!(r8, Data::Value(323, 43));
+        assert_eq!(r9, Data::Value(321, 2));
+        assert_eq!(r10, Data::Value(321, 2));
+        assert_eq!(r11, Data::Value(322, 42));
+        assert_eq!(r12, Data::Value(323, 43));
+    }
+
+    #[test]
+    fn alt_inline_action() {
+        let i = Input(123);
+
+        let r: Data<_, ()> = parse!{i;
+            (input -> {
+                assert_eq!(input, Input(123));
+
+                Data::Value::<u32, ()>(321, 21)
+            }) <|> (input -> {
+                assert_eq!(input, Input(321));
+
+                Data::Value(333, 42)
+            })
+        };
+
+        assert_eq!(r, Data::Value(321, 21));
+    }
+
+    #[test]
+    fn then_inline_action() {
+        let i = Input(123);
+
+        let r: Data<_, ()> = parse!{i;
+            (input -> {
+                assert_eq!(input, Input(123));
+
+                Data::Value(321, 21)
+            }) >> (input -> {
+                assert_eq!(input, Input(321));
+
+                Data::Value(333, 42)
+            })
+        };
+
+        assert_eq!(r, Data::Value(333, 42));
+    }
+
+    #[test]
+    fn skip_inline_action() {
+        let i = Input(123);
+
+        let r: Data<_, ()> = parse!{i;
+            (input -> {
+                assert_eq!(input, Input(123));
+
+                Data::Value(321, 21)
+            }) <* (input -> {
+                assert_eq!(input, Input(321));
+
+                Data::Value(333, 42)
+            })
+        };
+
+        assert_eq!(r, Data::Value(333, 21));
+    }
+
 // Block     ::= Statement* Expr
 // Statement ::= Bind ';'
 //             | Expr ';'
