@@ -67,6 +67,31 @@
 /// # }
 /// ```
 ///
+/// ```
+/// # #[macro_use] extern crate chomp;
+/// # fn main() {
+/// use chomp::{parse_only, string};
+///
+/// #[derive(Debug, Eq, PartialEq)]
+/// enum Log {
+///     Error,
+///     Warning,
+///     Info,
+///     Debug,
+/// };
+///
+/// let level        = |i, b, r| string(i, b).map(|_| r);
+/// let log_severity = parser!{
+///     level(b"WARN",  Log::Warning) <|>
+///     level(b"INFO",  Log::Info)    <|>
+///     level(b"ERROR", Log::Error)   <|>
+///     level(b"DEBUG", Log::Debug)
+/// };
+///
+/// assert_eq!(parse_only(log_severity, b"INFO"), Ok(Log::Info));
+/// # }
+/// ```
+///
 /// # Grammar
 ///
 /// EBNF using `$ty`, `$expr`, `$ident` and `$pat` for the equivalent Rust macro patterns.
