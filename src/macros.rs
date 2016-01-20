@@ -1397,32 +1397,19 @@ mod test {
         assert_eq!(r, Data::Value(333, 21));
     }
 
-// Block     ::= Statement* Expr
-// Statement ::= Bind ';'
-//             | Expr ';'
-// Bind      ::= 'let' Var '=' Expr
-// Var       ::= $pat
-//             | $ident ':' $ty
-//
-// /* Expr is split this way to allow for operator precedence */
-// Expr      ::= ExprAlt
-//             | ExprAlt   ">>" Expr
-// ExprAlt   ::= ExprSkip
-//             | ExprSkip "<|>" ExprAlt
-// ExprSkip  ::= Term
-//             | Term     "<*" ExprSkip
-//
-// Term      ::= Ret
-//             | Err
-//             | '(' Expr ')'
-//             | Inline
-//             | Named
-//
-// Ret       ::= "ret" Typed
-//             | "ret" $expr
-// Err       ::= "err" Typed
-//             | "err" $expr
-// Typed     ::= '@' $ty ',' $ty ':' $expr
-// Inline    ::= $ident "->" $expr
-// Named     ::= $ident '(' ($expr ',')* (',')* ')'
+    // Test to make sure we do not hit the default macro iteration limit (64)
+    #[test]
+    fn max_alt() {
+        fn a(i: Input) -> Data<u32, ()> {
+            assert_eq!(i, Input(123));
+
+            Data::Value(321, 2)
+        }
+
+        let i = Input(123);
+
+        let r = parse!{i; a() <|> a() <|> a() <|> a() <|> a() <|> a() <|> a() <|> a() <|> a()};
+
+        assert_eq!(r, Data::Value(321, 2));
+    }
 }
