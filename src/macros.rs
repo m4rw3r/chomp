@@ -166,6 +166,10 @@
 ///
 /// ## Expression
 ///
+/// A parser expression can either be the only part of a `parse!` macro (eg. for alternating as
+/// seen above) or it can be a part of a bind or action statement or it is the final result of a
+/// parse-block.
+///
 /// ### Named
 ///
 /// A named action is like a function call, but will be expanded to include the parsing context
@@ -189,6 +193,40 @@
 /// ```
 ///
 /// ### Ret and Err
+///
+/// Many times you want to move a value into the parser monad, eg. to return a result or report an
+/// error. The `ret` and `err` keywords provide this functionality inside of `parse!`-expressions.
+///
+/// ```
+/// # #[macro_use] extern crate chomp;
+/// # fn main() {
+/// # use chomp::{parse_only, ParseError};
+/// let r: Result<_, ParseError<_, ()>> = parse_only(
+///     parser!{ ret "some success data" },
+///     b"input data"
+/// );
+///
+/// assert_eq!(r, Ok("some success data"));
+/// # }
+/// ```
+///
+/// In the example above the `Result<_, ParseError<_, ()>>` type-annotation is required since `ret`
+/// leaves the error type `E` free which means that the `parser!` expression above cannot infer the
+/// error type without the annotation. `ret` and `end` both provide a mechanism to supply this
+/// information inline:
+///
+/// ```
+/// # #[macro_use] extern crate chomp;
+/// # fn main() {
+/// # use chomp::{parse_only, ParseError};
+/// let r = parse_only(parser!{ err @ u32, _: "some error data" }, b"input data");
+///
+/// assert_eq!(r, Err(ParseError::Error(b"input data", "some error data")));
+/// # }
+/// ```
+///
+/// Note that we only declare the success type (`u32` above) and leave out the type of the error
+/// (by using `_`) since that can be uniquely inferred.
 ///
 /// ### Inline
 ///
@@ -408,7 +446,7 @@ macro_rules! __parse_internal {
     // Recurse to eat until ; or end
     // Technically could just use a single pattern for this recursion:
     // ( @STATEMENT($args:tt $($data:tt)*) $t:tt $($tail:tt)* ) => { __parse_internal!{@STATEMENT($args $($data)* $t) $($tail)*} };
-    // But to avoid the recursion limit somewhat we have explicit cases for up to 7 tokens before ; or end:
+    // But to avoid the recursion limit somewhat we have explicit cases for up to 10 tokens before ; or end:
     ( @STATEMENT($args:tt $($data:tt)*) $t1:tt )                                                                                      => { __parse_internal!{@BIND($args $($data)* $t1)} };
     ( @STATEMENT($args:tt $($data:tt)*) $t1:tt ; $($tail:tt)* )                                                                       => { __parse_internal!{@BIND($args $($data)* $t1) $($tail)*} };
     ( @STATEMENT($args:tt $($data:tt)*) $t1:tt $t2:tt )                                                                               => { __parse_internal!{@BIND($args $($data)* $t1 $t2)} };
