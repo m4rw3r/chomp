@@ -587,16 +587,12 @@ macro_rules! __parse_internal {
 
 /// Macro wrapping an invocation to ``parse!`` in a closure, useful for creating parsers inline.
 ///
-/// This makes it easier to eg. implement branching in the same ``parse!`` block:
-///
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use chomp::{parse_only, or, string};
+/// use chomp::{parse_only, string};
 ///
-/// let r = parser!{
-///   or(parser!{string(b"ab")},
-///      parser!{string(b"ac")})};
+/// let r = parser!{ string(b"ab") <|> string(b"ac") };
 ///
 /// assert_eq!(parse_only(r, b"ac"), Ok(&b"ac"[..]));
 /// # }
