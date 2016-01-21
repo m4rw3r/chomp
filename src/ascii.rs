@@ -142,9 +142,7 @@ pub fn signed<T, F>(i: Input<u8>, f: F) -> U8Result<T>
 /// use chomp::parse_only;
 /// use chomp::ascii::decimal;
 ///
-/// let r = parse_only(|i| {
-///     decimal::<u8>(i)
-/// }, b"123");
+/// let r = parse_only(decimal::<u8>, b"123");
 ///
 /// assert_eq!(r, Ok(123u8));
 /// ```

@@ -36,6 +36,7 @@ pub mod data_source;
 use std::io;
 
 use {ParseResult, Input};
+use parse::ParseError;
 
 pub use self::slice::SliceStream;
 pub use self::data_source::DataSource;
@@ -74,6 +75,16 @@ impl<'a, I, E> PartialEq for StreamError<'a, I, E>
             (&StreamError::EndOfInput, &StreamError::EndOfInput) => true,
             (&StreamError::Retry, &StreamError::Retry) => true,
             _ => false,
+        }
+    }
+}
+
+impl<'a, I, E> From<ParseError<'a, I, E>> for StreamError<'a, I, E>
+  where I: 'a {
+    fn from(e: ParseError<'a, I, E>) -> Self {
+        match e {
+            ParseError::Error(b, e)   => StreamError::ParseError(b, e),
+            ParseError::Incomplete(n) => StreamError::Incomplete(n),
         }
     }
 }
