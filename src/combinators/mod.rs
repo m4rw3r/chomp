@@ -93,7 +93,11 @@ pub fn or<'a, I, T, E, F, G>(i: Input<'a, I>, f: F, g: G) -> ParseResult<'a, I, 
     match f(i.clone()).into_inner() {
         State::Data(b, d)    => b.ret(d),
         State::Error(_, _)   => g(i),
-        State::Incomplete(n) => i.incomplete(n),
+        State::Incomplete(n) => if i.is_last_slice() {
+            g(i)
+        } else {
+            i.incomplete(n)
+        },
     }
 }
 
@@ -363,7 +367,26 @@ mod test {
     use primitives::IntoInner;
     use super::*;
 
-    use parsers::{any, token, string};
+    use parsers::{any, take, token, string};
+
+    #[test]
+    fn or_test() {
+        assert_eq!(or(new(DEFAULT, b""), any, any).into_inner(), State::Incomplete(1));
+        assert_eq!(or(new(DEFAULT, b"a"), any, any).into_inner(), State::Data(new(DEFAULT, b""), b'a'));
+        assert_eq!(or(new(DEFAULT, b"a"), |i| take(i, 2), |i| take(i, 1)).into_inner(), State::Incomplete(1));
+        assert_eq!(or(new(DEFAULT, b"ab"), |i| take(i, 2), |i| take(i, 1)).into_inner(), State::Data(new(DEFAULT, b""), &b"ab"[..]));
+        assert_eq!(or(new(DEFAULT, b"a"), |i| token(i, b'a'), |i| token(i, b'b')).into_inner(), State::Data(new(DEFAULT, b""), b'a'));
+        assert_eq!(or(new(DEFAULT, b"b"), |i| token(i, b'a'), |i| token(i, b'b')).into_inner(), State::Data(new(DEFAULT, b""), b'b'));
+        assert_eq!(or(new(DEFAULT, b"c"), |i| token(i, b'a').map_err(|_| "a err"), |i| token(i, b'b').map_err(|_| "b err")).into_inner(), State::Error(b"c", "b err"));
+
+        assert_eq!(or(new(END_OF_INPUT, b""), any, any).into_inner(), State::Incomplete(1));
+        assert_eq!(or(new(END_OF_INPUT, b"a"), any, any).into_inner(), State::Data(new(END_OF_INPUT, b""), b'a'));
+        assert_eq!(or(new(END_OF_INPUT, b"a"), |i| take(i, 2), |i| take(i, 1)).into_inner(), State::Data(new(END_OF_INPUT, b""), &b"a"[..]));
+        assert_eq!(or(new(END_OF_INPUT, b"ab"), |i| take(i, 2), |i| take(i, 1)).into_inner(), State::Data(new(END_OF_INPUT, b""), &b"ab"[..]));
+        assert_eq!(or(new(END_OF_INPUT, b"a"), |i| token(i, b'a'), |i| token(i, b'b')).into_inner(), State::Data(new(END_OF_INPUT, b""), b'a'));
+        assert_eq!(or(new(END_OF_INPUT, b"b"), |i| token(i, b'a'), |i| token(i, b'b')).into_inner(), State::Data(new(END_OF_INPUT, b""), b'b'));
+        assert_eq!(or(new(END_OF_INPUT, b"c"), |i| token(i, b'a').map_err(|_| "a err"), |i| token(i, b'b').map_err(|_| "b err")).into_inner(), State::Error(b"c", "b err"));
+    }
 
     #[test]
     fn many_test() {
