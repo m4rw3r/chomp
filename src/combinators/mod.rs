@@ -70,6 +70,9 @@ pub fn option<'a, I, T, E, F>(i: Input<'a, I>, f: F, default: T) -> ParseResult<
 ///
 /// Incomplete state is propagated from the first one to report incomplete.
 ///
+/// If multiple `or` combinators are used in the same expression, consider using the `parse!` macro
+/// and its alternation operator (`<|>`).
+///
 #[cfg_attr(feature = "verbose_error", doc = "
 ```
  use chomp::{ParseError, Error, parse_only, or, token};
