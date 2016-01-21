@@ -640,7 +640,7 @@ mod test {
     }
 
     impl<T, E> Data<T, E> {
-        fn bind<F, U, V = E>(self, f: F) -> Data<U, V>
+        fn bind<F, U, V>(self, f: F) -> Data<U, V>
           where F: FnOnce(Input, T) -> Data<U, V>,
                 V: From<E> {
             match self {
