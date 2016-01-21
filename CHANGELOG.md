@@ -3,6 +3,25 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `buffer::StreamError` now implements `From<ParseError>`
+
+### Changes
+
+- **Backwards-incompatible:** `combinators::or` will now retry with the second parser if the
+  first parser reports incomplete and the input is finite.
+- Improvements to `parse!` macro to make it more general and to make it easier to write simple
+  parsers as one line. Completely updated grammar and reimplemented the macro to include:
+
+   * Alternation operator (`<|>`)
+   * Skip operator (`<*`)
+   * Then operator (`>>`)
+   * `ret` and `err` can now be used inline
+   * **Backwards-incompatible:** `;` is no longer allowed to terminate a `parse!` block.
+
 ## [0.2.2] - 2016-01-13
 
 ### Changes
