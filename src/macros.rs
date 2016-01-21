@@ -325,6 +325,98 @@
 /// assert_eq!(parse_only(p, b"a;"), Ok("bar"));
 /// # }
 /// ```
+///
+/// # Debugging
+///
+/// Errors in Rust macros can be hard to decipher at times, especially when using very complex
+/// macros which incrementally parse their input. This section is provided to give some hints and
+/// solutions for common problems. If this still does not solve the problem, feel free to ask
+/// questions on GitHub or via email or open an issue.
+///
+/// ## Macro recursion limit
+///
+/// The `parse!` macro is expanding by recursively invoking itself, parsing a bit of the input each
+/// iteration. This sometimes reaches the recursion-limit for macros in Rust:
+///
+/// ```text
+/// src/macros.rs:439:99: 439:148 error: recursion limit reached while expanding the macro `__parse_internal`
+/// src/macros.rs:439     ( @EXPR_SKIP($input:expr; $($lhs:tt)*) $t1:tt $t2:tt )                                   => { __parse_internal!{@TERM($input) $($lhs)* $t1 $t2} };
+/// ```
+///
+/// The default recursion limit is `64`, this can be raised by using a crate-annotation in the
+/// crate where the recursion limit is an issue:
+///
+/// ```
+/// #![recursion_limit="100"]
+/// ```
+///
+/// # Debugging macro expansion
+///
+/// If you are using the nightly version of rust you can use the feature `trace_macros` to see how
+/// the macro is expanded:
+///
+/// ```ignore
+/// #![feature(trace_macros)]
+///
+/// # #[macro_use] extern crate chomp;
+/// # fn main() {
+/// trace_macros!(true);
+/// let p = parser!{ decimal() <* token(b';') };
+/// trace_macros!(false);
+/// # }
+/// ```
+///
+/// This will result in a printout similar to this:
+///
+/// ```text
+/// parser! { decimal (  ) < * token ( b';' ) }
+/// parse! { i ; decimal (  ) < * token ( b';' ) }
+/// __parse_internal! { i ; decimal (  ) < * token ( b';' ) }
+/// __parse_internal! { @ STATEMENT ( ( i ; _ ) ) decimal (  ) < * token ( b';' ) }
+/// __parse_internal! { @ BIND ( ( i ; _ ) decimal (  ) < * token ( b';' ) ) }
+/// __parse_internal! { @ EXPR ( i ; ) decimal (  ) < * token ( b';' ) }
+/// __parse_internal! { @ EXPR_ALT ( i ; ) decimal (  ) < * token ( b';' ) }
+/// __parse_internal! { @ EXPR_SKIP ( i ; ) decimal (  ) < * token ( b';' ) }
+/// __parse_internal! { @ TERM ( i ) decimal (  ) }
+/// __parse_internal! { @ EXPR_SKIP ( i ; ) token ( b';' ) }
+/// __parse_internal! { @ TERM ( i ) token ( b';' ) }
+/// ```
+///
+/// Output like the above can make it clearer where it is actually failing, and can sometimes
+/// highlight the exact problem (with the help of looking at the grammar found above).
+///
+/// ## Function error pointing to macro code
+///
+/// Sometimes non-syntax errors will occur in macro code, `rustc` currently (on stable) has issues
+/// with actually displaying the actual code which causes the problem. Instead the macro-part will
+/// be highlighted as the cause of the issue:
+///
+/// ```text
+/// src/macros.rs:431:71: 431:97 error: this function takes 1 parameter but 2 parameters were supplied [E0061]
+/// src/macros.rs:431     ( @TERM($input:expr) $func:ident ( $($param:expr),* $(,)*) ) => { $func($input, $($param),*) };
+///                                                                                         ^~~~~~~~~~~~~~~~~~~~~~~~~~
+/// src/macros.rs:489:99: 489:148 note: in this expansion of __parse_internal! (defined in src/macros.rs)
+/// ...
+/// ```
+///
+/// Usually this is related to a Named expression which is used to invoke a function, but the
+/// function-parameters do not match the expected. Check all the named invocations in the
+/// macro-invocation and keep in mind that the first parameter will be an `Input<I>` which is added
+/// automatically. If that still does not help, try using nighly and the `trace_macro` feature to
+/// see what is expanded.
+///
+/// ## `error: expected ident, found foo`
+///
+/// This error (with `foo` being a user-defined symbol)  can be caused by having a Bind statement
+/// as the last statement in a `parse!` block.  The last part of a `parse!` block must be an
+/// expression.
+///
+/// ```text
+/// src/macros.rs:551:111: 551:116 error: expected ident, found foo
+/// src/macros.rs:551     ( $input:expr ; let $name:pat = $($tail:tt)+ )
+///     => { __parse_internal!{@STATEMENT(($input; $name)) $($tail)+} };
+///                                                ^~~~~
+/// ```
 #[macro_export]
 macro_rules! parse {
     ( $($t:tt)* ) => { __parse_internal!{ $($t)* } };
