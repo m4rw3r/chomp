@@ -15,6 +15,8 @@
 ///
 /// # Examples
 ///
+/// Parsing into a struct using the basic provided parsers:
+///
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
@@ -45,6 +47,9 @@
 /// # }
 /// ```
 ///
+/// Parsing an IP-address with a string-prefix and terminated with semicolon using the `<*` (skip)
+/// operator to make it more succint:
+///
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
@@ -66,6 +71,8 @@
 /// assert_eq!(parse_only(parse_ip, b"ip:192.168.0.1;"), Ok((192, 168, 0, 1)));
 /// # }
 /// ```
+///
+/// Parsing a log-level using the `<|>` alternation (or) operator:
 ///
 /// ```
 /// # #[macro_use] extern crate chomp;
