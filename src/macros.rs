@@ -89,9 +89,9 @@
 ///
 /// let level        = |i, b, r| string(i, b).map(|_| r);
 /// let log_severity = parser!{
+///     level(b"ERROR", Log::Error)   <|>
 ///     level(b"WARN",  Log::Warning) <|>
 ///     level(b"INFO",  Log::Info)    <|>
-///     level(b"ERROR", Log::Error)   <|>
 ///     level(b"DEBUG", Log::Debug)
 /// };
 ///
