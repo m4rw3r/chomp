@@ -374,6 +374,25 @@ mod test {
     use parsers::{any, take, token, string};
 
     #[test]
+    fn option_test() {
+        assert_eq!(option(new(DEFAULT, b""), any, b'-').into_inner(), State::Incomplete(1));
+        assert_eq!(option(new(DEFAULT, b"a"), any, b'-').into_inner(), State::Data(new(DEFAULT, b""), b'a'));
+        assert_eq!(option(new(DEFAULT, b""), |i| take(i, 2).map(ToOwned::to_owned), vec![]).into_inner(), State::Incomplete(2));
+        assert_eq!(option(new(DEFAULT, b"a"), |i| take(i, 2).map(ToOwned::to_owned), vec![]).into_inner(), State::Incomplete(1));
+        assert_eq!(option(new(DEFAULT, b"ab"), |i| take(i, 2).map(ToOwned::to_owned), vec![]).into_inner(), State::Data(new(DEFAULT, b""), vec![b'a', b'b']));
+
+        assert_eq!(option(new(DEFAULT, b"a"), |i| token(i, b' ').map_err(|_| "token_err"), b'-').into_inner(), State::Data(new(DEFAULT, b"a"), b'-'));
+
+        assert_eq!(option(new(END_OF_INPUT, b""), any, b'-').into_inner(), State::Data(new(END_OF_INPUT, b""), b'-'));
+        assert_eq!(option(new(END_OF_INPUT, b"a"), any, b'-').into_inner(), State::Data(new(END_OF_INPUT, b""), b'a'));
+        assert_eq!(option(new(END_OF_INPUT, b""), |i| take(i, 2).map(ToOwned::to_owned), vec![]).into_inner(), State::Data(new(END_OF_INPUT, b""), vec![]));
+        assert_eq!(option(new(END_OF_INPUT, b"a"), |i| take(i, 2).map(ToOwned::to_owned), vec![]).into_inner(), State::Data(new(END_OF_INPUT, b"a"), vec![]));
+        assert_eq!(option(new(END_OF_INPUT, b"ab"), |i| take(i, 2).map(ToOwned::to_owned), vec![]).into_inner(), State::Data(new(END_OF_INPUT, b""), vec![b'a', b'b']));
+
+        assert_eq!(option(new(END_OF_INPUT, b"a"), |i| token(i, b' ').map_err(|_| "token_err"), b'-').into_inner(), State::Data(new(END_OF_INPUT, b"a"), b'-'));
+    }
+
+    #[test]
     fn or_test() {
         assert_eq!(or(new(DEFAULT, b""), any, any).into_inner(), State::Incomplete(1));
         assert_eq!(or(new(DEFAULT, b"a"), any, any).into_inner(), State::Data(new(DEFAULT, b""), b'a'));
