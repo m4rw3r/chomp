@@ -61,7 +61,11 @@ pub fn option<'a, I, T, E, F>(i: Input<'a, I>, f: F, default: T) -> ParseResult<
     match f(i.clone()).into_inner() {
         State::Data(b, d)    => b.ret(d),
         State::Error(_, _)   => i.ret(default),
-        State::Incomplete(n) => i.incomplete(n),
+        State::Incomplete(n) => if i.is_last_slice() {
+            i.ret(default)
+        } else {
+            i.incomplete(n)
+        },
     }
 }
 
