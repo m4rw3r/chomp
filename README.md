@@ -19,7 +19,7 @@ Add the following line to the dependencies section of your `Cargo.toml`:
 
 ```toml
 [dependencies]
-chomp = "0.2.3"
+chomp = "0.2.4"
 ```
 
 ##Usage
