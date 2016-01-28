@@ -473,7 +473,7 @@ mod err {
     }
 
     #[inline(always)]
-    pub fn expected<'a, I>(i: I) -> Error<I> {
+    pub fn expected<I>(i: I) -> Error<I> {
         Error::Expected(i)
     }
 
