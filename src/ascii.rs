@@ -148,7 +148,7 @@ pub fn signed<T, F>(i: Input<u8>, f: F) -> U8Result<T>
 /// ```
 #[inline]
 pub fn decimal<T: Copy + ValueFrom<u8, Err=NoError> + Add<Output=T> + Mul<Output=T>>(i: Input<u8>) -> U8Result<T> {
-    take_while1(i, is_digit).bind(|i, buf| i.ret(to_decimal(buf)))
+    take_while1(i, is_digit).map(to_decimal)
 }
 
 /// Internal function converting a `[u8]` to the given integer type `T`.
