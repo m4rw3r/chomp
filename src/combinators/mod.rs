@@ -14,22 +14,20 @@ use primitives::{IntoInner, InputBuffer, InputClone};
 
 /// Applies the parser ``p`` exactly ``num`` times collecting all items into `T: FromIterator`.
 ///
-#[cfg_attr(feature = "verbose_error", doc = "
-```
- use chomp::{U8Result, ParseError, Error, Input, parse_only, count, token, take_remainder};
-
- fn parse(i: Input<u8>) -> U8Result<Vec<u8>> {
-     count(i, 2, |i| token(i, b'a'))
- }
-
- assert_eq!(parse_only(parse, b\"a  \"), Err(ParseError::Error(b\"  \", Error::Expected(b'a'))));
- assert_eq!(parse_only(parse, b\"aa \"), Ok(vec![b'a', b'a']));
-
- let with_remainder = |i| parse(i).bind(|i, d| take_remainder(i).map(|r| (r, d)));
-
- assert_eq!(parse_only(with_remainder, b\"aaa\"), Ok((&b\"a\"[..], vec![b'a', b'a'])));
-```
-")]
+/// ```
+/// use chomp::{U8Result, ParseError, Error, Input, parse_only, count, token, take_remainder};
+///
+/// fn parse(i: Input<u8>) -> U8Result<Vec<u8>> {
+///     count(i, 2, |i| token(i, b'a'))
+/// }
+///
+/// assert_eq!(parse_only(parse, b"a  "), Err(ParseError::Error(b"  ", Error::Expected(b'a'))));
+/// assert_eq!(parse_only(parse, b"aa "), Ok(vec![b'a', b'a']));
+///
+/// let with_remainder = |i| parse(i).bind(|i, d| take_remainder(i).map(|r| (r, d)));
+///
+/// assert_eq!(parse_only(with_remainder, b"aaa"), Ok((&b"a"[..], vec![b'a', b'a'])));
+/// ```
 #[inline]
 pub fn count<'a, I, T, E, F, U>(i: Input<'a, I>, num: usize, p: F) -> ParseResult<'a, I, T, E>
   where I: Copy,
@@ -77,19 +75,17 @@ pub fn option<'a, I, T, E, F>(i: Input<'a, I>, f: F, default: T) -> ParseResult<
 /// If multiple `or` combinators are used in the same expression, consider using the `parse!` macro
 /// and its alternation operator (`<|>`).
 ///
-#[cfg_attr(feature = "verbose_error", doc = "
-```
- use chomp::{ParseError, Error, parse_only, or, token};
-
- let p = |i| or(i,
-             |i| token(i, b'a'),
-             |i| token(i, b'b'));
-
- assert_eq!(parse_only(&p, b\"abc\"), Ok(b'a'));
- assert_eq!(parse_only(&p, b\"bbc\"), Ok(b'b'));
- assert_eq!(parse_only(&p, b\"cbc\"), Err(ParseError::Error(b\"cbc\", Error::Expected(b'b'))));
-```
-")]
+/// ```
+/// use chomp::{ParseError, Error, parse_only, or, token};
+///
+/// let p = |i| or(i,
+///             |i| token(i, b'a'),
+///             |i| token(i, b'b'));
+///
+/// assert_eq!(parse_only(&p, b"abc"), Ok(b'a'));
+/// assert_eq!(parse_only(&p, b"bbc"), Ok(b'b'));
+/// assert_eq!(parse_only(&p, b"cbc"), Err(ParseError::Error(b"cbc", Error::Expected(b'b'))));
+/// ```
 #[inline]
 pub fn or<'a, I, T, E, F, G>(i: Input<'a, I>, f: F, g: G) -> ParseResult<'a, I, T, E>
   where F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E>,
@@ -141,18 +137,16 @@ pub fn many<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E
 ///
 /// Note: Allocates data.
 ///
-#[cfg_attr(feature = "verbose_error", doc = "
-```
- use chomp::{ParseError, Error, parse_only, token, many1, take_while1};
-
- let p = |i| many1(i, |i| take_while1(i, |c| c != b',' && c != b' ')
-             .bind(|i, c| token(i, b',')
-                          .map(|_| c)));
-
- assert_eq!(parse_only(&p, b\"a \"), Err(ParseError::Error(b\" \", Error::Expected(b','))));
- assert_eq!(parse_only(&p, b\"a, \"), Ok(vec![&b\"a\"[..]]));
-```
-")]
+/// ```
+/// use chomp::{ParseError, Error, parse_only, token, many1, take_while1};
+///
+/// let p = |i| many1(i, |i| take_while1(i, |c| c != b',' && c != b' ')
+///             .bind(|i, c| token(i, b',')
+///                          .map(|_| c)));
+///
+/// assert_eq!(parse_only(&p, b"a "), Err(ParseError::Error(b" ", Error::Expected(b','))));
+/// assert_eq!(parse_only(&p, b"a, "), Ok(vec![&b"a"[..]]));
+/// ```
 #[inline]
 pub fn many1<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
   where I: Copy,
@@ -276,18 +270,16 @@ pub fn skip_many<'a, I, T, E, F>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, ()
 /// This is more efficient compared to using ``many1`` and then just discarding the result as
 /// ``many1`` allocates a separate data structure to contain the data before proceeding.
 ///
-#[cfg_attr(feature = "verbose_error", doc = "
-```
- use chomp::{ParseError, Error, parse_only, skip_many1, token};
-
- let p = |i| skip_many1(i, |i| token(i, b'a')).bind(|i, _| token(i, b'b'));
-
- assert_eq!(parse_only(&p, b\"aaaabc\"), Ok(b'b'));
- assert_eq!(parse_only(&p, b\"abc\"), Ok(b'b'));
-
- assert_eq!(parse_only(&p, b\"bc\"), Err(ParseError::Error(b\"bc\", Error::Expected(b'a'))));
-```
-")]
+/// ```
+/// use chomp::{ParseError, Error, parse_only, skip_many1, token};
+///
+/// let p = |i| skip_many1(i, |i| token(i, b'a')).bind(|i, _| token(i, b'b'));
+///
+/// assert_eq!(parse_only(&p, b"aaaabc"), Ok(b'b'));
+/// assert_eq!(parse_only(&p, b"abc"), Ok(b'b'));
+///
+/// assert_eq!(parse_only(&p, b"bc"), Err(ParseError::Error(b"bc", Error::Expected(b'a'))));
+/// ```
 #[inline]
 pub fn skip_many1<'a, I, T, E, F>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, (), E>
   where T: 'a, F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
