@@ -402,11 +402,11 @@ pub fn eof<I>(i: Input<I>) -> SimpleResult<I, ()> {
     }
 }
 
-/// Common error for the basic Chomp parsers, verbose version.
+/// Common error for the basic Chomp parsers.
 ///
-/// This is a verbose version of the common error for the basic Chomp parsers. It will contain
-/// information about what a parser expected or if it encountered something unexpected (in the
-/// case of user supplied predicates, eg. `satisfy`).
+/// This is the common error for the basic Chomp parsers. It will contain information about what a
+/// parser expected or if it encountered something unexpected (in the case of user supplied
+/// predicates, eg. `satisfy`).
 ///
 /// This is coupled with the state found in the error state of the `ParseResult` type.
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
