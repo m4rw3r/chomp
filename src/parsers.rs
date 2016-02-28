@@ -46,7 +46,7 @@ pub fn satisfy<I: Copy, F>(i: Input<I>, f: F) -> SimpleResult<I, I>
     match b.first() {
         None             => i.incomplete(1),
         Some(&c) if f(c) => i.replace(&b[1..]).ret(c),
-        Some(_)          => i.err(err::unexpected()),
+        Some(_)          => i.err(Error::unexpected()),
     }
 }
 
@@ -77,7 +77,7 @@ pub fn satisfy_with<I: Copy, T: Clone, F, P>(i: Input<I>, f: F, p: P) -> SimpleR
             if p(t.clone()) {
                 i.replace(&b[1..]).ret(t)
             } else {
-                i.err(err::unexpected())
+                i.err(Error::unexpected())
             }
         },
         None    => i.incomplete(1),
@@ -100,7 +100,7 @@ pub fn token<I: Copy + PartialEq>(i: Input<I>, t: I) -> SimpleResult<I, I> {
     match b.first() {
         None               => i.incomplete(1),
         Some(&c) if t == c => i.replace(&b[1..]).ret(c),
-        Some(_)            => i.err(err::expected(t)),
+        Some(_)            => i.err(Error::expected(t)),
     }
 }
 
@@ -120,7 +120,7 @@ pub fn not_token<I: Copy + PartialEq>(i: Input<I>, t: I) -> SimpleResult<I, I> {
     match b.first() {
         None               => i.incomplete(1),
         Some(&c) if t != c => i.replace(&b[1..]).ret(c),
-        Some(_)            => i.err(err::unexpected()),
+        Some(_)            => i.err(Error::unexpected()),
     }
 }
 
@@ -241,7 +241,7 @@ pub fn take_while1<I: Copy, F>(i: Input<I>, f: F) -> SimpleResult<I, &[I]>
     let b = i.buffer();
 
     match b.iter().position(|c| f(*c) == false) {
-        Some(0) => i.err(err::unexpected()),
+        Some(0) => i.err(Error::unexpected()),
         Some(n) => i.replace(&b[n..]).ret(&b[..n]),
         // TODO: Should this following 1 be something else, seeing as take_while1 is potentially
         // infinite?
@@ -377,7 +377,7 @@ pub fn string<'a, 'b, I: Copy + PartialEq>(i: Input<'a, I>, s: &'b [I])
 
     for j in 0..s.len() {
         if s[j] != d[j] {
-            return i.replace(&b[j..]).err(Error::Expected(d[j]))
+            return i.replace(&b[j..]).err(Error::expected(d[j]))
         }
     }
 
@@ -398,7 +398,7 @@ pub fn eof<I>(i: Input<I>) -> SimpleResult<I, ()> {
     if i.buffer().len() == 0 && i.is_last_slice() {
         i.ret(())
     } else {
-        i.err(err::unexpected())
+        i.err(Error::unexpected())
     }
 }
 
@@ -410,56 +410,65 @@ pub fn eof<I>(i: Input<I>) -> SimpleResult<I, ()> {
 ///
 /// This is coupled with the state found in the error state of the `ParseResult` type.
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub enum Error<I> {
-    /// Expected a specific token
-    Expected(I),
-    /// Did not expect the token present in the input stream
-    Unexpected,
+pub struct Error<I> {
+    /// `Some(T)` if it expected a specific token, `None` if it encountered something unexpected.
+    expected: Option<I>,
 }
 
 impl<I> Error<I> {
     /// Creates a new Unexpected error.
     ///
     /// Should be used when the error value is not important.
+    #[inline(always)]
     pub fn new() -> Self {
-        Error::Unexpected
+        Error {
+            expected: None,
+        }
+    }
+
+    /// Creates a new Unexpected error.
+    ///
+    /// Should be used when the token was unexpected, as in the case of `satisfy` where a user
+    /// provided predicate is provided.
+    #[inline(always)]
+    pub fn unexpected() -> Self {
+        Error {
+            expected: None,
+        }
+    }
+
+    /// Creates a new Expected error.
+    ///
+    /// Should be used when a specific token was expected.
+    #[inline(always)]
+    pub fn expected(i: I) -> Self {
+        Error {
+            expected: Some(i),
+        }
+    }
+
+    /// Returns `Some(&I)` if a specific token was expected, `None` otherwise.
+    pub fn expected_token(&self) -> Option<&I> {
+        self.expected.as_ref()
     }
 }
 
 impl<I> fmt::Display for Error<I>
   where I: fmt::Debug {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            Error::Expected(ref c) => write!(f, "expected {:?}", *c),
-            Error::Unexpected      => write!(f, "unexpected"),
+        match self.expected.as_ref() {
+            Some(ref c) => write!(f, "expected {:?}", *c),
+            None        => write!(f, "unexpected"),
         }
     }
 }
 
 impl<I: any::Any + fmt::Debug> error::Error for Error<I> {
     fn description(&self) -> &str {
-        match *self {
-            Error::Expected(_) => "expected a certain token, received another",
-            Error::Unexpected  => "received an unexpected token",
+        match self.expected.as_ref() {
+            Some(_) => "expected a certain token, received another",
+            None    => "received an unexpected token",
         }
-    }
-}
-
-mod err {
-    //! This is a private module to contain the constructors for the verbose error type.
-    //!
-    //! All constructors are #[inline(always)] and will construct the appropriate error type.
-
-    use super::Error;
-
-    #[inline(always)]
-    pub fn unexpected<I>() -> Error<I> {
-        Error::Unexpected
-    }
-
-    #[inline(always)]
-    pub fn expected<I>(i: I) -> Error<I> {
-        Error::Expected(i)
     }
 }
 
@@ -469,7 +478,6 @@ mod test {
     use primitives::IntoInner;
     use primitives::State;
     use super::*;
-    use super::err;
     use {Input, SimpleResult};
 
     #[test]
@@ -518,7 +526,7 @@ mod test {
     fn token_test() {
         assert_eq!(token(new(DEFAULT, b""), b'a').into_inner(), State::Incomplete(1));
         assert_eq!(token(new(DEFAULT, b"ab"), b'a').into_inner(), State::Data(new(DEFAULT, b"b"), b'a'));
-        assert_eq!(token(new(DEFAULT, b"bb"), b'a').into_inner(), State::Error(b"bb", err::expected(b'a')));
+        assert_eq!(token(new(DEFAULT, b"bb"), b'a').into_inner(), State::Error(b"bb", Error::expected(b'a')));
     }
 
     #[test]
@@ -544,8 +552,8 @@ mod test {
     #[test]
     fn take_while1_test() {
         assert_eq!(take_while1(new(DEFAULT, b"abc"), |c| c != b'b').into_inner(), State::Data(new(DEFAULT, b"bc"), &b"a"[..]));
-        assert_eq!(take_while1(new(DEFAULT, b"bbc"), |c| c != b'b').into_inner(), State::Error(&b"bbc"[..], err::unexpected()));
-        assert_eq!(take_while1(new(END_OF_INPUT, b"bbc"), |c| c != b'b').into_inner(), State::Error(&b"bbc"[..], err::unexpected()));
+        assert_eq!(take_while1(new(DEFAULT, b"bbc"), |c| c != b'b').into_inner(), State::Error(&b"bbc"[..], Error::unexpected()));
+        assert_eq!(take_while1(new(END_OF_INPUT, b"bbc"), |c| c != b'b').into_inner(), State::Error(&b"bbc"[..], Error::unexpected()));
         assert_eq!(take_while1(new(END_OF_INPUT, b"abc"), |c| c != b'b').into_inner(), State::Data(new(END_OF_INPUT, b"bc"), &b"a"[..]));
         // TODO: Update when the incomplete type has been updated
         assert_eq!(take_while1(new(DEFAULT, b"acc"), |c| c != b'b').into_inner(), State::Incomplete(1));
@@ -582,13 +590,23 @@ mod test {
         assert_eq!(string(new(DEFAULT, b"abc"), b"abc").into_inner(), State::Data(new(DEFAULT, b""), &b"abc"[..]));
         assert_eq!(string(new(DEFAULT, b"abc"), b"abcd").into_inner(), State::Incomplete(1));
         assert_eq!(string(new(DEFAULT, b"abc"), b"abcde").into_inner(), State::Incomplete(2));
-        assert_eq!(string(new(DEFAULT, b"abc"), b"ac").into_inner(), State::Error(b"bc", err::expected(b'b')));
+        assert_eq!(string(new(DEFAULT, b"abc"), b"ac").into_inner(), State::Error(b"bc", Error::expected(b'b')));
 
         assert_eq!(string(new(END_OF_INPUT, b"abc"), b"a").into_inner(), State::Data(new(END_OF_INPUT, b"bc"), &b"a"[..]));
         assert_eq!(string(new(END_OF_INPUT, b"abc"), b"ab").into_inner(), State::Data(new(END_OF_INPUT, b"c"), &b"ab"[..]));
         assert_eq!(string(new(END_OF_INPUT, b"abc"), b"abc").into_inner(), State::Data(new(END_OF_INPUT, b""), &b"abc"[..]));
         assert_eq!(string(new(END_OF_INPUT, b"abc"), b"abcd").into_inner(), State::Incomplete(1));
         assert_eq!(string(new(END_OF_INPUT, b"abc"), b"abcde").into_inner(), State::Incomplete(2));
-        assert_eq!(string(new(END_OF_INPUT, b"abc"), b"ac").into_inner(), State::Error(b"bc", err::expected(b'b')));
+        assert_eq!(string(new(END_OF_INPUT, b"abc"), b"ac").into_inner(), State::Error(b"bc", Error::expected(b'b')));
+    }
+
+    #[test]
+    fn error_test() {
+        let e = Error::<()>::new();
+        assert_eq!(e.expected_token(), None);
+        let e = Error::<()>::unexpected();
+        assert_eq!(e.expected_token(), None);
+        let e = Error::expected(b'a');
+        assert_eq!(e.expected_token(), Some(&b'a'));
     }
 }

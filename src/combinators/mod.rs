@@ -21,7 +21,7 @@ use primitives::{IntoInner, InputBuffer, InputClone};
 ///     count(i, 2, |i| token(i, b'a'))
 /// }
 ///
-/// assert_eq!(parse_only(parse, b"a  "), Err(ParseError::Error(b"  ", Error::Expected(b'a'))));
+/// assert_eq!(parse_only(parse, b"a  "), Err(ParseError::Error(b"  ", Error::expected(b'a'))));
 /// assert_eq!(parse_only(parse, b"aa "), Ok(vec![b'a', b'a']));
 ///
 /// let with_remainder = |i| parse(i).bind(|i, d| take_remainder(i).map(|r| (r, d)));
@@ -84,7 +84,7 @@ pub fn option<'a, I, T, E, F>(i: Input<'a, I>, f: F, default: T) -> ParseResult<
 ///
 /// assert_eq!(parse_only(&p, b"abc"), Ok(b'a'));
 /// assert_eq!(parse_only(&p, b"bbc"), Ok(b'b'));
-/// assert_eq!(parse_only(&p, b"cbc"), Err(ParseError::Error(b"cbc", Error::Expected(b'b'))));
+/// assert_eq!(parse_only(&p, b"cbc"), Err(ParseError::Error(b"cbc", Error::expected(b'b'))));
 /// ```
 #[inline]
 pub fn or<'a, I, T, E, F, G>(i: Input<'a, I>, f: F, g: G) -> ParseResult<'a, I, T, E>
@@ -144,7 +144,7 @@ pub fn many<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E
 ///             .bind(|i, c| token(i, b',')
 ///                          .map(|_| c)));
 ///
-/// assert_eq!(parse_only(&p, b"a "), Err(ParseError::Error(b" ", Error::Expected(b','))));
+/// assert_eq!(parse_only(&p, b"a "), Err(ParseError::Error(b" ", Error::expected(b','))));
 /// assert_eq!(parse_only(&p, b"a, "), Ok(vec![&b"a"[..]]));
 /// ```
 #[inline]
@@ -278,7 +278,7 @@ pub fn skip_many<'a, I, T, E, F>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, ()
 /// assert_eq!(parse_only(&p, b"aaaabc"), Ok(b'b'));
 /// assert_eq!(parse_only(&p, b"abc"), Ok(b'b'));
 ///
-/// assert_eq!(parse_only(&p, b"bc"), Err(ParseError::Error(b"bc", Error::Expected(b'a'))));
+/// assert_eq!(parse_only(&p, b"bc"), Err(ParseError::Error(b"bc", Error::expected(b'a'))));
 /// ```
 #[inline]
 pub fn skip_many1<'a, I, T, E, F>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, (), E>
