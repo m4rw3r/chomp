@@ -5,6 +5,9 @@ use std::any;
 use std::error;
 use std::fmt;
 
+#[cfg(feature="noop_error")]
+use std::marker::PhantomData;
+
 use input::Input;
 use parse_result::SimpleResult;
 use primitives::InputBuffer;
@@ -409,12 +412,14 @@ pub fn eof<I>(i: Input<I>) -> SimpleResult<I, ()> {
 /// predicates, eg. `satisfy`).
 ///
 /// This is coupled with the state found in the error state of the `ParseResult` type.
+#[cfg(not(feature="noop_error"))]
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Error<I> {
     /// `Some(T)` if it expected a specific token, `None` if it encountered something unexpected.
     expected: Option<I>,
 }
 
+#[cfg(not(feature="noop_error"))]
 impl<I> Error<I> {
     /// Creates a new Unexpected error.
     ///
@@ -453,6 +458,7 @@ impl<I> Error<I> {
     }
 }
 
+#[cfg(not(feature="noop_error"))]
 impl<I> fmt::Display for Error<I>
   where I: fmt::Debug {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -463,12 +469,73 @@ impl<I> fmt::Display for Error<I>
     }
 }
 
+#[cfg(not(feature="noop_error"))]
 impl<I: any::Any + fmt::Debug> error::Error for Error<I> {
     fn description(&self) -> &str {
         match self.expected.as_ref() {
             Some(_) => "expected a certain token, received another",
             None    => "received an unexpected token",
         }
+    }
+}
+
+#[cfg(feature="noop_error")]
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct Error<I> {
+    _i: PhantomData<I>,
+}
+
+#[cfg(feature="noop_error")]
+impl<I> Error<I> {
+    /// Creates a new Unexpected error.
+    ///
+    /// Should be used when the error value is not important.
+    #[inline(always)]
+    pub fn new() -> Self {
+        Error {
+            _i: PhantomData,
+        }
+    }
+
+    /// Creates a new Unexpected error.
+    ///
+    /// Should be used when the token was unexpected, as in the case of `satisfy` where a user
+    /// provided predicate is provided.
+    #[inline(always)]
+    pub fn unexpected() -> Self {
+        Error {
+            _i: PhantomData,
+        }
+    }
+
+    /// Creates a new Expected error.
+    ///
+    /// Should be used when a specific token was expected.
+    #[inline(always)]
+    pub fn expected(_i: I) -> Self {
+        Error {
+            _i: PhantomData,
+        }
+    }
+
+    /// Always returns none.
+    pub fn expected_token(&self) -> Option<&I> {
+        None
+    }
+}
+
+#[cfg(feature="noop_error")]
+impl<I> fmt::Display for Error<I>
+  where I: fmt::Debug {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "parse error")
+    }
+}
+
+#[cfg(feature="noop_error")]
+impl<I: any::Any + fmt::Debug> error::Error for Error<I> {
+    fn description(&self) -> &str {
+        &"parse error"
     }
 }
 
@@ -601,6 +668,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(not(feature = "noop_error"))]
     fn error_test() {
         let e = Error::<()>::new();
         assert_eq!(e.expected_token(), None);
@@ -608,5 +676,16 @@ mod test {
         assert_eq!(e.expected_token(), None);
         let e = Error::expected(b'a');
         assert_eq!(e.expected_token(), Some(&b'a'));
+    }
+
+    #[test]
+    #[cfg(feature = "noop_error")]
+    fn error_test() {
+        let e = Error::<()>::new();
+        assert_eq!(e.expected_token(), None);
+        let e = Error::<()>::unexpected();
+        assert_eq!(e.expected_token(), None);
+        let e = Error::expected(b'a');
+        assert_eq!(e.expected_token(), None);
     }
 }

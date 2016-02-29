@@ -32,3 +32,4 @@ compiletest_rs = { version = "0.1.1", optional = true }
 [features]
 # Feature for running extra (compiletime fail) tests on nightly
 unstable      = ["compiletest_rs"]
+noop_error    = []
