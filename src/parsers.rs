@@ -1,16 +1,14 @@
 //! Basic parsers.
 
 use std::mem;
-use std::any;
-use std::error;
-use std::fmt;
-
-#[cfg(feature="noop_error")]
-use std::marker::PhantomData;
 
 use input::Input;
 use parse_result::SimpleResult;
 use primitives::InputBuffer;
+
+pub use self::error::Error;
+#[cfg(all(not(feature="noop_error"), feature="backtrace"))]
+pub use self::error::StackFrame;
 
 /// Matches any item, returning it if present.
 ///
@@ -405,137 +403,340 @@ pub fn eof<I>(i: Input<I>) -> SimpleResult<I, ()> {
     }
 }
 
-/// Common error for the basic Chomp parsers.
-///
-/// This is the common error for the basic Chomp parsers. It will contain information about what a
-/// parser expected or if it encountered something unexpected (in the case of user supplied
-/// predicates, eg. `satisfy`).
-///
-/// This is coupled with the state found in the error state of the `ParseResult` type.
-#[cfg(not(feature="noop_error"))]
-#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct Error<I> {
-    /// `Some(T)` if it expected a specific token, `None` if it encountered something unexpected.
-    expected: Option<I>,
+#[cfg(not(any(feature="noop_error", feature="backtrace")))]
+mod error {
+    use std::any;
+    use std::error;
+    use std::fmt;
+
+    /// Common error for the basic Chomp parsers.
+    ///
+    /// This is the common error for the basic Chomp parsers. It will contain information about what a
+    /// parser expected or if it encountered something unexpected (in the case of user supplied
+    /// predicates, eg. `satisfy`).
+    ///
+    /// This is coupled with the state found in the error state of the `ParseResult` type.
+    #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+    pub struct Error<I> {
+        /// `Some(T)` if it expected a specific token, `None` if it encountered something unexpected.
+        expected: Option<I>,
+    }
+
+    impl<I: fmt::Debug> fmt::Debug for Error<I> {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            match self.expected {
+                Some(ref c) => write!(f, "Error(Expected({:?}))", c),
+                None        => write!(f, "Error(Unexpected)"),
+            }
+        }
+    }
+
+    impl<I> Error<I> {
+        /// Creates a new Unexpected error.
+        ///
+        /// Should be used when the error value is not important.
+        #[inline(always)]
+        pub fn new() -> Self {
+            Error {
+                expected: None,
+            }
+        }
+
+        /// Creates a new Unexpected error.
+        ///
+        /// Should be used when the token was unexpected, as in the case of `satisfy` where a user
+        /// provided predicate is provided.
+        #[inline(always)]
+        pub fn unexpected() -> Self {
+            Error {
+                expected: None,
+            }
+        }
+
+        /// Creates a new Expected error.
+        ///
+        /// Should be used when a specific token was expected.
+        #[inline(always)]
+        pub fn expected(i: I) -> Self {
+            Error {
+                expected: Some(i),
+            }
+        }
+
+        /// Returns `Some(&I)` if a specific token was expected, `None` otherwise.
+        #[inline]
+        pub fn expected_token(&self) -> Option<&I> {
+            self.expected.as_ref()
+        }
+    }
+
+    impl<I> fmt::Display for Error<I>
+      where I: fmt::Debug {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            match self.expected.as_ref() {
+                Some(ref c) => write!(f, "expected {:?}", *c),
+                None        => write!(f, "unexpected"),
+            }
+        }
+    }
+
+    impl<I: any::Any + fmt::Debug> error::Error for Error<I> {
+        fn description(&self) -> &str {
+            match self.expected.as_ref() {
+                Some(_) => "expected a certain token, received another",
+                None    => "received an unexpected token",
+            }
+        }
+    }
 }
 
-#[cfg(not(feature="noop_error"))]
-impl<I> Error<I> {
-    /// Creates a new Unexpected error.
+#[cfg(all(not(feature="noop_error"), feature="backtrace"))]
+mod error {
+    use std::any;
+    use std::error;
+    use std::fmt;
+    use std::os::raw;
+    use std::ops;
+    use std::borrow::Cow;
+
+    use backtrace;
+
+    /// Common error for the basic Chomp parsers. `backtrace` enabled.
     ///
-    /// Should be used when the error value is not important.
-    #[inline(always)]
-    pub fn new() -> Self {
-        Error {
-            expected: None,
-        }
-    }
-
-    /// Creates a new Unexpected error.
+    /// This is the common error for the basic Chomp parsers. It will contain information about what a
+    /// parser expected or if it encountered something unexpected (in the case of user supplied
+    /// predicates, eg. `satisfy`).
     ///
-    /// Should be used when the token was unexpected, as in the case of `satisfy` where a user
-    /// provided predicate is provided.
-    #[inline(always)]
-    pub fn unexpected() -> Self {
-        Error {
-            expected: None,
+    /// This is coupled with the state found in the error state of the `ParseResult` type.
+    #[derive(Clone, Ord, PartialOrd, Hash)]
+    pub struct Error<I> {
+        /// `Some(T)` if it expected a specific token, `None` if it encountered something unexpected.
+        expected: Option<I>,
+        trace:    Vec<*mut raw::c_void>,
+    }
+
+    impl<I: PartialEq> PartialEq<Error<I>> for Error<I> {
+        fn eq(&self, other: &Error<I>) -> bool {
+            self.expected == other.expected
         }
     }
 
-    /// Creates a new Expected error.
+    impl<I: Eq> Eq for Error<I> {}
+
+    impl<I: fmt::Debug> fmt::Debug for Error<I> {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            match self.expected {
+                Some(ref c) => try!(write!(f, "Error(Expected({:?}), \n", c)),
+                None        => try!(write!(f, "Error(Unexpected, \n")),
+            }
+
+            for frame in self.trace().into_iter() {
+                // TODO: is there any nicer way to get a decent indent?
+                try!(write!(f, "    "));
+                try!(fmt::Debug::fmt(&frame, f));
+                try!(write!(f, "\n"));
+            }
+
+            write!(f, ")")
+        }
+    }
+
+    /// A stack frame with information gathered from the runtime.
     ///
-    /// Should be used when a specific token was expected.
-    #[inline(always)]
-    pub fn expected(i: I) -> Self {
-        Error {
-            expected: Some(i),
+    /// See notes from the `backtrace` crate about when this information might and might not be
+    /// available.
+    #[derive(Clone, Eq, PartialEq)]
+    pub struct StackFrame {
+        /// Instruction pointer
+        pub ip:   *mut raw::c_void,
+        /// Function name if found
+        pub name: Option<String>,
+        /// Address
+        pub addr: Option<*mut raw::c_void>,
+        /// Source file name
+        pub file: Option<String>,
+        /// Source line number
+        pub line: Option<u32>,
+    }
+
+    impl fmt::Debug for StackFrame {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            let n = self.line.map(|n| Cow::Owned(format!("{}", n)))
+                .unwrap_or(Cow::Borrowed("<unknown>"));
+
+            write!(f, "{:16p} - {} ({}:{})",
+                self.ip,
+                self.name.as_ref().map(ops::Deref::deref).unwrap_or("<unknown>"),
+                self.file.as_ref().map(ops::Deref::deref).unwrap_or("<unknown>"),
+                n,
+                )
         }
     }
 
-    /// Returns `Some(&I)` if a specific token was expected, `None` otherwise.
-    pub fn expected_token(&self) -> Option<&I> {
-        self.expected.as_ref()
-    }
-}
+    macro_rules! new_trace {
+        () => { {
+            let mut v = Vec::new();
 
-#[cfg(not(feature="noop_error"))]
-impl<I> fmt::Display for Error<I>
-  where I: fmt::Debug {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.expected.as_ref() {
-            Some(ref c) => write!(f, "expected {:?}", *c),
-            None        => write!(f, "unexpected"),
+            backtrace::trace(&mut |frame| {
+                v.push(frame.ip());
+
+                true
+            });
+
+            v
+        } }
+    }
+
+    impl<I> Error<I> {
+        /// Creates a new Unexpected error.
+        ///
+        /// Should be used when the error value is not important.
+        #[inline(always)]
+        pub fn new() -> Self {
+            Error {
+                expected: None,
+                trace:    new_trace!(),
+            }
+        }
+
+        /// Creates a new Unexpected error.
+        ///
+        /// Should be used when the token was unexpected, as in the case of `satisfy` where a user
+        /// provided predicate is provided.
+        #[inline(always)]
+        pub fn unexpected() -> Self {
+            Error {
+                expected: None,
+                trace:    new_trace!(),
+            }
+        }
+
+        /// Creates a new Expected error.
+        ///
+        /// Should be used when a specific token was expected.
+        #[inline(always)]
+        pub fn expected(i: I) -> Self {
+            Error {
+                expected: Some(i),
+                trace:    new_trace!(),
+            }
+        }
+
+        /// Returns `Some(&I)` if a specific token was expected, `None` otherwise.
+        #[inline]
+        pub fn expected_token(&self) -> Option<&I> {
+            self.expected.as_ref()
+        }
+
+        /// Returns a stack-trace to where the error was created.
+        pub fn trace(&self) -> Vec<StackFrame> {
+            self.trace.iter().map(|&ip| {
+                let mut f = StackFrame { ip: ip, name: None, addr: None, file: None, line: None };
+
+                backtrace::resolve(ip, &mut |sym| {
+                    f.name = sym.name().map(String::from_utf8_lossy).map(|mangled| {
+                        let mut name = String::new();
+
+                        match backtrace::demangle(&mut name, &mangled) {
+                            Ok(()) => name,
+                            Err(_) => mangled.into_owned(),
+                        }
+                    });
+                    f.addr = sym.addr();
+                    f.file = sym.filename().map(String::from_utf8_lossy).map(Cow::into_owned);
+                    f.line = sym.lineno();
+                });
+
+                f
+            }).collect()
         }
     }
-}
 
-#[cfg(not(feature="noop_error"))]
-impl<I: any::Any + fmt::Debug> error::Error for Error<I> {
-    fn description(&self) -> &str {
-        match self.expected.as_ref() {
-            Some(_) => "expected a certain token, received another",
-            None    => "received an unexpected token",
+    impl<I> fmt::Display for Error<I>
+      where I: fmt::Debug {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            match self.expected.as_ref() {
+                Some(ref c) => write!(f, "expected {:?}", *c),
+                None        => write!(f, "unexpected"),
+            }
+        }
+    }
+
+    impl<I: any::Any + fmt::Debug> error::Error for Error<I> {
+        fn description(&self) -> &str {
+            match self.expected.as_ref() {
+                Some(_) => "expected a certain token, received another",
+                None    => "received an unexpected token",
+            }
         }
     }
 }
 
 #[cfg(feature="noop_error")]
-#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct Error<I> {
-    _i: PhantomData<I>,
-}
+mod error {
+    use std::any;
+    use std::error;
+    use std::fmt;
+    use std::marker::PhantomData;
 
-#[cfg(feature="noop_error")]
-impl<I> Error<I> {
-    /// Creates a new Unexpected error.
+    /// Common error for the basic Chomp parsers. `noop_error` enabled.
     ///
-    /// Should be used when the error value is not important.
-    #[inline(always)]
-    pub fn new() -> Self {
-        Error {
-            _i: PhantomData,
+    /// This is the common error for the basic Chomp parsers. It is an empty type signalling that a
+    /// parser failed at the location specified in the error state from `ParseResult`.
+    #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+    pub struct Error<I> {
+        _i: PhantomData<I>,
+    }
+
+    impl<I> Error<I> {
+        /// Creates a new Unexpected error.
+        ///
+        /// Should be used when the error value is not important.
+        #[inline(always)]
+        pub fn new() -> Self {
+            Error {
+                _i: PhantomData,
+            }
+        }
+
+        /// Creates a new Unexpected error.
+        ///
+        /// Should be used when the token was unexpected, as in the case of `satisfy` where a user
+        /// provided predicate is provided.
+        #[inline(always)]
+        pub fn unexpected() -> Self {
+            Error {
+                _i: PhantomData,
+            }
+        }
+
+        /// Creates a new Expected error.
+        ///
+        /// Should be used when a specific token was expected.
+        #[inline(always)]
+        pub fn expected(_i: I) -> Self {
+            Error {
+                _i: PhantomData,
+            }
+        }
+
+        /// Always returns `None` since the feature `noop_error` is enabled.
+        pub fn expected_token(&self) -> Option<&I> {
+            None
         }
     }
 
-    /// Creates a new Unexpected error.
-    ///
-    /// Should be used when the token was unexpected, as in the case of `satisfy` where a user
-    /// provided predicate is provided.
-    #[inline(always)]
-    pub fn unexpected() -> Self {
-        Error {
-            _i: PhantomData,
+    impl<I> fmt::Display for Error<I>
+      where I: fmt::Debug {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "parse error")
         }
     }
 
-    /// Creates a new Expected error.
-    ///
-    /// Should be used when a specific token was expected.
-    #[inline(always)]
-    pub fn expected(_i: I) -> Self {
-        Error {
-            _i: PhantomData,
+    impl<I: any::Any + fmt::Debug> error::Error for Error<I> {
+        fn description(&self) -> &str {
+            &"parse error"
         }
-    }
-
-    /// Always returns none.
-    pub fn expected_token(&self) -> Option<&I> {
-        None
-    }
-}
-
-#[cfg(feature="noop_error")]
-impl<I> fmt::Display for Error<I>
-  where I: fmt::Debug {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "parse error")
-    }
-}
-
-#[cfg(feature="noop_error")]
-impl<I: any::Any + fmt::Debug> error::Error for Error<I> {
-    fn description(&self) -> &str {
-        &"parse error"
     }
 }
 
@@ -687,5 +888,16 @@ mod test {
         assert_eq!(e.expected_token(), None);
         let e = Error::expected(b'a');
         assert_eq!(e.expected_token(), None);
+    }
+
+    #[test]
+    #[cfg(feature="backtrace")]
+    fn backtrace_test() {
+        let e = Error::<()>::new();
+
+        let trace = e.trace();
+        let frame = trace.iter().find(|frame| frame.name.as_ref().map(|n| n.starts_with("parsers::test::backtrace_test")).unwrap_or(false));
+
+        assert!(frame.is_some());
     }
 }

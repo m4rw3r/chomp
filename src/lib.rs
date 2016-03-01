@@ -178,10 +178,36 @@
 //!   type of the entire parser, should it succeed.
 //!
 //! The entire grammar for the macro is listed elsewhere in this documentation.
+//!
+//! # Features
+//!
+//! * `backtrace`:
+#![cfg_attr(feature="backtrace", doc = " enabled.")]
+#![cfg_attr(not(feature="backtrace"), doc = " disabled (default).")]
+//!
+//!    This feature enables for backtraces of parse-errors, either by calling `Error::trace` or by
+//!    printing it using `fmt::Debug`.
+//!
+//!    This incurs a performance-hit every time a `chomp::parsers` parser fails since a backtrace
+//!    must be collected.
+//!
+//!    Incompatible with `noop_error`.
+//!
+//! * `noop_error`:
+#![cfg_attr(not(feature="noop_error"), doc = " disabled (default).")]
+#![cfg_attr(feature="noop_error", doc = " enabled.")]
+//!
+//!    The built-in `chomp::parsers::Error` type is zero-sized and carry no error-information. This
+//!    increases performance somewhat.
+//!
+//!    Incompatible with `backtrace`.
 
 #[macro_use]
 extern crate bitflags;
 extern crate conv;
+
+#[cfg(feature="backtrace")]
+extern crate backtrace;
 
 #[macro_use]
 mod macros;
