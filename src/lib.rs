@@ -93,7 +93,7 @@
 //! ```
 //! # #[macro_use] extern crate chomp;
 //! # fn main() {
-//! # use chomp::{Input, satisfy, parse_only};
+//! # use chomp::{satisfy, parse_only};
 //! # let r = parse_only(parser!{
 //! satisfy(|c| {
 //!     match c {
@@ -144,7 +144,7 @@
 //!
 //! ```
 //! # #[macro_use] extern crate chomp;
-//! # use chomp::{Input, parse_only, satisfy, string, token, U8Result};
+//! # use chomp::{Input, parse_only, satisfy, string, U8Result};
 //! fn f(i: Input<u8>) -> U8Result<(u8, u8, u8)> {
 //!     parse!{i;
 //!         let a = digit();
