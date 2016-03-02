@@ -702,7 +702,7 @@ mod test {
 
     #[test]
     #[cfg(feature = "noop_error")]
-    fn error_test() {
+    fn noop_error_test() {
         let e = Error::<()>::new();
         assert_eq!(e.expected_token(), None);
         let e = Error::<()>::unexpected();
@@ -719,6 +719,6 @@ mod test {
         let trace = e.trace();
         let this  = &trace[0];
 
-        assert!(this.name.as_ref().map(|n| n.starts_with("parsers::test::backtrace_test")).unwrap_or(false));
+        assert!(this.name.as_ref().map(|n| n.starts_with("parsers::test::backtrace_test")).unwrap_or(false), "Expected trace to start with \"parsers::test::backtrace_test\", got: {:?}", this.name.as_ref());
     }
 }
