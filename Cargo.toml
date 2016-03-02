@@ -22,9 +22,9 @@ include = [
 ]
 
 [dependencies]
-bitflags  = "0.5.0"
-conv      = { version = "0.3", default-features = false }
-backtrace = { version = "0.1.8", optional = true }
+bitflags   = "0.5.0"
+conv       = { version = "0.3", default-features = false }
+debugtrace = { version = "0.1.0" }
 
 # Technically a dev-dependency, but dev-dependencies are not allowed to be optional,
 # compiletest_rs fails to compile on stable and beta
@@ -34,3 +34,4 @@ compiletest_rs = { version = "0.1.1", optional = true }
 # Feature for running extra (compiletime fail) tests on nightly
 unstable      = ["compiletest_rs"]
 noop_error    = []
+backtrace     = ["debugtrace/backtrace"]

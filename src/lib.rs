@@ -185,13 +185,14 @@
 #![cfg_attr(feature="backtrace", doc = " enabled.")]
 #![cfg_attr(not(feature="backtrace"), doc = " disabled (default).")]
 //!
-//!    This feature enables for backtraces of parse-errors, either by calling `Error::trace` or by
+//!    This feature enables backtraces for parse-errors, either by calling `Error::trace` or by
 //!    printing it using `fmt::Debug`.
 //!
 //!    This incurs a performance-hit every time a `chomp::parsers` parser fails since a backtrace
 //!    must be collected.
 //!
-//!    Incompatible with `noop_error`.
+//!    In the `dev` and `test` profiles backtraces will always be enabled. This does not incur any
+//!    cost when built using the `release` profile unless the `backtrace` feature is enabled.
 //!
 //! * `noop_error`:
 #![cfg_attr(not(feature="noop_error"), doc = " disabled (default).")]
@@ -199,15 +200,11 @@
 //!
 //!    The built-in `chomp::parsers::Error` type is zero-sized and carry no error-information. This
 //!    increases performance somewhat.
-//!
-//!    Incompatible with `backtrace`.
 
 #[macro_use]
 extern crate bitflags;
 extern crate conv;
-
-#[cfg(feature="backtrace")]
-extern crate backtrace;
+extern crate debugtrace;
 
 #[macro_use]
 mod macros;
