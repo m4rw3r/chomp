@@ -2,7 +2,7 @@ use parse_result::{ParseResult, State};
 use parse_result;
 
 bitflags!{
-    flags InputMode: u32 {
+    pub flags InputMode: u32 {
         /// Default (empty) input state.
         const DEFAULT      = 0,
         /// If set the current slice of input is the last one.
