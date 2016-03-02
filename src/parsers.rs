@@ -719,6 +719,6 @@ mod test {
         let trace = e.trace();
         let this  = &trace[0];
 
-        assert!(this.name.as_ref().map(|n| n.starts_with("parsers::test::backtrace_test")).unwrap_or(false), "Expected trace to start with \"parsers::test::backtrace_test\", got: {:?}", this.name.as_ref());
+        assert!(this.name.as_ref().map(|n| n.contains("parsers::test::backtrace_test")).unwrap_or(false), "Expected trace to contain \"parsers::test::backtrace_test\", got: {:?}", this.name.as_ref());
     }
 }
