@@ -37,6 +37,8 @@ after_success:
 env:
   matrix:
     - FEATURES="--features noop_error"
+    - FEATURES="--features backtrace"
+    - FEATURES="--features \"noop_error backtrace\""
     - FEATURES=""
   global:
     - secure: gsvH3282enp+tO7Hjd0BEUnv9+jX0uQ/E9+B07ZPcbjYvoSA68Hk2UfZb1IYMWWXO1mWR8zF1Q/AnZR26fYEtlGaF8vTRqoYQHCc5pYUxNaSJPf1C2fvGpiRW63h9lC9sAwia7r2oS+aBeXHdrxvPtScMescf+fzjdeTYy4sHAg9ahrMIDlXB2cFXBixyqbjKwPB3wT0VqjOc8avzhAKehxXU8/h51P2FjRXLv/aEs/cMV7vpGGAZG4uA9cgrql7zayWMdiUNFGzR0Di7r3tDK3TPsla1c1W5+YYrbWkXT/cX5AvpDa9IH+jookPITzNlN7v6ZAQiwBzE7U2qzbZu34QAk34lfEwlcF/wVfuiKfUwR/U+B8Lb5tFPBF1lWn/NOw+uec4d/0XO2K6sfVxXn0nMrfeA/L8Q3pJ+3Fmts+gP4oumrjZ9L+zoYE+Lpn22T2W81BOPuW2c1JvbB5ZDds4ztHc2BL4aiYSO9DzMYTCz4sT/UbDbgVWkhwwfeKarCAvTmfTfpgIsNdnMdkiMX4gLIzm1W0xwtTc8Tl7GgCQjO8zxcgZT67bi507Huf9zQ4AwaBN4P9jCGSsa+bleIcUeR5NkX2KJlT5WNqUIyCHqHwG18Ddm8jmSMut4AVsyXkdAONq4Xfa07cZUBoKtAahrgl8UqXclCjtw31acGk=
