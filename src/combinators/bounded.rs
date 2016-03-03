@@ -772,6 +772,46 @@ pub fn many_till<'a, I, T, E, R, F, U, N, P, V>(i: Input<'a, I>, r: R, p: P, end
     BoundedRange::many_till(r, i, p, end)
 }
 
+/// Applies the parser `p` multiple times, separated by the parser `sep` and returns a value
+/// populated with the values yielded by `p`. If the number of items yielded by `p` does not fall
+/// into the range `r` and the separator or parser registers error or incomplete failure is
+/// propagated.
+///
+/// # Panics
+///
+/// Will panic if the end of the range is smaller than the start of the range.
+///
+/// # Notes
+///
+/// * Will allocate depending on the `FromIterator` implementation.
+/// * Will never yield more items than the upper bound of the range.
+/// * If the last parser succeeds on the last input item then this combinator is still considered
+///   incomplete unless the parser `F` matches or the lower bound has not been met.
+#[inline]
+pub fn sep_by<'a, I, T, E, R, F, U, N, P, V>(i: Input<'a, I>, r: R, mut p: P, mut sep: F) -> ParseResult<'a, I, T, E>
+  where I: Copy,
+        U: 'a,
+        V: 'a,
+        N: 'a,
+        T: FromIterator<U>,
+        E: From<N>,
+        R: BoundedRange,
+        P: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
+        F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
+    // If we have parsed at least one item
+    let mut item = false;
+    // Add sep in front of p if we have read at least one item
+    let parser   = |i| (if item {
+            sep(i).map(|_| ())
+        } else {
+            i.ret(())
+        })
+        .then(&mut p)
+        .inspect(|_| item = true);
+
+    BoundedRange::parse_many(r, i, parser)
+}
+
 #[cfg(test)]
 mod test {
     use ParseResult;

@@ -179,7 +179,7 @@ pub fn many1<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, 
 /// assert_eq!(r, Ok(vec![91, 03, 20]));
 /// ```
 #[inline]
-pub fn sep_by<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, mut p: R, mut sep: F) -> ParseResult<'a, I, T, E>
+pub fn sep_by<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, p: R, sep: F) -> ParseResult<'a, I, T, E>
   where I: Copy,
         U: 'a,
         V: 'a,
@@ -188,18 +188,7 @@ pub fn sep_by<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, mut p: R, mut sep: F)
         E: From<N>,
         R: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
-    // If we have parsed at least one item
-    let mut item = false;
-    // Add sep in front of p if we have read at least one item
-    let parser   = |i| (if item {
-            sep(i).map(|_| ())
-        } else {
-            i.ret(())
-        })
-        .then(&mut p)
-        .inspect(|_| item = true);
-
-    bounded::many(i, .., parser)
+    bounded::sep_by(i, .., p, sep)
 }
 
 
@@ -220,7 +209,7 @@ pub fn sep_by<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, mut p: R, mut sep: F)
 /// assert_eq!(r, Ok(vec![91, 03, 20]));
 /// ```
 #[inline]
-pub fn sep_by1<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, mut p: R, mut sep: F) -> ParseResult<'a, I, T, E>
+pub fn sep_by1<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, p: R, sep: F) -> ParseResult<'a, I, T, E>
   where I: Copy,
         U: 'a,
         V: 'a,
@@ -229,18 +218,7 @@ pub fn sep_by1<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, mut p: R, mut sep: F
         E: From<N>,
         R: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
-    // If we have parsed at least one item
-    let mut item = false;
-    // Add sep in front of p if we have read at least one item
-    let parser   = |i| (if item {
-            sep(i).map(|_| ())
-        } else {
-            i.ret(())
-        })
-        .then(&mut p)
-        .inspect(|_| item = true);
-
-    bounded::many(i, 1.., parser)
+    bounded::sep_by(i, 1.., p, sep)
 }
 
 /// Applies the parser `R` multiple times until the parser `F` succeeds and returns a
