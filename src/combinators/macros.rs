@@ -1,40 +1,4 @@
 
-/// Internal macro to provide speedup for `FromIterator::from_iter`.
-///
-/// Needed as of rustc 1.7.0-nightly (81ae8be71 2015-12-09).
-macro_rules! run_from_iter(
-    ( $iter:ident as $r_ty:ty ) => {
-        {
-            // Dummy variable to tie the scope of the iteration into the current scope,
-            // this causes rustc to inline `Iterator::next` into this scope including
-            // `FromIterator::from_iter`.
-            // This is probably how it works, #[inline] and #[inline(always)] do not affect it as
-            // of rustc 1.7.0-nightly (81ae8be71 2015-12-09).
-            let mut item = false;
-
-            // the inspect() is useless here, but ties the inner scope of the loop to the current
-            // scope which will make it inline `Iterator::next`.
-            let result: T = FromIterator::from_iter($iter.by_ref().inspect(|_| item = true));
-
-            // Oddly enough, no inspect() is much much slower:
-            //
-            // ```
-            // let result: $r_ty = FromIterator::from_iter($iter.by_ref());
-            // ```
-            //
-            // The above code is only faster in very very small benchmarks, anything larger than
-            // the benchmarks for many (ie. multiple `many(i, any)`) will most likely be slower
-            // when using the above line.
-
-            // The performance difference is definitely noticeable in benchmarks, parsing 10k bytes of
-            // any type and just storing them in a Vec is 10x slower on current nightly
-            // (rustc 1.7.0-nightly (81ae8be71 2015-12-09)).
-
-            (result, $iter.end_state())
-        }
-    }
-);
-
 /// Macro to implement and run a parser iterator, it provides the ability to add an extra state
 /// variable into it and also provide a size_hint as well as a pre- and on-next hooks.
 macro_rules! run_iter {
@@ -132,9 +96,9 @@ macro_rules! run_iter {
             _t:     PhantomData,
         };
 
-        let ($result, state) = run_from_iter!(iter as $t);
+        let $result: $t = FromIterator::from_iter(iter.by_ref());
 
-        match state {
+        match iter.end_state() {
             $($pat => $arm),*
         }
     } }
@@ -249,9 +213,9 @@ macro_rules! run_iter_till {
             _t:     PhantomData,
         };
 
-        let ($result, state) = run_from_iter!(iter as $t);
+        let $result: $t = FromIterator::from_iter(iter.by_ref());
 
-        match state {
+        match iter.end_state() {
             $($pat => $arm),*
         }
     } }
