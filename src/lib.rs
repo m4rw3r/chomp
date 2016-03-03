@@ -4,6 +4,7 @@
 //! * [Part 1](http://m4rw3r.github.io/parser-combinator-experiments-rust/)
 //! * [Part 2](http://m4rw3r.github.io/parser-combinator-experiments-errors)
 //! * [Part 3](http://m4rw3r.github.io/parser-combinator-experiments-part-3)
+//! * [Chomp 0.1 Announcement](http://m4rw3r.github.io/parser-combinators-road-chomp-0-1/)
 //!
 //! For its current capabilities, you will find that Chomp performs consistently as well, if not
 //! better, than optimized C parsers, while being vastly more expressive. For an example that
