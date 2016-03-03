@@ -5,6 +5,10 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `combinators::bounded::sep_by`: Bounded version of `combinators::sep_by` and `combinators::sep_by1`.
+
 ### Changes
 
 - Improved performance of combinators using iterators.
