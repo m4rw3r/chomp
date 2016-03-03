@@ -5,6 +5,11 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Changes
+
+- Improved performance of combinators using iterators.
+- Updated bitflags dependency
+
 ## [0.2.4] - 2016-01-24
 
 ### Changes
