@@ -1,6 +1,6 @@
 [package]
 name          = "chomp"
-version       = "0.2.5+master"
+version       = "0.2.5"
 authors       = ["Martin Wernstål <m4rw3r@gmail.com>"]
 description   = "A fast monadic-style parser combinator designed to work on stable Rust."
 documentation = "http://m4rw3r.github.io/chomp"
