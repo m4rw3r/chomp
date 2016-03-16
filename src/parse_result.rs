@@ -1,12 +1,10 @@
-use std::fmt;
-
-use parsers;
+use parsers::Error;
 use input::Input;
 
 /// Result for dealing with the basic parsers when parsing a stream of `u8`.
-pub type U8Result<'a, T>        = ParseResult<'a, u8, T, parsers::Error<u8>>;
+pub type U8Result<'a, T>        = ParseResult<'a, u8, T, Error<u8>>;
 /// Result returned from the basic parsers.
-pub type SimpleResult<'a, I, T> = ParseResult<'a, I, T, parsers::Error<I>>;
+pub type SimpleResult<'a, I, T> = ParseResult<'a, I, T, Error<I>>;
 
 /// **Primitive:** Primitive inner type containing the parse-state.
 ///
@@ -251,134 +249,6 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
     }
 }
 
-impl<'a, I, T, E: fmt::Debug> ParseResult<'a, I, T, E> {
-    /// Unwraps a parse result, yielding the content of the success-state.
-    ///
-    /// # Deprecated
-    ///
-    /// Use `parse_only` or `buffer::Stream` implementations to obtain a `Result` instead of acting
-    /// on the `ParseResult` directly.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the parse result is in an error-state or if the parsing is incomplete. Will
-    /// provide a panic message based on the value of the error.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use chomp::{Input, token};
-    ///
-    /// let r = token(Input::new(b"a"), b'a');
-    ///
-    /// assert_eq!(r.unwrap(), b'a');
-    /// ```
-    ///
-    /// ```{.should_panic}
-    /// use chomp::{Input, token};
-    ///
-    /// let r = token(Input::new(b"a"), b'b');
-    ///
-    /// // Panics with "called `ParseResult::unwrap` on an error: Expected (98)"
-    /// assert_eq!(r.unwrap(), b'a');
-    /// ```
-    ///
-    /// ```{.should_panic}
-    /// use chomp::{Input, take};
-    ///
-    /// let r = take(Input::new(b"a"), 2);
-    ///
-    /// // Panics with "called `ParseResult::unwrap` on an incomplete state (requested 1 tokens)"
-    /// assert_eq!(r.unwrap(), b"a");
-    /// ```
-    #[inline]
-    pub fn unwrap(self) -> T {
-        match self.0 {
-            State::Data(_, t)    => t,
-            State::Error(_, e)   => panic!("called `ParseResult::unwrap` on an error: {:?}", e),
-            State::Incomplete(n) => panic!(
-                "called `ParseResult::unwrap` on an incomplete state (requested {} tokens)",
-                n),
-        }
-    }
-
-    /// Unwraps a parse result, yielding the contents of the success state.
-    ///
-    /// # Deprecated
-    ///
-    /// Use `parse_only` or `buffer::Stream` implementations to obtain a `Result` instead of acting
-    /// on the `ParseResult` directly.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the parse result is in an error-state or if the parsing is incomplete. Will
-    /// provide a panic message based on the supplied message and the value of the error.
-    ///
-    /// # Examples
-    ///
-    /// ```{.should_panic}
-    /// use chomp::{Input, token};
-    ///
-    /// let r = token(Input::new(b"a"), b'b');
-    ///
-    /// // Panics with "Wanted character b: Expected(98)"
-    /// assert_eq!(r.expect("Wanted character b"), b'a');
-    /// ```
-    #[inline]
-    pub fn expect(self, msg: &str) -> T {
-        match self.0 {
-            State::Data(_, t)    => t,
-            State::Error(_, e)   => panic!("{}: {:?}", msg, e),
-            State::Incomplete(_) => panic!("{}: Parser in an incomplete state", msg),
-        }
-    }
-}
-
-impl<'a, I, T: fmt::Debug, E> ParseResult<'a, I, T, E> {
-    /// Unwraps a parse result, yielding the contents of the error state.
-    ///
-    /// # Deprecated
-    ///
-    /// Use `parse_only` or `buffer::Stream` implementations to obtain a `Result` instead of acting
-    /// on the `ParseResult` directly.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the parse result is in a success-state or if the parsing is incomplete. Will
-    /// provide a panic message based on the value of the success or incomplete state.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use chomp::{Error, Input, token};
-    ///
-    /// let r = token(Input::new(b"a"), b'b');
-    ///
-    /// assert_eq!(r.unwrap_err(), Error::expected(98));
-    /// ```
-    ///
-    /// ```{.should_panic}
-    /// use chomp::{Error, Input, token};
-    ///
-    /// let r = token(Input::new(b"a"), b'a');
-    ///
-    /// // Panics with "called `ParseResult::unwrap_err` on a success state: 97"
-    /// assert_eq!(r.unwrap_err(), Error::expected(98));
-    /// ```
-    #[inline]
-    pub fn unwrap_err(self) -> E {
-        match self.0 {
-            State::Data(_, t)    => panic!(
-                "called `ParseResult::unwrap_err` on a success state: {:?}",
-                t),
-            State::Error(_, e)   => e,
-            State::Incomplete(n) => panic!(
-                "called `ParseResult::unwrap_err` on an incomplete state (requested {} tokens)",
-                n),
-        }
-    }
-}
-
 /// **Primitive:** Consumes the `ParseResult` and exposes the internal state.
 ///
 /// # Primitive
@@ -389,12 +259,9 @@ impl<'a, I, T: fmt::Debug, E> ParseResult<'a, I, T, E> {
 ///
 /// The `ParseResult` type is a semi-linear type, supposed to act like a linear type while used in
 /// a parsing context to carry the state. Normally it should be as restrictive as the `Input` type
-/// in terms of how much it exposes its internals, but to make it easier to use the parsers
-/// `unwrap`, `unwrap_err` and `expect` were introduced which breaks the linearity guarantee when
-/// used early.
-///
-/// The `IntoInner` trait implementation allows fundamental parsers and combinators to expose the
-/// inner `State` of the `ParseResult` and act on this.
+/// in terms of how much it exposes its internals, but the `IntoInner` trait implementation
+/// allows fundamental parsers and combinators to expose the inner `State` of the `ParseResult`
+/// and act on this.
 ///
 /// # Example
 ///
