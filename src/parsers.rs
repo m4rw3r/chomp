@@ -1,16 +1,17 @@
 //! Basic parsers.
 
 use std::mem;
-use std::any;
-use std::error;
-use std::fmt;
-
-#[cfg(not(feature = "verbose_error"))]
-use std::marker::PhantomData;
 
 use input::Input;
 use parse_result::SimpleResult;
 use primitives::InputBuffer;
+
+pub use self::error::Error;
+
+// Only export if we have backtraces enabled, in debug/test profiles the StackFrame is only used
+// to debug-print.
+#[cfg(feature="backtrace")]
+pub use debugtrace::StackFrame;
 
 /// Matches any item, returning it if present.
 ///
@@ -49,7 +50,7 @@ pub fn satisfy<I: Copy, F>(i: Input<I>, f: F) -> SimpleResult<I, I>
     match b.first() {
         None             => i.incomplete(1),
         Some(&c) if f(c) => i.replace(&b[1..]).ret(c),
-        Some(_)          => i.err(err::unexpected()),
+        Some(_)          => i.err(Error::unexpected()),
     }
 }
 
@@ -80,7 +81,7 @@ pub fn satisfy_with<I: Copy, T: Clone, F, P>(i: Input<I>, f: F, p: P) -> SimpleR
             if p(t.clone()) {
                 i.replace(&b[1..]).ret(t)
             } else {
-                i.err(err::unexpected())
+                i.err(Error::unexpected())
             }
         },
         None    => i.incomplete(1),
@@ -103,7 +104,7 @@ pub fn token<I: Copy + PartialEq>(i: Input<I>, t: I) -> SimpleResult<I, I> {
     match b.first() {
         None               => i.incomplete(1),
         Some(&c) if t == c => i.replace(&b[1..]).ret(c),
-        Some(_)            => i.err(err::expected(t)),
+        Some(_)            => i.err(Error::expected(t)),
     }
 }
 
@@ -123,7 +124,7 @@ pub fn not_token<I: Copy + PartialEq>(i: Input<I>, t: I) -> SimpleResult<I, I> {
     match b.first() {
         None               => i.incomplete(1),
         Some(&c) if t != c => i.replace(&b[1..]).ret(c),
-        Some(_)            => i.err(err::unexpected()),
+        Some(_)            => i.err(Error::unexpected()),
     }
 }
 
@@ -244,7 +245,7 @@ pub fn take_while1<I: Copy, F>(i: Input<I>, f: F) -> SimpleResult<I, &[I]>
     let b = i.buffer();
 
     match b.iter().position(|c| f(*c) == false) {
-        Some(0) => i.err(err::unexpected()),
+        Some(0) => i.err(Error::unexpected()),
         Some(n) => i.replace(&b[n..]).ret(&b[..n]),
         // TODO: Should this following 1 be something else, seeing as take_while1 is potentially
         // infinite?
@@ -380,7 +381,7 @@ pub fn string<'a, 'b, I: Copy + PartialEq>(i: Input<'a, I>, s: &'b [I])
 
     for j in 0..s.len() {
         if s[j] != d[j] {
-            return err::string(i, j, s);
+            return i.replace(&b[j..]).err(Error::expected(d[j]))
         }
     }
 
@@ -401,157 +402,162 @@ pub fn eof<I>(i: Input<I>) -> SimpleResult<I, ()> {
     if i.buffer().len() == 0 && i.is_last_slice() {
         i.ret(())
     } else {
-        i.err(err::unexpected())
+        i.err(Error::unexpected())
     }
 }
 
-/// Common error for the basic Chomp parsers, verbose version.
-///
-/// This is a verbose version of the common error for the basic Chomp parsers. It will contain
-/// information about what a parser expected or if it encountered something unexpected (in the
-/// case of user supplied predicates, eg. `satisfy`).
-///
-/// This is coupled with the state found in the error state of the `ParseResult` type.
-#[cfg(feature = "verbose_error")]
-#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub enum Error<I> {
-    /// Expected a specific token
-    Expected(I),
-    /// Did not expect the token present in the input stream
-    Unexpected,
-    /// Expected a specific string of tokens
-    String(Vec<I>),
-}
+mod error {
+    use std::any;
+    use std::error;
+    use std::fmt;
 
-#[cfg(feature = "verbose_error")]
-impl<I> Error<I> {
-    /// Creates a new Unexpected error.
-    ///
-    /// Should be used when the error value is not important.
-    pub fn new() -> Self {
-        Error::Unexpected
-    }
-}
+    use debugtrace::Trace;
 
-#[cfg(feature = "verbose_error")]
-impl<I> fmt::Display for Error<I>
-  where I: fmt::Debug {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            Error::Expected(ref c) => write!(f, "expected {:?}", *c),
-            Error::Unexpected      => write!(f, "unexpected"),
-            Error::String(ref s)   => write!(f, "expected {:?}", *s),
-        }
-    }
-}
-
-#[cfg(feature = "verbose_error")]
-impl<I: any::Any + fmt::Debug> error::Error for Error<I> {
-    fn description(&self) -> &str {
-        match *self {
-            Error::Expected(_) => "expected a certain token, received another",
-            Error::Unexpected  => "received an unexpected token",
-            Error::String(_)   =>
-                "expected a certain string of tokens, encountered an unexpected token",
-        }
-    }
-}
-
-#[cfg(feature = "verbose_error")]
-mod err {
-    //! This is a private module to contain the constructors for the verbose error type.
-    //!
-    //! All constructors are #[inline(always)] and will construct the appropriate error type.
-
-    use input::Input;
-    use parse_result::ParseResult;
-    use super::Error;
-
-    #[inline(always)]
-    pub fn unexpected<I>() -> Error<I> {
-        Error::Unexpected
-    }
-
-    #[inline(always)]
-    pub fn expected<I>(i: I) -> Error<I> {
-        Error::Expected(i)
-    }
-
-
-    #[inline(always)]
-    pub fn string<'a, 'b, I, T>(i: Input<'a, I>, _offset: usize, expected: &'b [I])
-        -> ParseResult<'a, I, T, Error<I>>
-      where I: Copy {
-        i.err(Error::String(expected.to_vec()))
-    }
-}
-
-/// Common error for the basic Chomp parsers, noop version.
-///
-/// An empty error type, it only indicates that an error occurred. The error state in the
-/// `ParseResult` type provides the position of the error.
-///
-/// This is coupled with the state found in the error state of the `ParseResult` type.
-#[cfg(not(feature = "verbose_error"))]
-#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct Error<I>(PhantomData<I>);
-
-#[cfg(not(feature = "verbose_error"))]
-impl<I> Error<I> {
-    /// Creates a new Unexpected error.
-    ///
-    /// Should be used when the error value is not important.
-    pub fn new() -> Self {
-        Error(PhantomData)
-    }
-}
-
-#[cfg(not(feature = "verbose_error"))]
-impl<I: fmt::Debug> fmt::Display for Error<I> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "generic parse error (chomp was compiled without --feature verbose_error)")
-    }
-}
-
-#[cfg(not(feature = "verbose_error"))]
-impl<I: any::Any + fmt::Debug> error::Error for Error<I> {
-    fn description(&self) -> &str {
-        "generic parse error (chomp was compiled without --feature verbose_error)"
-    }
-}
-
-#[cfg(not(feature = "verbose_error"))]
-mod err {
-    //! This is a private module to contain the constructors for the smaller error type.
-    //!
-    //! All constructors are #[inline(always)], and will just noop the data.
-
+    #[cfg(feature="noop_error")]
     use std::marker::PhantomData;
+    #[cfg(not(feature="noop_error"))]
+    use std::ops::Deref;
 
-    use input::Input;
-    use parse_result::ParseResult;
-    use super::Error;
+    /// Empty type to eat the generic without printing
+    #[cfg(feature="noop_error")]
+    #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+    struct Expected<I>(PhantomData<I>);
 
-
-    #[inline(always)]
-    pub fn unexpected<I>() -> Error<I> {
-        Error(PhantomData)
+    #[cfg(feature="noop_error")]
+    impl<I: fmt::Debug> fmt::Debug for Expected<I> {
+        fn fmt(&self, _f: &mut fmt::Formatter) -> fmt::Result {
+            // Intentionally empty
+            Ok(())
+        }
     }
 
-    #[inline(always)]
-    pub fn expected<'a, I>(_: I) -> Error<I> {
-        Error(PhantomData)
+    /// `Some(T)` if it expected a specific token, `None` if it encountered something unexpected.
+    #[cfg(not(feature="noop_error"))]
+    #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+    struct Expected<I>(Option<I>);
+
+    #[cfg(not(feature="noop_error"))]
+    impl<I> Deref for Expected<I> {
+        type Target = Option<I>;
+
+        fn deref(&self) -> &Option<I> {
+            &self.0
+        }
     }
 
-    #[inline(always)]
-    pub fn string<'a, 'b, I, T>(i: Input<'a, I>, offset: usize, _expected: &'b [I])
-        -> ParseResult<'a, I, T, Error<I>>
-      where I: Copy {
-        use primitives::InputBuffer;
+    #[cfg(not(feature="noop_error"))]
+    impl<I: fmt::Debug> fmt::Debug for Expected<I> {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            match self.0 {
+                Some(ref c) => write!(f, "Expected({:?})", c),
+                None        => write!(f, "Unexpected"),
+            }
+        }
+    }
 
-        let b = i.buffer();
+    /// Common error for the basic Chomp parsers.
+    ///
+    /// This is the common error for the basic Chomp parsers. It will contain information about what a
+    /// parser expected or if it encountered something unexpected (in the case of user supplied
+    /// predicates, eg. `satisfy`).
+    ///
+    /// This is coupled with the state found in the error state of the `ParseResult` type.
+    #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+    pub struct Error<I>(Trace<Expected<I>>);
 
-        i.replace(&b[offset..]).err(Error(PhantomData))
+    #[cfg(feature="noop_error")]
+    impl<I> fmt::Display for Error<I>
+      where I: fmt::Debug {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "parse error")
+        }
+    }
+
+    #[cfg(not(feature="noop_error"))]
+    impl<I> fmt::Display for Error<I>
+      where I: fmt::Debug {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            match self.0.as_ref() {
+                Some(ref c) => write!(f, "expected {:?}", *c),
+                None        => write!(f, "unexpected"),
+            }
+        }
+    }
+
+    #[cfg(feature="noop_error")]
+    impl<I: any::Any + fmt::Debug> error::Error for Error<I> {
+        fn description(&self) -> &str {
+            &"parse error"
+        }
+    }
+
+    #[cfg(not(feature="noop_error"))]
+    impl<I: any::Any + fmt::Debug> error::Error for Error<I> {
+        fn description(&self) -> &str {
+            match self.0.as_ref() {
+                Some(_) => "expected a certain token, received another",
+                None    => "received an unexpected token",
+            }
+        }
+    }
+
+    #[cfg(feature="noop_error")]
+    macro_rules! create_error {
+        ($_e:expr) => { Error(Trace::new(Expected(PhantomData))) }
+    }
+
+    #[cfg(not(feature="noop_error"))]
+    macro_rules! create_error {
+        ($e:expr) => { Error(Trace::new(Expected($e))) }
+    }
+
+    impl<I> Error<I> {
+        /// Creates a new Unexpected error.
+        ///
+        /// Should be used when the error value is not important.
+        #[inline(always)]
+        pub fn new() -> Self {
+            create_error!(None)
+        }
+
+        /// Creates a new Unexpected error.
+        ///
+        /// Should be used when the token was unexpected, as in the case of `satisfy` where a user
+        /// provided predicate is provided.
+        #[inline(always)]
+        pub fn unexpected() -> Self {
+            create_error!(None)
+        }
+
+        /// Creates a new Expected error.
+        ///
+        /// Should be used when a specific token was expected.
+        #[inline(always)]
+        pub fn expected(_i: I) -> Self {
+            create_error!(Some(_i))
+        }
+
+        /// Returns `Some(&I)` if a specific token was expected, `None` otherwise.
+        ///
+        /// Will always yield `None` since `noop_error` is enabled.
+        #[inline]
+        #[cfg(feature="noop_error")]
+        pub fn expected_token(&self) -> Option<&I> {
+            None
+        }
+
+        /// Returns `Some(&I)` if a specific token was expected, `None` otherwise.
+        #[inline]
+        #[cfg(not(feature="noop_error"))]
+        pub fn expected_token(&self) -> Option<&I> {
+            self.0.as_ref()
+        }
+
+        /// Returns a stack-trace to where the error was created.
+        #[cfg(feature="backtrace")]
+        pub fn trace(&self) -> Vec<::debugtrace::StackFrame> {
+            self.0.resolve()
+        }
     }
 }
 
@@ -561,7 +567,6 @@ mod test {
     use primitives::IntoInner;
     use primitives::State;
     use super::*;
-    use super::err;
     use {Input, SimpleResult};
 
     #[test]
@@ -610,7 +615,7 @@ mod test {
     fn token_test() {
         assert_eq!(token(new(DEFAULT, b""), b'a').into_inner(), State::Incomplete(1));
         assert_eq!(token(new(DEFAULT, b"ab"), b'a').into_inner(), State::Data(new(DEFAULT, b"b"), b'a'));
-        assert_eq!(token(new(DEFAULT, b"bb"), b'a').into_inner(), State::Error(b"bb", err::expected(b'a')));
+        assert_eq!(token(new(DEFAULT, b"bb"), b'a').into_inner(), State::Error(b"bb", Error::expected(b'a')));
     }
 
     #[test]
@@ -636,8 +641,8 @@ mod test {
     #[test]
     fn take_while1_test() {
         assert_eq!(take_while1(new(DEFAULT, b"abc"), |c| c != b'b').into_inner(), State::Data(new(DEFAULT, b"bc"), &b"a"[..]));
-        assert_eq!(take_while1(new(DEFAULT, b"bbc"), |c| c != b'b').into_inner(), State::Error(&b"bbc"[..], err::unexpected()));
-        assert_eq!(take_while1(new(END_OF_INPUT, b"bbc"), |c| c != b'b').into_inner(), State::Error(&b"bbc"[..], err::unexpected()));
+        assert_eq!(take_while1(new(DEFAULT, b"bbc"), |c| c != b'b').into_inner(), State::Error(&b"bbc"[..], Error::unexpected()));
+        assert_eq!(take_while1(new(END_OF_INPUT, b"bbc"), |c| c != b'b').into_inner(), State::Error(&b"bbc"[..], Error::unexpected()));
         assert_eq!(take_while1(new(END_OF_INPUT, b"abc"), |c| c != b'b').into_inner(), State::Data(new(END_OF_INPUT, b"bc"), &b"a"[..]));
         // TODO: Update when the incomplete type has been updated
         assert_eq!(take_while1(new(DEFAULT, b"acc"), |c| c != b'b').into_inner(), State::Incomplete(1));
@@ -665,5 +670,55 @@ mod test {
         assert_eq!(satisfy_with(new(DEFAULT, b""), |m| { m2 += 1; m % 8 }, |n| { n2 += 1; n == 1 }).into_inner(), State::Incomplete(1));
         assert_eq!(m2, 0);
         assert_eq!(n2, 0);
+    }
+
+    #[test]
+    fn string_test() {
+        assert_eq!(string(new(DEFAULT, b"abc"), b"a").into_inner(), State::Data(new(DEFAULT, b"bc"), &b"a"[..]));
+        assert_eq!(string(new(DEFAULT, b"abc"), b"ab").into_inner(), State::Data(new(DEFAULT, b"c"), &b"ab"[..]));
+        assert_eq!(string(new(DEFAULT, b"abc"), b"abc").into_inner(), State::Data(new(DEFAULT, b""), &b"abc"[..]));
+        assert_eq!(string(new(DEFAULT, b"abc"), b"abcd").into_inner(), State::Incomplete(1));
+        assert_eq!(string(new(DEFAULT, b"abc"), b"abcde").into_inner(), State::Incomplete(2));
+        assert_eq!(string(new(DEFAULT, b"abc"), b"ac").into_inner(), State::Error(b"bc", Error::expected(b'b')));
+
+        assert_eq!(string(new(END_OF_INPUT, b"abc"), b"a").into_inner(), State::Data(new(END_OF_INPUT, b"bc"), &b"a"[..]));
+        assert_eq!(string(new(END_OF_INPUT, b"abc"), b"ab").into_inner(), State::Data(new(END_OF_INPUT, b"c"), &b"ab"[..]));
+        assert_eq!(string(new(END_OF_INPUT, b"abc"), b"abc").into_inner(), State::Data(new(END_OF_INPUT, b""), &b"abc"[..]));
+        assert_eq!(string(new(END_OF_INPUT, b"abc"), b"abcd").into_inner(), State::Incomplete(1));
+        assert_eq!(string(new(END_OF_INPUT, b"abc"), b"abcde").into_inner(), State::Incomplete(2));
+        assert_eq!(string(new(END_OF_INPUT, b"abc"), b"ac").into_inner(), State::Error(b"bc", Error::expected(b'b')));
+    }
+
+    #[test]
+    #[cfg(not(feature = "noop_error"))]
+    fn error_test() {
+        let e = Error::<()>::new();
+        assert_eq!(e.expected_token(), None);
+        let e = Error::<()>::unexpected();
+        assert_eq!(e.expected_token(), None);
+        let e = Error::expected(b'a');
+        assert_eq!(e.expected_token(), Some(&b'a'));
+    }
+
+    #[test]
+    #[cfg(feature = "noop_error")]
+    fn noop_error_test() {
+        let e = Error::<()>::new();
+        assert_eq!(e.expected_token(), None);
+        let e = Error::<()>::unexpected();
+        assert_eq!(e.expected_token(), None);
+        let e = Error::expected(b'a');
+        assert_eq!(e.expected_token(), None);
+    }
+
+    #[test]
+    #[cfg(feature="backtrace")]
+    fn backtrace_test() {
+        let e = Error::<()>::new();
+
+        let trace = e.trace();
+        let this  = &trace[0];
+
+        assert!(this.name.as_ref().map(|n| n.contains("parsers::test::backtrace_test")).unwrap_or(false), "Expected trace to contain \"parsers::test::backtrace_test\", got: {:?}", this.name.as_ref());
     }
 }

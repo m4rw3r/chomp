@@ -186,8 +186,7 @@
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// # use chomp::ascii::decimal;
-/// # use chomp::{parse_only, Input, token, U8Result};
+/// # use chomp::{parse_only, Input, U8Result};
 /// # fn my_parser(i: Input<u8>) -> U8Result<&'static str> {
 /// fn do_it<'i, 'a>(i: Input<'i, u8>, s: &'a str) -> U8Result<'i, &'a str> { i.ret(s) }
 ///
@@ -326,7 +325,7 @@
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// # use chomp::{parse_only, token};
+/// # use chomp::{parse_only};
 /// let p = parser!{ (i -> i.err("foo")) <|> (i -> i.ret("bar")) };
 ///
 /// assert_eq!(parse_only(p, b"a;"), Ok("bar"));

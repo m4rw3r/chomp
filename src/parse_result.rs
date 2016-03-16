@@ -347,27 +347,24 @@ impl<'a, I, T: fmt::Debug, E> ParseResult<'a, I, T, E> {
     /// Panics if the parse result is in a success-state or if the parsing is incomplete. Will
     /// provide a panic message based on the value of the success or incomplete state.
     ///
-    #[cfg_attr(feature = "verbose_error", doc = "
-
- # Examples
-
- ```
- use chomp::{Error, Input, token};
-
- let r = token(Input::new(b\"a\"), b'b');
-
- assert_eq!(r.unwrap_err(), Error::Expected(98));
- ```
-
- ```{.should_panic}
- use chomp::{Error, Input, token};
-
- let r = token(Input::new(b\"a\"), b'a');
-
- // Panics with \"called `ParseResult::unwrap_err` on a success state: 97\"
- assert_eq!(r.unwrap_err(), Error::Expected(98));
- ```
-    ")]
+    /// # Examples
+    ///
+    /// ```
+    /// use chomp::{Error, Input, token};
+    ///
+    /// let r = token(Input::new(b"a"), b'b');
+    ///
+    /// assert_eq!(r.unwrap_err(), Error::expected(98));
+    /// ```
+    ///
+    /// ```{.should_panic}
+    /// use chomp::{Error, Input, token};
+    ///
+    /// let r = token(Input::new(b"a"), b'a');
+    ///
+    /// // Panics with "called `ParseResult::unwrap_err` on a success state: 97"
+    /// assert_eq!(r.unwrap_err(), Error::expected(98));
+    /// ```
     #[inline]
     pub fn unwrap_err(self) -> E {
         match self.0 {

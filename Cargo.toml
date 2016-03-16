@@ -22,15 +22,20 @@ include = [
 ]
 
 [dependencies]
-bitflags = "0.5.0"
-conv     = { version = "0.3", default-features = false }
+bitflags   = "0.5.0"
+conv       = { version = "0.3", default-features = false }
+debugtrace = { version = "0.1.0" }
 
 # Technically a dev-dependency, but dev-dependencies are not allowed to be optional,
 # compiletest_rs fails to compile on stable and beta
 compiletest_rs = { version = "0.1.1", optional = true }
 
 [features]
-default       = ["verbose_error"]
-verbose_error = []
 # Feature for running extra (compiletime fail) tests on nightly
 unstable      = ["compiletest_rs"]
+noop_error    = []
+backtrace     = ["debugtrace/backtrace"]
+
+# Feature for travis, so that both noop_error and backtrace can be enabled simultaneously
+# without causing parse-errors in the argument parser in travis-cargo.
+noop_error_and_backtrace = ["noop_error", "backtrace"]
