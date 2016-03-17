@@ -209,12 +209,17 @@ extern crate debugtrace;
 #[macro_use]
 mod macros;
 mod input;
-mod parse;
+// FIXME: Uncomment
+//mod parse;
 mod parse_result;
 
+// FIXME: Uncomment
+pub mod parsers;
+
+pub use parsers::Error;
+/*
 pub mod ascii;
 pub mod buffer;
-pub mod parsers;
 pub mod combinators;
 
 pub use combinators::{
@@ -248,16 +253,17 @@ pub use parsers::{
     take_while1,
     token,
 };
-pub use parsers::Error;
-pub use input::Input;
 pub use parse::{
     ParseError,
     parse_only,
 };
+*/
+pub use input::Input;
 pub use parse_result::{
     ParseResult,
+    // FIXME: Uncomment
     SimpleResult,
-    U8Result,
+    //U8Result,
 };
 
 /// Module used to construct fundamental parsers and combinators.
@@ -266,9 +272,9 @@ pub use parse_result::{
 ///
 /// Only used by fundamental parsers and combinators.
 pub mod primitives {
-    pub use input::{
-        InputBuffer,
-        InputClone,
+    pub use input::primitives::{
+        Primitives,
+        Guard,
     };
     pub use parse_result::{
         IntoInner,
@@ -281,7 +287,7 @@ pub mod primitives {
     ///
     /// Only used by fundamental parsers and combinators.
     pub mod input {
-        pub use input::{DEFAULT, END_OF_INPUT, new};
+        pub use input::{DEFAULT, END_OF_INPUT, new_buf};
     }
 
     /// ParseResult utilities.

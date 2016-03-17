@@ -1,10 +1,12 @@
-use parsers::Error;
 use input::Input;
+use parsers::Error;
 
 /// Result for dealing with the basic parsers when parsing a stream of `u8`.
-pub type U8Result<'a, T>        = ParseResult<'a, u8, T, Error<u8>>;
+// FIXME: Uncomment
+//pub type U8Result<T>        = ParseResult<u8, T, Error<u8>>;
 /// Result returned from the basic parsers.
-pub type SimpleResult<'a, I, T> = ParseResult<'a, I, T, Error<I>>;
+// FIXME: Uncomment
+pub type SimpleResult<I, T> = ParseResult<I, T, Error<<I as Input>::Token>>;
 
 /// **Primitive:** Primitive inner type containing the parse-state.
 ///
@@ -13,16 +15,13 @@ pub type SimpleResult<'a, I, T> = ParseResult<'a, I, T, Error<I>>;
 /// Only used by fundamental parsers and combinators.
 #[must_use]
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub enum State<'a, I: 'a, T, E>
-  where I: 'a,
-        T: 'a,
-        E: 'a {
+pub enum State<I: Input, T, E> {
     /// Successful parser state, first item is the input state and the second item is the contained
     /// value.
-    Data(Input<'a, I>, T),
+    Data(I, T),
     /// Parse error state, first item is a slice from where the error occurred in the input buffer
     /// to the end of the input buffer and the second item is the error value.
-    Error(&'a [I], E),
+    Error(I, E),
     /// Incomplete state, a parser attempted to request more data than available in the slice, the
     /// provided number is a guess at how many items are needed.
     Incomplete(usize),
@@ -78,7 +77,7 @@ pub trait IntoInner {
 /// ```
 #[must_use]
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct ParseResult<'a, I: 'a, T: 'a, E: 'a>(State<'a, I, T, E>);
+pub struct ParseResult<I: Input, T, E>(State<I, T, E>);
 
 /// **Primitive:** Creates a new `ParseResult`.
 ///
@@ -89,11 +88,11 @@ pub struct ParseResult<'a, I: 'a, T: 'a, E: 'a>(State<'a, I, T, E>);
 /// # Note
 ///
 /// Prefer to use ``Input::ret``, ``Input::err`` or ``Input::incomplete`` instead of using
-pub fn new<I, T, E>(s: State<I, T, E>) -> ParseResult<I, T, E> {
+pub fn new<I: Input, T, E>(s: State<I, T, E>) -> ParseResult<I, T, E> {
     ParseResult(s)
 }
 
-impl<'a, I, T, E> ParseResult<'a, I, T, E> {
+impl<I: Input, T, E> ParseResult<I, T, E> {
     /// Sequentially composes the result with a parse action ``f``, passing any produced value as
     /// the second parameter.
     ///
@@ -137,8 +136,8 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
     /// assert_eq!(r, Ok(33));
     /// ```
     #[inline]
-    pub fn bind<F, U, V>(self, f: F) -> ParseResult<'a, I, U, V>
-      where F: FnOnce(Input<'a, I>, T) -> ParseResult<'a, I, U, V>,
+    pub fn bind<F, U, V>(self, f: F) -> ParseResult<I, U, V>
+      where F: FnOnce(I, T) -> ParseResult<I, U, V>,
             V: From<E> {
         match self.0 {
             State::Data(i, t) => f(i, t).map_err(From::from),
@@ -174,8 +173,8 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
     /// assert_eq!(r2, Ok("testing!"));
     /// ```
     #[inline]
-    pub fn then<F, U, V>(self, f: F) -> ParseResult<'a, I, U, V>
-      where F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, U, V>,
+    pub fn then<F, U, V>(self, f: F) -> ParseResult<I, U, V>
+      where F: FnOnce(I) -> ParseResult<I, U, V>,
             V: From<E> {
         self.bind(|i, _| f(i))
     }
@@ -192,7 +191,7 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
     /// assert_eq!(r, Ok(b'm'));
     /// ```
     #[inline]
-    pub fn map<U, F>(self, f: F) -> ParseResult<'a, I, U, E>
+    pub fn map<U, F>(self, f: F) -> ParseResult<I, U, E>
       where F: FnOnce(T) -> U {
         match self.0 {
             State::Data(i, t)    => ParseResult(State::Data(i, f(t))),
@@ -215,7 +214,7 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
     /// assert_eq!(r, Err(ParseError::Error(b"foo", "this is an error".to_owned())));
     /// ```
     #[inline]
-    pub fn map_err<V, F>(self, f: F) -> ParseResult<'a, I, T, V>
+    pub fn map_err<V, F>(self, f: F) -> ParseResult<I, T, V>
       where F: FnOnce(E) -> V {
         match self.0 {
             State::Data(i, t)    => ParseResult(State::Data(i, t)),
@@ -239,7 +238,7 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
     /// assert_eq!(r, Ok(&b"test"[..]));
     /// ```
     #[inline]
-    pub fn inspect<F>(self, f: F) -> ParseResult<'a, I, T, E>
+    pub fn inspect<F>(self, f: F) -> ParseResult<I, T, E>
       where F: FnOnce(&T) {
         if let State::Data(_, ref t) = self.0 {
              f(t)
@@ -284,8 +283,8 @@ impl<'a, I, T, E> ParseResult<'a, I, T, E> {
 ///
 /// assert_eq!(r, Ok(&b"test"[..]));
 /// ```
-impl<'a, I, T, E> IntoInner for ParseResult<'a, I, T, E> {
-    type Inner = State<'a, I, T, E>;
+impl<I: Input, T, E> IntoInner for ParseResult<I, T, E> {
+    type Inner = State<I, T, E>;
 
     #[inline(always)]
     fn into_inner(self) -> Self::Inner {
@@ -303,12 +302,12 @@ mod test {
 
     #[test]
     fn monad_left_identity() {
-        fn f<I: Copy>(i: Input<I>, n: u32) -> ParseResult<I, u32, ()> {
+        fn f<I: Input>(i: I, n: u32) -> ParseResult<I, u32, ()> {
             i.ret(n + 1)
         }
 
-        let m1 = input::new(END_OF_INPUT, b"test");
-        let m2 = input::new(END_OF_INPUT, b"test");
+        let m1 = input::new_buf(END_OF_INPUT, b"test");
+        let m2 = input::new_buf(END_OF_INPUT, b"test");
 
         let a = 123;
         // return a >>= f
@@ -316,43 +315,43 @@ mod test {
         // f a
         let rhs = f(m2, a);
 
-        assert_eq!(lhs.0, State::Data(input::new(END_OF_INPUT, b"test"), 124));
-        assert_eq!(rhs.0, State::Data(input::new(END_OF_INPUT, b"test"), 124));
+        assert_eq!(lhs.0, State::Data(input::new_buf(END_OF_INPUT, b"test"), 124));
+        assert_eq!(rhs.0, State::Data(input::new_buf(END_OF_INPUT, b"test"), 124));
     }
 
     #[test]
     fn monad_right_identity() {
-        let m1 = input::new(END_OF_INPUT, b"test").ret::<_, ()>(1);
-        let m2 = input::new(END_OF_INPUT, b"test").ret::<_, ()>(1);
+        let m1 = input::new_buf(END_OF_INPUT, b"test").ret::<_, ()>(1);
+        let m2 = input::new_buf(END_OF_INPUT, b"test").ret::<_, ()>(1);
 
         // m1 >>= ret === m2
         let lhs = m1.bind::<_, _, ()>(Input::ret);
         let rhs = m2;
 
-        assert_eq!(lhs.0, State::Data(input::new(END_OF_INPUT, b"test"), 1));
-        assert_eq!(rhs.0, State::Data(input::new(END_OF_INPUT, b"test"), 1));
+        assert_eq!(lhs.0, State::Data(input::new_buf(END_OF_INPUT, b"test"), 1));
+        assert_eq!(rhs.0, State::Data(input::new_buf(END_OF_INPUT, b"test"), 1));
     }
 
     #[test]
     fn monad_associativity() {
-         fn f<I: Copy>(i: Input<I>, num: u32) -> ParseResult<I, u64, ()> {
+         fn f<I: Input>(i: I, num: u32) -> ParseResult<I, u64, ()> {
             i.ret((num + 1) as u64)
         }
 
-        fn g<I: Copy>(i: Input<I>, num: u64) -> ParseResult<I, u64, ()> {
+        fn g<I: Input>(i: I, num: u64) -> ParseResult<I, u64, ()> {
             i.ret(num * 2)
         }
 
-        let lhs_m = input::new(END_OF_INPUT, b"test").ret::<_, ()>(2);
-        let rhs_m = input::new(END_OF_INPUT, b"test").ret::<_, ()>(2);
+        let lhs_m = input::new_buf(END_OF_INPUT, b"test").ret::<_, ()>(2);
+        let rhs_m = input::new_buf(END_OF_INPUT, b"test").ret::<_, ()>(2);
 
         // (m >>= f) >>= g
         let lhs = lhs_m.bind(f).bind(g);
         // m >>= (\x -> f x >>= g)
         let rhs = rhs_m.bind(|i, x| f(i, x).bind(g));
 
-        assert_eq!(lhs.0, State::Data(input::new(END_OF_INPUT, b"test"), 6));
-        assert_eq!(rhs.0, State::Data(input::new(END_OF_INPUT, b"test"), 6));
+        assert_eq!(lhs.0, State::Data(input::new_buf(END_OF_INPUT, b"test"), 6));
+        assert_eq!(rhs.0, State::Data(input::new_buf(END_OF_INPUT, b"test"), 6));
     }
 
     #[test]
@@ -361,8 +360,8 @@ mod test {
 
         let mut n1 = 0;
         let mut n2 = 0;
-        let i1     = input::new(DEFAULT, b"test ").ret::<u32, ()>(23);
-        let i2     = input::new(END_OF_INPUT, b"test ").ret::<u32, ()>(23);
+        let i1     = input::new_buf(DEFAULT, b"test ").ret::<u32, ()>(23);
+        let i2     = input::new_buf(END_OF_INPUT, b"test ").ret::<u32, ()>(23);
 
         let r1 = i1.inspect(|d: &u32| {
             assert_eq!(d, &23);
@@ -375,9 +374,9 @@ mod test {
             n2 += 1;
         });
 
-        assert_eq!(r1.into_inner(), State::Data(input::new(DEFAULT, b"test "), 23));
+        assert_eq!(r1.into_inner(), State::Data(input::new_buf(DEFAULT, b"test "), 23));
         assert_eq!(n1, 1);
-        assert_eq!(r2.into_inner(), State::Data(input::new(END_OF_INPUT, b"test "), 23));
+        assert_eq!(r2.into_inner(), State::Data(input::new_buf(END_OF_INPUT, b"test "), 23));
         assert_eq!(n2, 1);
     }
 
@@ -386,14 +385,14 @@ mod test {
         let mut n1_calls = 0;
         let mut n2_calls = 0;
 
-        let i1 = input::new(DEFAULT, b"test1").ret::<_, ()>(23);
-        let i2 = input::new(END_OF_INPUT, b"test2").ret::<_, ()>(24);
+        let i1 = input::new_buf(DEFAULT, b"test1").ret::<_, ()>(23);
+        let i2 = input::new_buf(END_OF_INPUT, b"test2").ret::<_, ()>(24);
 
         let r1: ParseResult<_, _, ()> = i1.bind(|i, t| { n1_calls += 1; i.ret(t) });
         let r2: ParseResult<_, _, ()> = i2.bind(|i, t| { n2_calls += 1; i.ret(t) });
 
-        assert_eq!(r1.0, State::Data(input::new(DEFAULT, b"test1"), 23));
-        assert_eq!(r2.0, State::Data(input::new(END_OF_INPUT, b"test2"), 24));
+        assert_eq!(r1.0, State::Data(input::new_buf(DEFAULT, b"test1"), 23));
+        assert_eq!(r2.0, State::Data(input::new_buf(END_OF_INPUT, b"test2"), 24));
         assert_eq!(n1_calls, 1);
         assert_eq!(n2_calls, 1);
     }
@@ -403,25 +402,27 @@ mod test {
         let mut n1_calls = 0;
         let mut n2_calls = 0;
 
-        let i1 = input::new(DEFAULT, b"test1").err::<(), _>(23);
-        let i2 = input::new(END_OF_INPUT, b"test2").err::<(), _>(24);
+        let i1 = input::new_buf(DEFAULT, b"test1").err::<(), _>(23);
+        let i2 = input::new_buf(END_OF_INPUT, b"test2").err::<(), _>(24);
 
         let r1 = i1.bind(|i, t| { n1_calls += 1; i.ret(t) });
         let r2 = i2.bind(|i, t| { n2_calls += 1; i.ret(t) });
 
-        assert_eq!(r1.0, State::Error(b"test1", 23));
-        assert_eq!(r2.0, State::Error(b"test2", 24));
+        assert_eq!(r1.0, State::Error(input::new_buf(DEFAULT, b"test1"), 23));
+        assert_eq!(r2.0, State::Error(input::new_buf(END_OF_INPUT, b"test2"), 24));
         assert_eq!(n1_calls, 0);
         assert_eq!(n2_calls, 0);
     }
 
     #[test]
     fn incomplete_propagation() {
+        use primitives::Primitives;
+
         let mut n1_calls = 0;
         let mut n2_calls = 0;
 
-        let i1 = input::new(DEFAULT, b"test1").incomplete::<(), ()>(23);
-        let i2 = input::new(END_OF_INPUT, b"test2").incomplete::<(), ()>(24);
+        let i1 = input::new_buf(DEFAULT, b"test1").incomplete::<(), ()>(23);
+        let i2 = input::new_buf(END_OF_INPUT, b"test2").incomplete::<(), ()>(24);
 
         let r1: ParseResult<_, _, ()> = i1.bind(|i, t| { n1_calls += 1; i.ret(t) });
         let r2: ParseResult<_, _, ()> = i2.bind(|i, t| { n2_calls += 1; i.ret(t) });
@@ -430,5 +431,16 @@ mod test {
         assert_eq!(r2.0, State::Incomplete(24));
         assert_eq!(n1_calls, 0);
         assert_eq!(n2_calls, 0);
+    }
+
+    #[test]
+    fn slice() {
+        fn f<I: Input>(i: I, n: u32) -> ParseResult<I, u32, ()> { i.ret(n + 1) }
+
+        let lhs = (&b"test"[..]).ret(123).bind(f);
+        let rhs = f(&b"test"[..], 123);
+
+        assert_eq!(lhs.0, State::Data(&b"test"[..], 124));
+        assert_eq!(rhs.0, State::Data(&b"test"[..], 124));
     }
 }

@@ -1,6 +1,230 @@
 use parse_result::{ParseResult, State};
 use parse_result;
 
+use primitives::Guard;
+
+pub mod primitives {
+    use {Input, ParseResult};
+    use primitives::State;
+    use primitives::parse_result::new as new_result;
+
+    /// This is a zero-sized type used by the `Primitives` trait implementation to guarantee that
+    /// access to primitive methods on `Input` only happens when the `Primitives` trait has been
+    /// imported.
+    ///
+    /// It cannot be instantiated outside of the `Primitives` trait blanket implementation.
+    pub struct Guard(());
+
+    /// **Primitive:** Trait enabling primitive actions on an `Input` type.
+    ///
+    /// # Primitive
+    ///
+    /// Only used by fundamental parsers and combinators.
+    ///
+    // FIXME: Rename
+    pub trait Primitives: Input {
+        #[inline(always)]
+        /// **Primitive:** Notifies that a parser has reached the end of the currently supplied slice but
+        /// requires more data.
+        ///
+        /// # Primitive
+        ///
+        /// Only used by fundamental parsers and combinators.
+        #[inline]
+        fn incomplete<T, E>(self, n: usize) -> ParseResult<Self, T, E> {
+            new_result(State::Incomplete(n))
+        }
+
+        #[inline(always)]
+        fn consume(self, n: usize) -> Self {
+            self._consume(Guard(()), n)
+        }
+        #[inline(always)]
+        fn buffer(&self) -> &[Self::Token] {
+            self._buffer(Guard(()))
+        }
+
+        /// Returns true if this is the last available slice of the input.
+        ///
+        /// # Primitive
+        ///
+        /// Only used by fundamental parsers and combinators.
+        #[inline(always)]
+        fn is_end(&self) -> bool {
+            self._is_end(Guard(()))
+        }
+        ///
+        /// # Example
+        ///
+        /// ```
+        /// use chomp::{take, Input};
+        /// use chomp::primitives::Primitives;
+        /// use chomp::primitives::{InputBuffer, IntoInner, State};
+        ///
+        /// let i = &b"Testing";
+        ///
+        /// assert_eq!(i.buffer(), b"Testing");
+        /// assert_eq!(i.is_end(), true);
+        ///
+        /// // mark and eat one token
+        /// let m = i.mark();
+        /// let i = i.consume(1);
+        ///
+        /// assert_eq!(i.buffer(), b"esting");
+        ///
+        /// // restore and continue parsing
+        /// let j = i.restore(m);
+        ///
+        /// let r = take(j, 4);
+        ///
+        /// assert_eq!(r.into_inner(), State::Data(input::new(input::END_OF_INPUT, b""), &b"Test"[..]));
+        /// ```
+        #[inline(always)]
+        fn mark(&self) -> Self::Marker {
+            self._mark(Guard(()))
+        }
+        #[inline(always)]
+        fn restore(self, m: Self::Marker) -> Self {
+            self._restore(Guard(()), m)
+        }
+    }
+
+    impl<I: Input> Primitives for I {}
+}
+
+// FIXME: Update, do not refer to type or linear type
+/// Linear type containing the parser state, this type is threaded though `bind` and is also the
+/// initial type passed to a parser.
+///
+/// Coupled with the `ParseResult` type it forms the parser monad:
+///
+/// ```ignore
+/// Fn*(Input<I>, ...) -> ParseResult<I, T, E>;
+/// ```
+///
+/// where ``Fn*`` is the appropriate closure/function trait, `I` the input token type (usually
+/// something like `u8`), `...` additional parameters to the parser, `T` the carried type and `E`
+/// the potential error type.
+pub trait Input: Sized {
+    /// The token type of the input
+    type Token;
+    /// A marker type which is used to backtrack using `_mark` and `_restore`.
+    type Marker;
+
+    /// Returns `t` as a success value in the parsing context.
+    ///
+    /// Equivalent to Haskell's `return` function in the `Monad` typeclass.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use chomp::parse_only;
+    ///
+    /// let r = parse_only(|i|
+    ///     // Annotate the error type
+    ///     i.ret::<_, ()>("Wohoo, success!"),
+    ///     b"some input");
+    ///
+    /// assert_eq!(r, Ok("Wohoo, success!"));
+    /// ```
+    #[inline]
+    fn ret<T, E>(self, t: T) -> ParseResult<Self, T, E> {
+        parse_result::new(State::Data(self, t))
+    }
+
+    /// Returns `e` as an error value in the parsing context.
+    ///
+    /// A more general version of Haskell's `fail` function in the `Monad` typeclass.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use chomp::{ParseError, parse_only};
+    ///
+    /// let r = parse_only(|i|
+    ///     // Annotate the value type
+    ///     i.err::<(), _>("Something went wrong"),
+    ///     b"some input");
+    ///
+    /// assert_eq!(r, Err(ParseError::Error(b"some input", "Something went wrong")));
+    /// ```
+    #[inline]
+    fn err<T, E>(self, e: E) -> ParseResult<Self, T, E> {
+        parse_result::new(State::Error(self, e))
+    }
+
+    /// Converts a `Result` into a `ParseResult`, preserving parser state.
+    ///
+    /// To convert an `Option` into a `ParseResult` it is recommended to use
+    /// [`Option::ok_or`](https://doc.rust-lang.org/std/option/enum.Option.html#method.ok_or)
+    /// or [`Option::ok_or_else`](https://doc.rust-lang.org/std/option/enum.Option.html#method.ok_or_else)
+    /// in combination with this method.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chomp::{ParseError, parse_only};
+    ///
+    /// let r = parse_only(|i| i.from_result::<_, ()>(Ok("foo")), b"test");
+    ///
+    /// assert_eq!(r, Ok("foo"));
+    ///
+    /// let r = parse_only(|i| i.from_result::<(), _>(Err("error message")), b"test");
+    ///
+    /// assert_eq!(r, Err(ParseError::Error(&b"test"[..], "error message")));
+    /// ```
+    #[inline]
+    fn from_result<T, E>(self, r: Result<T, E>) -> ParseResult<Self, T, E> {
+        match r {
+            Ok(t)  => parse_result::new(State::Data(self, t)),
+            Err(e) => parse_result::new(State::Error(self, e)),
+        }
+    }
+
+    // Primitive methods
+
+    /// **Primitive:** See `Primitives::consume` for documentation.
+    #[inline]
+    fn _consume(self, Guard, usize)        -> Self;
+    /// **Primitive:** See `Primitives::buffer` for documentation.
+    // TODO: Might be a better solution here to allow for not only slice-returns?
+    #[inline]
+    fn _buffer(&self, Guard)               -> &[Self::Token];
+    /// **Primitive:** See `Primitives::is_end` for documentation.
+    #[inline]
+    fn _is_end(&self, Guard)               -> bool;
+    /// **Primitive:** See `Primitives::mark` for documentation.
+    #[inline]
+    fn _mark(&self, Guard)                 -> Self::Marker;
+    /// **Primitive:** See `Primitives::restore` for documentation.
+    #[inline]
+    fn _restore(self, Guard, Self::Marker) -> Self;
+}
+
+impl<'a, I> Input for &'a [I] {
+    type Token  = I;
+    type Marker = &'a [I];
+
+    #[inline(always)]
+    fn _consume(self, _g: Guard, n: usize) -> Self {
+        &self[n..]
+    }
+    #[inline(always)]
+    fn _buffer(&self, _g: Guard) -> &[Self::Token] {
+        &self
+    }
+    #[inline(always)]
+    fn _is_end(&self, _g: Guard) -> bool {
+        true
+    }
+    fn _mark(&self, _g: Guard) -> Self::Marker {
+        &self
+    }
+    fn _restore(self, _g: Guard, m: Self::Marker) -> Self {
+        m
+    }
+}
+
 bitflags!{
     pub flags InputMode: u32 {
         /// Default (empty) input state.
@@ -10,6 +234,51 @@ bitflags!{
     }
 }
 
+
+/// Input buffer type which contains a flag which tells if we might have more data to read.
+#[must_use]
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct InputBuf<'a, I: 'a>(InputMode, &'a [I]);
+
+/// **Primitive:** Creates a new input from the given state and buffer.
+///
+/// # Primitive
+///
+/// Only used by fundamental parsers and combinators.
+pub fn new_buf<I>(state: InputMode, buffer: &[I]) -> InputBuf<I> {
+    InputBuf(state, buffer)
+}
+
+impl<'a, I> Input for InputBuf<'a, I> {
+    type Token  = I;
+    type Marker = &'a [I];
+
+    #[inline(always)]
+    fn _consume(mut self, _g: Guard, n: usize) -> Self {
+        self.1 = &self.1[n..];
+
+        self
+    }
+    #[inline(always)]
+    fn _buffer(&self, _g: Guard) -> &[Self::Token] {
+        &self.1
+    }
+    #[inline(always)]
+    fn _is_end(&self, _g: Guard) -> bool {
+        self.0.contains(END_OF_INPUT)
+    }
+    fn _mark(&self, _g: Guard) -> Self::Marker {
+        &self.1
+    }
+    fn _restore(mut self, _g: Guard, m: Self::Marker) -> Self {
+        self.1 = m;
+
+        self
+    }
+}
+
+// FIXME: Delete
+/*
 /// **Primitive:** Trait limiting the use of `Clone` for `Input`.
 ///
 /// # Primitive
@@ -61,114 +330,6 @@ pub trait InputBuffer<'a> {
     fn is_last_slice(&self) -> bool;
 }
 
-/// Linear type containing the parser state, this type is threaded though `bind` and is also the
-/// initial type passed to a parser.
-///
-/// Coupled with the `ParseResult` type it forms the parser monad:
-///
-/// ```ignore
-/// Fn*(Input<I>, ...) -> ParseResult<I, T, E>;
-/// ```
-///
-/// where ``Fn*`` is the appropriate closure/function trait, `I` the input token type (usually
-/// something like `u8`), `...` additional parameters to the parser, `T` the carried type and `E`
-/// the potential error type.
-#[must_use]
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct Input<'a, I: 'a>(InputMode, &'a [I]);
-
-/// **Primitive:** Creates a new input from the given state and buffer.
-///
-/// # Primitive
-///
-/// Only used by fundamental parsers and combinators.
-pub fn new<I>(state: InputMode, buffer: &[I]) -> Input<I> {
-    Input(state, buffer)
-}
-
-impl<'a, I> Input<'a, I> {
-    /// Returns `t` as a success value in the parsing context.
-    ///
-    /// Equivalent to Haskell's `return` function in the `Monad` typeclass.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use chomp::parse_only;
-    ///
-    /// let r = parse_only(|i|
-    ///     // Annotate the error type
-    ///     i.ret::<_, ()>("Wohoo, success!"),
-    ///     b"some input");
-    ///
-    /// assert_eq!(r, Ok("Wohoo, success!"));
-    /// ```
-    #[inline]
-    pub fn ret<T, E>(self, t: T) -> ParseResult<'a, I, T, E> {
-        parse_result::new(State::Data(self, t))
-    }
-
-    /// Returns `e` as an error value in the parsing context.
-    ///
-    /// A more general version of Haskell's `fail` function in the `Monad` typeclass.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use chomp::{ParseError, parse_only};
-    ///
-    /// let r = parse_only(|i|
-    ///     // Annotate the value type
-    ///     i.err::<(), _>("Something went wrong"),
-    ///     b"some input");
-    ///
-    /// assert_eq!(r, Err(ParseError::Error(b"some input", "Something went wrong")));
-    /// ```
-    #[inline]
-    pub fn err<T, E>(self, e: E) -> ParseResult<'a, I, T, E> {
-        parse_result::new(State::Error(self.1, e))
-    }
-
-    /// Notifies that a parser has reached the end of the currently supplied slice but requires
-    /// more data.
-    ///
-    /// # Primitive
-    ///
-    /// Only used by fundamental parsers and combinators.
-    #[inline]
-    pub fn incomplete<T, E>(self, n: usize) -> ParseResult<'a, I, T, E> {
-        parse_result::new(State::Incomplete(n))
-    }
-
-    /// Converts a `Result` into a `ParseResult`, preserving parser state.
-    ///
-    /// To convert an `Option` into a `ParseResult` it is recommended to use
-    /// [`Option::ok_or`](https://doc.rust-lang.org/std/option/enum.Option.html#method.ok_or)
-    /// or [`Option::ok_or_else`](https://doc.rust-lang.org/std/option/enum.Option.html#method.ok_or_else)
-    /// in combination with this method.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use chomp::{ParseError, parse_only};
-    ///
-    /// let r = parse_only(|i| i.from_result::<_, ()>(Ok("foo")), b"test");
-    ///
-    /// assert_eq!(r, Ok("foo"));
-    ///
-    /// let r = parse_only(|i| i.from_result::<(), _>(Err("error message")), b"test");
-    ///
-    /// assert_eq!(r, Err(ParseError::Error(&b"test"[..], "error message")));
-    /// ```
-    #[inline]
-    pub fn from_result<T, E>(self, r: Result<T, E>) -> ParseResult<'a, I, T, E> {
-        match r {
-            Ok(t)  => parse_result::new(State::Data(self, t)),
-            Err(e) => parse_result::new(State::Error(self.1, e)),
-        }
-    }
-}
-
 /// Trait limiting the use of `Clone` for `Input`.
 ///
 /// # Primitive
@@ -207,26 +368,6 @@ impl<'a, I: 'a> InputClone for Input<'a, I> {
 ///
 /// But to be able to parse data the contents of the `Input` type must be exposed in at least one
 /// point, so that data can be examined, and this trait that makes it possible.
-///
-/// # Example
-///
-/// ```
-/// use chomp::take;
-/// use chomp::primitives::input;
-/// use chomp::primitives::{InputBuffer, IntoInner, State};
-///
-/// let i = input::new(input::END_OF_INPUT, b"Testing");
-///
-/// assert_eq!(i.buffer(), b"Testing");
-/// assert_eq!(i.is_last_slice(), true);
-///
-/// let b = i.buffer();
-/// let j = i.replace(&b[..4]);
-///
-/// let r = take(j, 4);
-///
-/// assert_eq!(r.into_inner(), State::Data(input::new(input::END_OF_INPUT, b""), &b"Test"[..]));
-/// ```
 impl<'a, I: 'a> InputBuffer<'a> for Input<'a, I> {
     type Item = I;
 
@@ -245,44 +386,47 @@ impl<'a, I: 'a> InputBuffer<'a> for Input<'a, I> {
         self.0.contains(END_OF_INPUT)
     }
 }
+*/
 
 #[cfg(test)]
 mod test {
-    use super::{new, Input, InputBuffer, DEFAULT, END_OF_INPUT};
+    use super::{new_buf, Input, InputBuf, DEFAULT, END_OF_INPUT};
     use parse_result::ParseResult;
     use primitives::{IntoInner, State};
 
     #[test]
     fn make_ret() {
-        let i1: Input<u8> = new(END_OF_INPUT, b"in1");
-        let i2: Input<u8> = new(DEFAULT,      b"in2");
+        let i1: InputBuf<u8> = new_buf(END_OF_INPUT, b"in1");
+        let i2: InputBuf<u8> = new_buf(DEFAULT,      b"in2");
 
-        let r1: ParseResult<u8, u32, ()> = i1.ret::<_, ()>(23u32);
-        let r2: ParseResult<u8, i32, ()> = i2.ret::<_, ()>(23i32);
+        let r1: ParseResult<_, u32, ()> = i1.ret::<_, ()>(23u32);
+        let r2: ParseResult<_, i32, ()> = i2.ret::<_, ()>(23i32);
 
-        assert_eq!(r1.into_inner(), State::Data(Input(END_OF_INPUT, b"in1"), 23u32));
-        assert_eq!(r2.into_inner(), State::Data(Input(DEFAULT, b"in2"), 23i32));
+        assert_eq!(r1.into_inner(), State::Data(InputBuf(END_OF_INPUT, b"in1"), 23u32));
+        assert_eq!(r2.into_inner(), State::Data(InputBuf(DEFAULT, b"in2"), 23i32));
     }
 
     #[test]
     fn make_err() {
-        let i1: Input<u8> = new(END_OF_INPUT, b"in1");
-        let i2: Input<u8> = new(DEFAULT,      b"in2");
+        let i1: InputBuf<u8> = new_buf(END_OF_INPUT, b"in1");
+        let i2: InputBuf<u8> = new_buf(DEFAULT,      b"in2");
 
-        let r1: ParseResult<u8, (), u32> = i1.err::<(), _>(23u32);
-        let r2: ParseResult<u8, (), i32> = i2.err::<(), _>(23i32);
+        let r1: ParseResult<_, (), u32> = i1.err::<(), _>(23u32);
+        let r2: ParseResult<_, (), i32> = i2.err::<(), _>(23i32);
 
-        assert_eq!(r1.into_inner(), State::Error(b"in1", 23u32));
-        assert_eq!(r2.into_inner(), State::Error(b"in2", 23i32));
+        assert_eq!(r1.into_inner(), State::Error(new_buf(END_OF_INPUT, b"in1"), 23u32));
+        assert_eq!(r2.into_inner(), State::Error(new_buf(DEFAULT, b"in2"), 23i32));
     }
 
     #[test]
     fn make_incomplete() {
-        let i1: Input<u8> = new(END_OF_INPUT, b"in1");
-        let i2: Input<u8> = new(DEFAULT,      b"in2");
+        use primitives::Primitives;
 
-        let r1: ParseResult<u8, (), u32> = i1.incomplete::<(), _>(23);
-        let r2: ParseResult<u8, (), i32> = i2.incomplete::<(), _>(23);
+        let i1: InputBuf<u8> = new_buf(END_OF_INPUT, b"in1");
+        let i2: InputBuf<u8> = new_buf(DEFAULT,      b"in2");
+
+        let r1: ParseResult<_, (), u32> = i1.incomplete::<(), _>(23);
+        let r2: ParseResult<_, (), i32> = i2.incomplete::<(), _>(23);
 
         assert_eq!(r1.into_inner(), State::Incomplete(23));
         assert_eq!(r2.into_inner(), State::Incomplete(23));
@@ -290,8 +434,10 @@ mod test {
 
     #[test]
     fn last_slice() {
-        let i = new(END_OF_INPUT, &b"foo"[..]);
+        use primitives::Primitives;
 
-        assert_eq!(i.is_last_slice(), true);
+        let i = new_buf(END_OF_INPUT, &b"foo"[..]);
+
+        assert_eq!(i.is_end(), true);
     }
 }
