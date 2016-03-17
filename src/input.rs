@@ -3,6 +3,9 @@ use parse_result;
 
 use primitives::Guard;
 
+/// Primitive operations on `Input` types.
+///
+/// All parsers only require a few primitive operations to parse data:
 pub mod primitives {
     use {Input, ParseResult};
     use primitives::State;
@@ -36,14 +39,26 @@ pub mod primitives {
         }
 
         #[inline(always)]
-        fn consume(self, n: usize) -> Self {
+        fn first(&self) -> Option<Self::Token> {
+            self._first(Guard(()))
+        }
+        #[inline(always)]
+        fn iter(&self) -> Self::Iter {
+            self._iter(Guard(()))
+        }
+        #[inline(always)]
+        fn consume(&mut self, n: usize) -> Self::Buffer {
             self._consume(Guard(()), n)
         }
         #[inline(always)]
-        fn buffer(&self) -> &[Self::Token] {
-            self._buffer(Guard(()))
+        fn discard(&mut self, n: usize) {
+            self._discard(Guard(()), n)
         }
 
+        #[inline]
+        fn min_remaining(&self) -> usize {
+            self._min_remaining(Guard(()))
+        }
         /// Returns true if this is the last available slice of the input.
         ///
         /// # Primitive
@@ -107,9 +122,13 @@ pub mod primitives {
 /// the potential error type.
 pub trait Input: Sized {
     /// The token type of the input
-    type Token;
+    // TODO: Maybe remove the copy bound at some point?
+    type Token: Copy;
     /// A marker type which is used to backtrack using `_mark` and `_restore`.
     type Marker;
+
+    type Iter: Iterator<Item=Self::Token>;
+    type Buffer;
 
     /// Returns `t` as a success value in the parsing context.
     ///
@@ -182,36 +201,76 @@ pub trait Input: Sized {
     }
 
     // Primitive methods
+    /// **Primitive:** See `Primitives::first` for documentation.
+    ///
+    /// Returns the first remaining item if there are still data to read.
+    #[inline(always)]
+    fn _first(&self, g: Guard) -> Option<Self::Token> {
+        self._iter(g).next()
+    }
 
+    /// **Primitive:** See `Primitives::iter` for documentation.
+    ///
+    /// Iterator over tokens in the input, does not consume any data.
+    #[inline]
+    fn _iter(&self, Guard) -> Self::Iter;
     /// **Primitive:** See `Primitives::consume` for documentation.
+    ///
+    /// Consumes a set amount of input tokens, returning a buffer containing them
+    // TODO: Should probably be combined with a ret
     #[inline]
-    fn _consume(self, Guard, usize)        -> Self;
-    /// **Primitive:** See `Primitives::buffer` for documentation.
-    // TODO: Might be a better solution here to allow for not only slice-returns?
+    fn _consume(&mut self, Guard, usize) -> Self::Buffer;
+    /// **Primitive:** See `Primitives::discard` for documentation.
+    ///
+    /// Consumes a set amount of input tokens, discarding them.
     #[inline]
-    fn _buffer(&self, Guard)               -> &[Self::Token];
+    fn _discard(&mut self, Guard, usize);
+    /// **Primitive:** See `Primitives::remaining` for documentation.
+    ///
+    /// Returns the number of tokens remaining in this input (only this part of it, more might
+    /// follow if `_is_end` is false).
+    #[inline]
+    fn _min_remaining(&self, Guard) -> usize;
     /// **Primitive:** See `Primitives::is_end` for documentation.
+    ///
+    /// Returns true if there are no more input in `Self` besides what has already been populated.
     #[inline]
-    fn _is_end(&self, Guard)               -> bool;
+    fn _is_end(&self, Guard) -> bool;
     /// **Primitive:** See `Primitives::mark` for documentation.
+    ///
+    /// Marks a position for backtracking along with relevant state.
     #[inline]
     fn _mark(&self, Guard)                 -> Self::Marker;
     /// **Primitive:** See `Primitives::restore` for documentation.
+    ///
+    /// Resumes from a previously marked state.
     #[inline]
     fn _restore(self, Guard, Self::Marker) -> Self;
 }
 
-impl<'a, I> Input for &'a [I] {
+impl<'a, I: Copy> Input for &'a [I] {
     type Token  = I;
     type Marker = &'a [I];
+    type Iter   = ::std::iter::Cloned<::std::slice::Iter<'a, I>>;
+    type Buffer = &'a [I];
 
     #[inline(always)]
-    fn _consume(self, _g: Guard, n: usize) -> Self {
-        &self[n..]
+    fn _iter(&self, _g: Guard) -> Self::Iter {
+        self.iter().cloned()
     }
     #[inline(always)]
-    fn _buffer(&self, _g: Guard) -> &[Self::Token] {
-        &self
+    fn _consume(&mut self, _g: Guard, n: usize) -> Self::Buffer {
+        let b = &self[..n];
+        *self = &self[n..];
+        b
+    }
+    #[inline(always)]
+    fn _discard(&mut self, _g: Guard, n: usize) {
+        *self = &self[n..];
+    }
+    #[inline(always)]
+    fn _min_remaining(&self, _g: Guard) -> usize {
+        self.len()
     }
     #[inline(always)]
     fn _is_end(&self, _g: Guard) -> bool {
@@ -249,19 +308,29 @@ pub fn new_buf<I>(state: InputMode, buffer: &[I]) -> InputBuf<I> {
     InputBuf(state, buffer)
 }
 
-impl<'a, I> Input for InputBuf<'a, I> {
+impl<'a, I: Copy> Input for InputBuf<'a, I> {
     type Token  = I;
     type Marker = &'a [I];
+    type Iter   = ::std::iter::Cloned<::std::slice::Iter<'a, I>>;
+    type Buffer = &'a [I];
 
     #[inline(always)]
-    fn _consume(mut self, _g: Guard, n: usize) -> Self {
-        self.1 = &self.1[n..];
-
-        self
+    fn _iter(&self, _g: Guard) -> Self::Iter {
+        self.1.iter().cloned()
     }
     #[inline(always)]
-    fn _buffer(&self, _g: Guard) -> &[Self::Token] {
-        &self.1
+    fn _consume(&mut self, _g: Guard, n: usize) -> Self::Buffer {
+        let b = &self.1[..n];
+        self.1 = &self.1[n..];
+        b
+    }
+    #[inline(always)]
+    fn _discard(&mut self, _g: Guard, n: usize) {
+        self.1 = &self.1[n..];
+    }
+    #[inline(always)]
+    fn _min_remaining(&self, _g: Guard) -> usize {
+        self.1.len()
     }
     #[inline(always)]
     fn _is_end(&self, _g: Guard) -> bool {

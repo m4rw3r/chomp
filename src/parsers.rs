@@ -23,12 +23,14 @@ pub use debugtrace::StackFrame;
 /// assert_eq!(parse_only(any, b"abc"), Ok(b'a'));
 /// ```
 #[inline]
-pub fn any<I: Input>(i: I) -> SimpleResult<I, I::Token> {
-    let b = i.buffer();
+pub fn any<I: Input>(mut i: I) -> SimpleResult<I, I::Token> {
+    match i.first() {
+        None    => i.incomplete(1),
+        Some(c) => {
+            i.discard(1);
 
-    match b.first() {
-        None     => i.incomplete(1),
-        Some(&c) => i.consume(1).ret(c),
+            i.ret(c)
+        },
     }
 }
 
@@ -43,15 +45,16 @@ pub fn any<I: Input>(i: I) -> SimpleResult<I, I::Token> {
 /// assert_eq!(parse_only(|i| satisfy(i, |c| c == b'a'), b"abc"), Ok(b'a'));
 /// ```
 #[inline]
-pub fn satisfy<I: Input, F>(i: I, f: F) -> SimpleResult<I, I::Token>
-  where F: FnOnce(I::Token) -> bool,
-        I::Token: Copy {
-    let b = i.buffer();
+pub fn satisfy<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Token>
+  where F: FnOnce(I::Token) -> bool {
+    match i.first() {
+        None            => i.incomplete(1),
+        Some(c) if f(c) => {
+            i.discard(1);
 
-    match b.first() {
-        None             => i.incomplete(1),
-        Some(&c) if f(c) => i.consume(1).ret(c),
-        Some(_)          => i.err(Error::unexpected()),
+            i.ret(c)
+        },
+        Some(_)         => i.err(Error::unexpected()),
     }
 }
 
@@ -70,17 +73,17 @@ pub fn satisfy<I: Input, F>(i: I, f: F) -> SimpleResult<I, I::Token>
 /// assert_eq!(r, Ok(b'T'));
 /// ```
 #[inline]
-pub fn satisfy_with<I: Input, T: Clone, F, P>(i: I, f: F, p: P) -> SimpleResult<I, T>
-  where F: FnOnce(&I::Token) -> T,
+pub fn satisfy_with<I: Input, T: Clone, F, P>(mut i: I, f: F, p: P) -> SimpleResult<I, T>
+  where F: FnOnce(I::Token) -> T,
         P: FnOnce(T) -> bool {
-    let b = i.buffer();
-
-    match b.first() {
+    match i.first() {
         Some(n) => {
             let t = f(n);
 
             if p(t.clone()) {
-                i.consume(1).ret(t)
+                i.discard(1);
+
+                i.ret(t)
             } else {
                 i.err(Error::unexpected())
             }
@@ -99,14 +102,16 @@ pub fn satisfy_with<I: Input, T: Clone, F, P>(i: I, f: F, p: P) -> SimpleResult<
 /// assert_eq!(parse_only(|i| token(i, b'a'), b"abc"), Ok(b'a'));
 /// ```
 #[inline]
-pub fn token<I: Input>(i: I, t: I::Token) -> SimpleResult<I, I::Token>
-  where I::Token: PartialEq + Copy {
-    let b = i.buffer();
+pub fn token<I: Input>(mut i: I, t: I::Token) -> SimpleResult<I, I::Token>
+  where I::Token: PartialEq {
+    match i.first() {
+        None              => i.incomplete(1),
+        Some(c) if t == c => {
+            i.discard(1);
 
-    match b.first() {
-        None               => i.incomplete(1),
-        Some(&c) if t == c => i.consume(1).ret(c),
-        Some(_)            => i.err(Error::expected(t)),
+            i.ret(c)
+        },
+        Some(_)           => i.err(Error::expected(t)),
     }
 }
 
@@ -120,14 +125,15 @@ pub fn token<I: Input>(i: I, t: I::Token) -> SimpleResult<I, I::Token>
 /// assert_eq!(parse_only(|i| not_token(i, b'b'), b"abc"), Ok(b'a'));
 /// ```
 #[inline]
-pub fn not_token<I: Input>(i: I, t: I::Token) -> SimpleResult<I, I::Token>
-  where I::Token: PartialEq + Copy {
-    let b = i.buffer();
-
-    match b.first() {
-        None               => i.incomplete(1),
-        Some(&c) if t != c => i.consume(1).ret(c),
-        Some(_)            => i.err(Error::unexpected()),
+pub fn not_token<I: Input>(mut i: I, t: I::Token) -> SimpleResult<I, I::Token>
+  where I::Token: PartialEq {
+    match i.first() {
+        None              => i.incomplete(1),
+        Some(c) if t != c => {
+            i.discard(1);
+            i.ret(c)
+        },
+        Some(_)           => i.err(Error::unexpected()),
     }
 }
 
@@ -146,7 +152,7 @@ pub fn not_token<I: Input>(i: I, t: I::Token) -> SimpleResult<I, I::Token>
 #[inline]
 pub fn peek<I: Input>(i: I) -> SimpleResult<I, Option<I::Token>>
   where I::Token: Clone {
-    let d = i.buffer().first().cloned();
+    let d = i.first();
 
     i.ret(d)
 }
@@ -163,7 +169,7 @@ pub fn peek<I: Input>(i: I) -> SimpleResult<I, Option<I::Token>>
 #[inline]
 pub fn peek_next<I: Input>(i: I) -> SimpleResult<I, I::Token>
   where I::Token: Clone {
-    match i.buffer().first().cloned() {
+    match i.first() {
         None    => i.incomplete(1),
         Some(c) => i.ret(c),
     }
@@ -179,13 +185,15 @@ pub fn peek_next<I: Input>(i: I) -> SimpleResult<I, I::Token>
 /// assert_eq!(parse_only(|i| take(i, 3), b"abcd"), Ok(&b"abc"[..]));
 /// ```
 #[inline]
-pub fn take<'a, I: Input + 'a>(i: I, num: usize) -> SimpleResult<I, &'a [I::Token]> {
-    let b = i.buffer();
+pub fn take<I: Input>(mut i: I, num: usize) -> SimpleResult<I, I::Buffer> {
+    let r = i.min_remaining();
 
-    if num <= b.len() {
-        i.consume(num).ret(&b[..num])
+    if num <= r {
+        let b = i.consume(num);
+
+        i.ret(b)
     } else {
-        i.incomplete(num - b.len())
+        i.incomplete(num - r)
     }
 }
 
@@ -212,17 +220,22 @@ pub fn take<'a, I: Input + 'a>(i: I, num: usize) -> SimpleResult<I, &'a [I::Toke
 /// assert_eq!(r, Ok(&b""[..]));
 /// ```
 #[inline]
-pub fn take_while<'a, I: Input + 'a, F>(i: I, f: F) -> SimpleResult<I, &'a [I::Token]>
+pub fn take_while<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Buffer>
   where F: Fn(I::Token) -> bool {
-    let b = i.buffer();
+    match i.iter().position(|c| f(c) == false) {
+        Some(n) => {
+            let b = i.consume(n);
 
-    match b.iter().position(|c| f(*c) == false) {
-        Some(n) => i.consume(n).ret(&b[..n]),
+            i.ret(b)
+        },
         // TODO: Should this following 1 be something else, seeing as take_while1 is potentially
         // infinite?
         None    => if i.is_end() {
             // Last slice and we have just read everything of it, replace with zero-sized slice:
-            i.consume(b.len()).ret(b)
+            let r = i.min_remaining();
+            let b = i.consume(r);
+
+            i.ret(b)
         } else {
             i.incomplete(1)
         },
@@ -243,18 +256,23 @@ pub fn take_while<'a, I: Input + 'a, F>(i: I, f: F) -> SimpleResult<I, &'a [I::T
 /// assert_eq!(r, Ok(&b"ab"[..]));
 /// ```
 #[inline]
-pub fn take_while1<'a, I: Input + 'a, F>(i: I, f: F) -> SimpleResult<I, &'a [I::Token]>
+pub fn take_while1<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Buffer>
   where F: Fn(I::Token) -> bool {
-    let b = i.buffer();
-
-    match b.iter().position(|c| f(*c) == false) {
+    match i.iter().position(|c| f(c) == false) {
         Some(0) => i.err(Error::unexpected()),
-        Some(n) => i.consume(n).ret(&b[..n]),
+        Some(n) => {
+            let b = i.consume(n);
+
+            i.ret(b)
+        },
         // TODO: Should this following 1 be something else, seeing as take_while1 is potentially
         // infinite?
-        None    => if b.len() > 0 && i.is_end() {
+        None    => if i.min_remaining() > 0 && i.is_end() {
             // Last slice and we have just read everything of it, replace with zero-sized slice:
-            i.consume(b.len()).ret(b)
+            let r = i.min_remaining();
+            let b = i.consume(r);
+
+            i.ret(b)
         } else {
             i.incomplete(1)
         },
@@ -275,13 +293,15 @@ pub fn take_while1<'a, I: Input + 'a, F>(i: I, f: F) -> SimpleResult<I, &'a [I::
 /// assert_eq!(r, Ok(&b"abc"[..]));
 /// ```
 #[inline]
-pub fn take_till<'a, I: Input + 'a, F>(i: I, f: F) -> SimpleResult<I, &'a [I::Token]>
+pub fn take_till<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Buffer>
   where F: Fn(I::Token) -> bool,
         I::Token: Clone {
-    let b = i.buffer();
+    match i.iter().position(f) {
+        Some(n) => {
+            let b = i.consume(n);
 
-    match b.iter().cloned().position(f) {
-        Some(n) => i.consume(n).ret(&b[0..n]),
+            i.ret(b)
+        },
         // TODO: Should this following 1 be something else, seeing as take_while1 is potentially
         // infinite?
         None    => i.incomplete(1),
@@ -303,13 +323,16 @@ pub fn take_till<'a, I: Input + 'a, F>(i: I, f: F) -> SimpleResult<I, &'a [I::To
 /// assert_eq!(parse_only(p, b"/*test*of*scan*/ foo"), Ok(&b"/*test*of*scan*"[..]));
 /// ```
 #[inline]
-pub fn scan<'a, I: Input + 'a, S, F>(i: I, s: S, mut f: F) -> SimpleResult<I, &'a [I::Token]>
+pub fn scan<I: Input, S, F>(mut i: I, s: S, mut f: F) -> SimpleResult<I, I::Buffer>
   where F: FnMut(S, I::Token) -> Option<S> {
-    let b         = i.buffer();
     let mut state = Some(s);
 
-    match b.iter().position(|&c| { state = f(mem::replace(&mut state, None).unwrap(), c); state.is_none()}) {
-        Some(n) => i.consume(n).ret(&b[0..n]),
+    match i.iter().position(|c| { state = f(mem::replace(&mut state, None).unwrap(), c); state.is_none()}) {
+        Some(n) => {
+            let b = i.consume(n);
+
+            i.ret(b)
+        },
         // TODO: Should this following 1 be something else, seeing as take_while1 is potentially
         // infinite?
         None    => i.incomplete(1),
@@ -330,13 +353,16 @@ pub fn scan<'a, I: Input + 'a, S, F>(i: I, s: S, mut f: F) -> SimpleResult<I, &'
 /// ```
 #[inline]
 // TODO: Remove Copy bound on S
-pub fn run_scanner<'a, I: Input + 'a, S: Copy, F>(i: I, s: S, mut f: F) -> SimpleResult<I, (&'a [I::Token], S)>
+pub fn run_scanner<I: Input, S: Copy, F>(mut i: I, s: S, mut f: F) -> SimpleResult<I, (I::Buffer, S)>
   where F: FnMut(S, I::Token) -> Option<S> {
-    let b         = i.buffer();
     let mut state = s;
 
-    match b.iter().position(|&c| { let t = f(state, c); match t { None => true, Some(v) => { state = v; false } } }) {
-        Some(n) => i.consume(n).ret((&b[0..n], state)),
+    match i.iter().position(|c| { let t = f(state, c); match t { None => true, Some(v) => { state = v; false } } }) {
+        Some(n) => {
+            let b = i.consume(n);
+
+            i.ret((b, state))
+        },
         // TODO: Should this following 1 be something else, seeing as take_while1 is potentially
         // infinite?
         None    => i.incomplete(1),
@@ -351,10 +377,12 @@ pub fn run_scanner<'a, I: Input + 'a, S: Copy, F>(i: I, s: S, mut f: F) -> Simpl
 /// assert_eq!(parse_only(take_remainder, b"abcd"), Ok(&b"abcd"[..]));
 /// ```
 #[inline]
-pub fn take_remainder<'a, I: Input + 'a>(i: I) -> SimpleResult<I, &'a [I::Token]> {
-    let b = i.buffer();
+pub fn take_remainder<I: Input>(mut i: I) -> SimpleResult<I, I::Buffer> {
     // Last slice and we have just read everything of it, replace with zero-sized slice:
-    i.consume(b.len()).ret(b)
+    let r = i.min_remaining();
+    let b = i.consume(r);
+
+    i.ret(b)
 }
 
 /// Matches the given slice against the parser, returning the matched slice upon success.
@@ -368,23 +396,26 @@ pub fn take_remainder<'a, I: Input + 'a>(i: I) -> SimpleResult<I, &'a [I::Token]
 /// assert_eq!(parse_only(|i| string(i, b"abc"), b"abcdef"), Ok(&b"abc"[..]));
 /// ```
 #[inline]
-pub fn string<'a, 'b, T: Copy + PartialEq, I: 'a + Input<Token=T>>(i: I, s: &'b [T])
-    -> SimpleResult<I, &'a [T]> {
-    let b = i.buffer();
+pub fn string<'b, T: Copy + PartialEq, I: Input<Token=T>>(mut i: I, s: &'b [T])
+    -> SimpleResult<I, I::Buffer> {
+    let r = i.min_remaining();
 
-    if s.len() > b.len() {
-        return i.incomplete(s.len() - b.len());
+    if s.len() > r {
+        return i.incomplete(s.len() - r);
     }
 
-    let d = &b[..s.len()];
+    // TODO: Check if this is efficient:
+    for (n, (a, b)) in i.iter().zip(s.iter()).enumerate() {
+        if a != *b {
+            i.discard(n);
 
-    for j in 0..s.len() {
-        if s[j] != d[j] {
-            return i.consume(j).err(Error::expected(d[j]))
+            return i.err(Error::expected(*b));
         }
     }
 
-    i.consume(s.len()).ret(d)
+    let b = i.consume(s.len());
+
+    i.ret(b)
 }
 
 /// Matches the end of the input.
@@ -398,7 +429,7 @@ pub fn string<'a, 'b, T: Copy + PartialEq, I: 'a + Input<Token=T>>(i: I, s: &'b 
 /// ```
 #[inline]
 pub fn eof<I: Input>(i: I) -> SimpleResult<I, ()> {
-    if i.buffer().len() == 0 && i.is_end() {
+    if i.min_remaining() == 0 && i.is_end() {
         i.ret(())
     } else {
         i.err(Error::unexpected())
@@ -566,7 +597,7 @@ mod test {
     use primitives::IntoInner;
     use primitives::State;
     use super::*;
-    use {Input, SimpleResult};
+    use {Input, SimpleResult, ParseResult};
 
     #[test]
     fn parse_decimal() {
@@ -574,7 +605,7 @@ mod test {
             c >= b'0' && c <= b'9'
         }
 
-        fn decimal(i: Input<u8>) -> SimpleResult<u8, usize> {
+        fn decimal<'i, I: Input<Token=u8, Buffer=&'i [u8]>>(i: I) -> SimpleResult<I, usize> {
             take_while1(i, is_digit).bind(|i, bytes|
                 i.ret(bytes.iter().fold(0, |a, b| a * 10 + (b - b'0') as usize)))
         }
@@ -586,7 +617,7 @@ mod test {
                 decimal(i).bind(|i, frac|
                     i.ret((real, frac)))));
 
-        let d: SimpleResult<_, _> = p.bind(|i, num| take_remainder(i)
+        let d: ParseResult<_, _, Error<u8>> = p.bind(|i, num| take_remainder(i)
                                            .bind(|i, r| i.ret((r, num))));
 
         assert_eq!(d.into_inner(), State::Data(&b""[..], (&b" "[..], (123, 4567))));
@@ -614,7 +645,7 @@ mod test {
     fn token_test() {
         assert_eq!(token(new_buf(DEFAULT, b""), b'a').into_inner(), State::Incomplete(1));
         assert_eq!(token(new_buf(DEFAULT, b"ab"), b'a').into_inner(), State::Data(new_buf(DEFAULT, b"b"), b'a'));
-        assert_eq!(token(new_buf(DEFAULT, b"bb"), b'a').into_inner(), State::Error(b"bb", Error::expected(b'a')));
+        assert_eq!(token(new_buf(DEFAULT, b"bb"), b'a').into_inner(), State::Error(new_buf(DEFAULT, b"bb"), Error::expected(b'a')));
     }
 
     #[test]
@@ -640,7 +671,7 @@ mod test {
     #[test]
     fn take_while1_test() {
         assert_eq!(take_while1(new_buf(DEFAULT, b"abc"), |c| c != b'b').into_inner(), State::Data(new_buf(DEFAULT, b"bc"), &b"a"[..]));
-        assert_eq!(take_while1(new_buf(DEFAULT, b"bbc"), |c| c != b'b').into_inner(), State::Error(&b"bbc"[..], Error::unexpected()));
+        assert_eq!(take_while1(new_buf(DEFAULT, b"bbc"), |c| c != b'b').into_inner(), State::Error(new_buf(DEFAULT, b"bbc"), Error::unexpected()));
         assert_eq!(take_while1(&b"bbc"[..], |c| c != b'b').into_inner(), State::Error(&b"bbc"[..], Error::unexpected()));
         assert_eq!(take_while1(&b"abc"[..], |c| c != b'b').into_inner(), State::Data(&b"bc"[..], &b"a"[..]));
         // TODO: Update when the incomplete type has been updated
@@ -678,14 +709,14 @@ mod test {
         assert_eq!(string(new_buf(DEFAULT, b"abc"), b"abc").into_inner(), State::Data(new_buf(DEFAULT, b""), &b"abc"[..]));
         assert_eq!(string(new_buf(DEFAULT, b"abc"), b"abcd").into_inner(), State::Incomplete(1));
         assert_eq!(string(new_buf(DEFAULT, b"abc"), b"abcde").into_inner(), State::Incomplete(2));
-        assert_eq!(string(new_buf(DEFAULT, b"abc"), b"ac").into_inner(), State::Error(b"bc", Error::expected(b'b')));
+        assert_eq!(string(new_buf(DEFAULT, b"abc"), b"ac").into_inner(), State::Error(new_buf(DEFAULT, b"bc"), Error::expected(b'c')));
 
         assert_eq!(string(&b"abc"[..], b"a").into_inner(), State::Data(&b"bc"[..], &b"a"[..]));
         assert_eq!(string(&b"abc"[..], b"ab").into_inner(), State::Data(&b"c"[..], &b"ab"[..]));
         assert_eq!(string(&b"abc"[..], b"abc").into_inner(), State::Data(&b""[..], &b"abc"[..]));
         assert_eq!(string(&b"abc"[..], b"abcd").into_inner(), State::Incomplete(1));
         assert_eq!(string(&b"abc"[..], b"abcde").into_inner(), State::Incomplete(2));
-        assert_eq!(string(&b"abc"[..], b"ac").into_inner(), State::Error(b"bc", Error::expected(b'b')));
+        assert_eq!(string(&b"abc"[..], b"ac").into_inner(), State::Error(&b"bc"[..], Error::expected(b'c')));
     }
 
     #[test]
