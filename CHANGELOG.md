@@ -5,6 +5,25 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `chomp::Error` now includes a backtrace in `test` and `debug` build profiles thanks to the
+  [debugtrace crate](https://github.com/m4rw3r/debugtrace_rs). Backtraces can also be activated
+  permanently using the `backtrace` feature but this will incur the significant cost of allocating
+  backtraces even in the `release` profile.  
+
+- Feature `noop_error` provides a zero-sized error type for the cases when the expected token is
+  unimportant. Provides a small performance boost.
+
+### Changes
+
+- **Backwards-incompatible:** `chomp::Error` is no longer an enum, this is to facillitate the
+  support of backtraces while keeping code compatible between the different build profiles.
+
+  Use `chomp::Error::expected_token` to determine if a specific token was expected.
+
+- Feature `verbose_error` is now default
+
 ### Removed
 
 - `Input::new`
