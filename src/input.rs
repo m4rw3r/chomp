@@ -459,6 +459,8 @@ impl<'a, I: 'a> InputBuffer<'a> for Input<'a, I> {
 
 #[cfg(test)]
 mod test {
+    use std::fmt::Debug;
+
     use super::{new_buf, Input, InputBuf, DEFAULT, END_OF_INPUT};
     use parse_result::ParseResult;
     use primitives::{IntoInner, State};
@@ -502,11 +504,44 @@ mod test {
     }
 
     #[test]
-    fn last_slice() {
+    fn primitives_slice() {
+        run_primitives_test(&b"abc"[..], true);
+    }
+
+    #[test]
+    fn primitives_input_buf_default() {
+        run_primitives_test(new_buf(DEFAULT, b"abc"), false);
+    }
+
+    #[test]
+    fn primitives_input_buf_end() {
+        run_primitives_test(new_buf(END_OF_INPUT, b"abc"), true);
+    }
+
+    fn run_primitives_test<B: Debug + for<'a> PartialEq<&'a [u8]>, I: Input<Token=u8, Buffer=B>>(mut s: I, last: bool) {
         use primitives::Primitives;
 
-        let i = new_buf(END_OF_INPUT, &b"foo"[..]);
-
-        assert_eq!(i.is_end(), true);
+        assert_eq!(s.is_end(), last);
+        assert_eq!(s.min_remaining(), 3);
+        let m = s.mark();
+        assert_eq!(s.min_remaining(), 3);
+        assert_eq!(s.first(), Some(b'a'));
+        assert_eq!(s.min_remaining(), 3);
+        assert_eq!(s.iter().collect::<Vec<_>>(), vec![b'a', b'b', b'c']);
+        assert_eq!(s.min_remaining(), 3);
+        assert_eq!(s.consume(2), &b"ab"[..]);
+        assert_eq!(s.min_remaining(), 1);
+        assert_eq!(s.iter().collect::<Vec<_>>(), vec![b'c']);
+        assert_eq!(s.consume(1), &b"c"[..]);
+        assert_eq!(s.min_remaining(), 0);
+        assert_eq!(s.iter().collect::<Vec<_>>(), vec![]);
+        assert_eq!(s.is_end(), last);
+        let mut s = s.restore(m);
+        assert_eq!(s.min_remaining(), 3);
+        assert_eq!(s.iter().collect::<Vec<_>>(), vec![b'a', b'b', b'c']);
+        s.discard(1);
+        assert_eq!(s.first(), Some(b'b'));
+        assert_eq!(s.min_remaining(), 2);
+        assert_eq!(s.iter().collect::<Vec<_>>(), vec![b'b', b'c']);
     }
 }
