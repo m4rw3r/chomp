@@ -3,7 +3,7 @@ use parsers::Error;
 
 /// Result for dealing with the basic parsers when parsing a stream of `u8`.
 // FIXME: Uncomment
-//pub type U8Result<T>        = ParseResult<u8, T, Error<u8>>;
+//pub type U8Result<T>        = ParseResult<, T, Error<u8>>;
 /// Result returned from the basic parsers.
 // FIXME: Uncomment
 pub type SimpleResult<I, T> = ParseResult<I, T, Error<<I as Input>::Token>>;
@@ -24,7 +24,7 @@ pub enum State<I: Input, T, E> {
     Error(I, E),
     /// Incomplete state, a parser attempted to request more data than available in the slice, the
     /// provided number is a guess at how many items are needed.
-    Incomplete(usize),
+    Incomplete(I, usize),
 }
 
 /// **Primitive:** Consumes self and reveals the inner state.
@@ -140,9 +140,9 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
       where F: FnOnce(I, T) -> ParseResult<I, U, V>,
             V: From<E> {
         match self.0 {
-            State::Data(i, t) => f(i, t).map_err(From::from),
-            State::Error(i, e)   => ParseResult(State::Error(i, From::from(e))),
-            State::Incomplete(n) => ParseResult(State::Incomplete(n)),
+            State::Data(i, t)       => f(i, t).map_err(From::from),
+            State::Error(i, e)      => ParseResult(State::Error(i, From::from(e))),
+            State::Incomplete(i, n) => ParseResult(State::Incomplete(i, n)),
         }
     }
 
@@ -194,9 +194,9 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
     pub fn map<U, F>(self, f: F) -> ParseResult<I, U, E>
       where F: FnOnce(T) -> U {
         match self.0 {
-            State::Data(i, t)    => ParseResult(State::Data(i, f(t))),
-            State::Error(i, e)   => ParseResult(State::Error(i, e)),
-            State::Incomplete(n) => ParseResult(State::Incomplete(n)),
+            State::Data(i, t)       => ParseResult(State::Data(i, f(t))),
+            State::Error(i, e)      => ParseResult(State::Error(i, e)),
+            State::Incomplete(i, n) => ParseResult(State::Incomplete(i, n)),
         }
     }
 
@@ -217,9 +217,9 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
     pub fn map_err<V, F>(self, f: F) -> ParseResult<I, T, V>
       where F: FnOnce(E) -> V {
         match self.0 {
-            State::Data(i, t)    => ParseResult(State::Data(i, t)),
-            State::Error(i, e)   => ParseResult(State::Error(i, f(e))),
-            State::Incomplete(n) => ParseResult(State::Incomplete(n)),
+            State::Data(i, t)       => ParseResult(State::Data(i, t)),
+            State::Error(i, e)      => ParseResult(State::Error(i, f(e))),
+            State::Incomplete(i, n) => ParseResult(State::Incomplete(i, n)),
         }
     }
 
@@ -427,8 +427,8 @@ mod test {
         let r1: ParseResult<_, _, ()> = i1.bind(|i, t| { n1_calls += 1; i.ret(t) });
         let r2: ParseResult<_, _, ()> = i2.bind(|i, t| { n2_calls += 1; i.ret(t) });
 
-        assert_eq!(r1.0, State::Incomplete(23));
-        assert_eq!(r2.0, State::Incomplete(24));
+        assert_eq!(r1.0, State::Incomplete(input::new_buf(DEFAULT, b"test1"), 23));
+        assert_eq!(r2.0, State::Incomplete(input::new_buf(END_OF_INPUT, b"test2"), 24));
         assert_eq!(n1_calls, 0);
         assert_eq!(n2_calls, 0);
     }

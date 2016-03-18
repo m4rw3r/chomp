@@ -617,6 +617,8 @@ mod test {
                 decimal(i).bind(|i, frac|
                     i.ret((real, frac)))));
 
+        // ParseResult necessary here due to inference, for some reason is
+        // `Error<<I as Input>::Token>` not specific enough to actually help inference.
         let d: ParseResult<_, _, Error<u8>> = p.bind(|i, num| take_remainder(i)
                                            .bind(|i, r| i.ret((r, num))));
 
@@ -638,12 +640,12 @@ mod test {
 
         let r = take_while1(n, |_| true);
 
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        assert_eq!(r.into_inner(), State::Incomplete(&b""[..], 1));
     }
 
     #[test]
     fn token_test() {
-        assert_eq!(token(new_buf(DEFAULT, b""), b'a').into_inner(), State::Incomplete(1));
+        assert_eq!(token(new_buf(DEFAULT, b""), b'a').into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
         assert_eq!(token(new_buf(DEFAULT, b"ab"), b'a').into_inner(), State::Data(new_buf(DEFAULT, b"b"), b'a'));
         assert_eq!(token(new_buf(DEFAULT, b"bb"), b'a').into_inner(), State::Error(new_buf(DEFAULT, b"bb"), Error::expected(b'a')));
     }
@@ -651,8 +653,8 @@ mod test {
     #[test]
     fn take_test() {
         assert_eq!(take(new_buf(DEFAULT, b"a"), 1).into_inner(), State::Data(new_buf(DEFAULT, b""), &b"a"[..]));
-        assert_eq!(take(new_buf(DEFAULT, b"a"), 2).into_inner(), State::Incomplete(1));
-        assert_eq!(take(new_buf(DEFAULT, b"a"), 3).into_inner(), State::Incomplete(2));
+        assert_eq!(take(new_buf(DEFAULT, b"a"), 2).into_inner(), State::Incomplete(new_buf(DEFAULT, b"a"), 1));
+        assert_eq!(take(new_buf(DEFAULT, b"a"), 3).into_inner(), State::Incomplete(new_buf(DEFAULT, b"a"), 2));
         assert_eq!(take(new_buf(DEFAULT, b"ab"), 1).into_inner(), State::Data(new_buf(DEFAULT, b"b"), &b"a"[..]));
         assert_eq!(take(new_buf(DEFAULT, b"ab"), 2).into_inner(), State::Data(new_buf(DEFAULT, b""), &b"ab"[..]));
     }
@@ -664,7 +666,7 @@ mod test {
         assert_eq!(take_while(&b"bbc"[..], |c| c != b'b').into_inner(), State::Data(&b"bbc"[..], &b""[..]));
         assert_eq!(take_while(&b"abc"[..], |c| c != b'b').into_inner(), State::Data(&b"bc"[..], &b"a"[..]));
         // TODO: Update when the incomplete type has been updated
-        assert_eq!(take_while(new_buf(DEFAULT, b"acc"), |c| c != b'b').into_inner(), State::Incomplete(1));
+        assert_eq!(take_while(new_buf(DEFAULT, b"acc"), |c| c != b'b').into_inner(), State::Incomplete(new_buf(DEFAULT, b"acc"), 1));
         assert_eq!(take_while(&b"acc"[..], |c| c != b'b').into_inner(), State::Data(&b""[..], &b"acc"[..]));
     }
 
@@ -675,7 +677,7 @@ mod test {
         assert_eq!(take_while1(&b"bbc"[..], |c| c != b'b').into_inner(), State::Error(&b"bbc"[..], Error::unexpected()));
         assert_eq!(take_while1(&b"abc"[..], |c| c != b'b').into_inner(), State::Data(&b"bc"[..], &b"a"[..]));
         // TODO: Update when the incomplete type has been updated
-        assert_eq!(take_while1(new_buf(DEFAULT, b"acc"), |c| c != b'b').into_inner(), State::Incomplete(1));
+        assert_eq!(take_while1(new_buf(DEFAULT, b"acc"), |c| c != b'b').into_inner(), State::Incomplete(new_buf(DEFAULT, b"acc"), 1));
         assert_eq!(take_while1(&b"acc"[..], |c| c != b'b').into_inner(), State::Data(&b""[..], &b"acc"[..]));
     }
 
@@ -683,8 +685,8 @@ mod test {
     fn peek_next_test() {
         assert_eq!(peek_next(new_buf(DEFAULT, b"abc")).into_inner(), State::Data(new_buf(DEFAULT, b"abc"), b'a'));
         assert_eq!(peek_next(&b"abc"[..]).into_inner(), State::Data(&b"abc"[..], b'a'));
-        assert_eq!(peek_next(new_buf(DEFAULT, b"")).into_inner(), State::Incomplete(1));
-        assert_eq!(peek_next(&b""[..]).into_inner(), State::Incomplete(1));
+        assert_eq!(peek_next(new_buf(DEFAULT, b"")).into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
+        assert_eq!(peek_next(&b""[..]).into_inner(), State::Incomplete(&b""[..], 1));
     }
 
     #[test]
@@ -697,7 +699,7 @@ mod test {
 
         let mut m2 = 0;
         let mut n2 = 0;
-        assert_eq!(satisfy_with(new_buf(DEFAULT, b""), |m| { m2 += 1; m % 8 }, |n| { n2 += 1; n == 1 }).into_inner(), State::Incomplete(1));
+        assert_eq!(satisfy_with(new_buf(DEFAULT, b""), |m| { m2 += 1; m % 8 }, |n| { n2 += 1; n == 1 }).into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
         assert_eq!(m2, 0);
         assert_eq!(n2, 0);
     }
@@ -707,15 +709,15 @@ mod test {
         assert_eq!(string(new_buf(DEFAULT, b"abc"), b"a").into_inner(), State::Data(new_buf(DEFAULT, b"bc"), &b"a"[..]));
         assert_eq!(string(new_buf(DEFAULT, b"abc"), b"ab").into_inner(), State::Data(new_buf(DEFAULT, b"c"), &b"ab"[..]));
         assert_eq!(string(new_buf(DEFAULT, b"abc"), b"abc").into_inner(), State::Data(new_buf(DEFAULT, b""), &b"abc"[..]));
-        assert_eq!(string(new_buf(DEFAULT, b"abc"), b"abcd").into_inner(), State::Incomplete(1));
-        assert_eq!(string(new_buf(DEFAULT, b"abc"), b"abcde").into_inner(), State::Incomplete(2));
+        assert_eq!(string(new_buf(DEFAULT, b"abc"), b"abcd").into_inner(), State::Incomplete(new_buf(DEFAULT, b"abc"), 1));
+        assert_eq!(string(new_buf(DEFAULT, b"abc"), b"abcde").into_inner(), State::Incomplete(new_buf(DEFAULT, b"abc"), 2));
         assert_eq!(string(new_buf(DEFAULT, b"abc"), b"ac").into_inner(), State::Error(new_buf(DEFAULT, b"bc"), Error::expected(b'c')));
 
         assert_eq!(string(&b"abc"[..], b"a").into_inner(), State::Data(&b"bc"[..], &b"a"[..]));
         assert_eq!(string(&b"abc"[..], b"ab").into_inner(), State::Data(&b"c"[..], &b"ab"[..]));
         assert_eq!(string(&b"abc"[..], b"abc").into_inner(), State::Data(&b""[..], &b"abc"[..]));
-        assert_eq!(string(&b"abc"[..], b"abcd").into_inner(), State::Incomplete(1));
-        assert_eq!(string(&b"abc"[..], b"abcde").into_inner(), State::Incomplete(2));
+        assert_eq!(string(&b"abc"[..], b"abcd").into_inner(), State::Incomplete(&b"abc"[..], 1));
+        assert_eq!(string(&b"abc"[..], b"abcde").into_inner(), State::Incomplete(&b"abc"[..], 2));
         assert_eq!(string(&b"abc"[..], b"ac").into_inner(), State::Error(&b"bc"[..], Error::expected(b'c')));
     }
 

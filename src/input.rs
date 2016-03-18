@@ -35,7 +35,7 @@ pub mod primitives {
         /// Only used by fundamental parsers and combinators.
         #[inline]
         fn incomplete<T, E>(self, n: usize) -> ParseResult<Self, T, E> {
-            new_result(State::Incomplete(n))
+            new_result(State::Incomplete(self, n))
         }
 
         #[inline(always)]
@@ -497,8 +497,8 @@ mod test {
         let r1: ParseResult<_, (), u32> = i1.incomplete::<(), _>(23);
         let r2: ParseResult<_, (), i32> = i2.incomplete::<(), _>(23);
 
-        assert_eq!(r1.into_inner(), State::Incomplete(23));
-        assert_eq!(r2.into_inner(), State::Incomplete(23));
+        assert_eq!(r1.into_inner(), State::Incomplete(new_buf(END_OF_INPUT, b"in1"), 23));
+        assert_eq!(r2.into_inner(), State::Incomplete(new_buf(DEFAULT, b"in2"), 23));
     }
 
     #[test]
