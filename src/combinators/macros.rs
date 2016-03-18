@@ -140,7 +140,8 @@ macro_rules! run_iter_till {
 
         /// Iterator used by ``many_till`` and ``many1``.
         struct IterTill<I: Input, T, U, E, F, P, N>
-          where P: FnMut(I) -> ParseResult<I, T, E>,
+          where E: From<N>,
+                P: FnMut(I) -> ParseResult<I, T, E>,
                 F: FnMut(I) -> ParseResult<I, U, N> {
             state:  EndStateTill<E>,
             parser: P,
@@ -151,7 +152,8 @@ macro_rules! run_iter_till {
         }
 
         impl<I: Input, T, U, E, F, P, N> IterTill<I, T, U, E, F, P, N>
-          where P: FnMut(I) -> ParseResult<I, T, E>,
+          where E: From<N>,
+                P: FnMut(I) -> ParseResult<I, T, E>,
                 F: FnMut(I) -> ParseResult<I, U, N> {
             /// Destructures the iterator returning the position just after the last successful parse as
             /// well as the state of the last attempt to parse data.
@@ -163,7 +165,8 @@ macro_rules! run_iter_till {
         }
 
         impl<I: Input, T, U, E, F, P, N> Iterator for IterTill<I, T, U, E, F, P, N>
-          where P: FnMut(I) -> ParseResult<I, T, E>,
+          where E: From<N>,
+                P: FnMut(I) -> ParseResult<I, T, E>,
                 F: FnMut(I) -> ParseResult<I, U, N> {
             type Item = T;
 

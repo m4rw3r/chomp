@@ -232,6 +232,7 @@ pub fn sep_by1<I: Input, T, E, R, F, U, N, V>(i: I, p: R, sep: F) -> ParseResult
 #[inline]
 pub fn many_till<I: Input, T, E, R, F, U, N, V>(i: I, p: R, end: F) -> ParseResult<I, T, E>
   where T: FromIterator<U>,
+        E: From<N>,
         R: FnMut(I) -> ParseResult<I, U, E>,
         F: FnMut(I) -> ParseResult<I, V, N> {
     bounded::many_till(i, .., p, end)
@@ -339,7 +340,7 @@ pub fn look_ahead<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, T, E>
 
 #[cfg(test)]
 mod test {
-    use {Input, ParseResult};
+    use {Input, Error, ParseResult};
     use primitives::State;
     use primitives::input::{new_buf, DEFAULT, END_OF_INPUT};
     use primitives::IntoInner;
@@ -482,13 +483,13 @@ mod test {
         let r: ParseResult<_, Vec<_>, _> = many_till(new_buf(DEFAULT, b"abd"), any, |i| token(i, b'c'));
         assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
 
-        let r: ParseResult<_, Vec<u8>, _> = many_till(new_buf(DEFAULT, b"abcd"), |i| i.err(()), |i| token(i, b'c'));
-        assert_eq!(r.into_inner(), State::Error(new_buf(DEFAULT, b"abcd"), ()));
+        let r: ParseResult<_, Vec<u8>, _> = many_till(new_buf(DEFAULT, b"abcd"), |i| i.err(Error::expected(b'@')), |i| token(i, b'c'));
+        assert_eq!(r.into_inner(), State::Error(new_buf(DEFAULT, b"abcd"), Error::expected(b'@')));
 
         // Variant to make sure error slice is propagated
         let mut n = 0;
-        let r: ParseResult<_, Vec<_>, _> = many_till(new_buf(DEFAULT, b"abcd"), |i| if n == 0 { n += 1; any(i).map_err(|_| "any err") } else { i.err("the error") }, |i| token(i, b'c'));
-        assert_eq!(r.into_inner(), State::Error(new_buf(DEFAULT, b"bcd"), "the error"));
+        let r: ParseResult<_, Vec<_>, _> = many_till(new_buf(DEFAULT, b"abcd"), |i| if n == 0 { n += 1; any(i).map_err(|_| Error::expected(b'i')) } else { i.err(Error::expected(b'@')) }, |i| token(i, b'c'));
+        assert_eq!(r.into_inner(), State::Error(new_buf(DEFAULT, b"bcd"), Error::expected(b'@')));
     }
 
     #[test]
