@@ -17,44 +17,38 @@ macro_rules! run_iter {
              $($pat:pat => $arm:expr),*
         }
     ) => { {
-        enum EndState<'a, I, E>
-          where I: 'a {
-            Error(&'a [I], E),
+        enum EndState<M, E> {
+            // We have an interest to maybe backtrack to last good state in the case of an error.
+            Error(M, E),
             Incomplete(usize),
         }
 
-        struct Iter<'a, I, T, E, F>
-          where I: 'a,
-                T: 'a,
-                E: 'a,
-                F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+        struct Iter<I: Input, T, E, F>
+          where F: FnMut(I) -> ParseResult<I, T, E> {
             /// Last state of the parser
-            state:  EndState<'a, I, E>,
+            state:  EndState<I::Marker, E>,
             /// Parser to execute once for each iteration
             parser: F,
             /// Remaining buffer
-            buf:    Input<'a, I>,
+            // TODO: Use UnsafeCell or similar to omit branches, only way to avoid this being set
+            // on next read would be panic I think? (since self is mutably borrowed already by
+            // next)
+            buf:    Option<I>,
             /// Nested state
             data:   $data_ty,
             _t:     PhantomData<T>,
         }
 
-        impl<'a, I, T, E, F> Iter<'a, I, T, E, F>
-          where I: 'a,
-                T: 'a,
-                E: 'a,
-                F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+        impl<I: Input, T, E, F> Iter<I, T, E, F>
+          where F: FnMut(I) -> ParseResult<I, T, E> {
             #[inline]
-            fn end_state(self) -> (Input<'a, I>, $data_ty, EndState<'a, I, E>) {
-                (self.buf, self.data, self.state)
+            fn end_state(self) -> (I, $data_ty, EndState<I::Marker, E>) {
+                (self.buf.unwrap(), self.data, self.state)
             }
         }
 
-        impl<'a, I, T, E, F> Iterator for Iter<'a, I, T, E, F>
-          where I: 'a,
-                T: 'a,
-                E: 'a,
-                F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+        impl<I: Input, T, E, F> Iterator for Iter<I, T, E, F>
+          where F: FnMut(I) -> ParseResult<I, T, E> {
             type Item = T;
 
             #[inline]
@@ -66,20 +60,25 @@ macro_rules! run_iter {
             fn next(&mut $next_self) -> Option<Self::Item> {
                 $pre_next
 
-                match ($next_self.parser)($next_self.buf.clone()).into_inner() {
+                // TODO: Remove the branches here (ie. take + unwrap)
+                let i = $next_self.buf.take().unwrap();
+                let m = i.mark();
+                match ($next_self.parser)(i).into_inner() {
                     State::Data(b, v) => {
-                        $next_self.buf    = b;
+                        $next_self.buf = Some(b);
 
                         $on_next
 
                         Some(v)
                     },
                     State::Error(b, e) => {
-                        $next_self.state = EndState::Error(b, e);
+                        $next_self.buf   = Some(b);
+                        $next_self.state = EndState::Error(m, e);
 
                         None
                     },
-                    State::Incomplete(n) => {
+                    State::Incomplete(b, n) => {
+                        $next_self.buf   = Some(b);
                         $next_self.state = EndState::Incomplete(n);
 
                         None
@@ -91,7 +90,7 @@ macro_rules! run_iter {
         let mut iter = Iter {
             state:  EndState::Incomplete(1),
             parser: $parser,
-            buf:    $input,
+            buf:    Some($input),
             data:   $data,
             _t:     PhantomData,
         };

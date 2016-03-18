@@ -593,7 +593,7 @@ mod error {
 
 #[cfg(test)]
 mod test {
-    use primitives::input::{new_buf, DEFAULT, END_OF_INPUT};
+    use primitives::input::{new_buf, DEFAULT};
     use primitives::IntoInner;
     use primitives::State;
     use super::*;

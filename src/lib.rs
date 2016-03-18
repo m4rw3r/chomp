@@ -209,7 +209,6 @@ extern crate debugtrace;
 #[macro_use]
 mod macros;
 mod input;
-// FIXME: Uncomment
 mod parse;
 mod parse_result;
 

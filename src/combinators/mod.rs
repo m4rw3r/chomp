@@ -3,7 +3,7 @@
 #[macro_use]
 mod macros;
 
-//pub mod bounded;
+pub mod bounded;
 
 use std::iter::FromIterator;
 
@@ -32,9 +32,7 @@ use primitives::{IntoInner, Primitives};
 pub fn count<I: Input, T, E, F, U>(i: I, num: usize, p: F) -> ParseResult<I, T, E>
   where F: FnMut(I) -> ParseResult<I, U, E>,
         T: FromIterator<U> {
-    // FIXME: implement
-    //bounded::many(i, num, p)
-    unimplemented!()
+    bounded::many(i, num, p)
 }
 
 /// Tries the parser ``f``, on success it yields the parsed value, on failure ``default`` will be
@@ -138,9 +136,7 @@ pub fn or<I: Input, T, E, F, G>(i: I, f: F, g: G) -> ParseResult<I, T, E>
 pub fn many<I: Input, T, E, F, U>(i: I, f: F) -> ParseResult<I, T, E>
   where F: FnMut(I) -> ParseResult<I, U, E>,
         T: FromIterator<U> {
-            // FIXME: Implement
-    //bounded::many(i, .., f)
-    unimplemented!()
+    bounded::many(i, .., f)
 }
 
 /// Parses at least one instance of ``f`` and continues until it does no longer match, collecting
@@ -166,8 +162,7 @@ pub fn many1<I: Input, T, E, F, U>(i: I, f: F) -> ParseResult<I, T, E>
   where F: FnMut(I) -> ParseResult<I, U, E>,
         T: FromIterator<U> {
             // FIXME: implement
-    //bounded::many(i, 1.., f)
-    unimplemented!()
+    bounded::many(i, 1.., f)
 }
 
 /// Applies the parser `R` zero or more times, separated by the parser `F`. All matches from `R`
@@ -402,9 +397,9 @@ mod test {
         let r: State<_, Vec<_>, _> = many(new_buf(DEFAULT, b""), |i| token(i, b'a')).into_inner();
         assert_eq!(r, State::Incomplete(new_buf(DEFAULT, b""), 1));
         let r: State<_, Vec<_>, _> = many(new_buf(DEFAULT, b"a"), |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Incomplete(new_buf(DEFAULT, b"a"), 1));
+        assert_eq!(r, State::Incomplete(new_buf(DEFAULT, b""), 1));
         let r: State<_, Vec<_>, _> = many(new_buf(DEFAULT, b"aa"), |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Incomplete(new_buf(DEFAULT, b"a"), 1));
+        assert_eq!(r, State::Incomplete(new_buf(DEFAULT, b""), 1));
 
         let r: State<_, Vec<_>, _> = many(new_buf(DEFAULT, b"bbb"), |i| token(i, b'a')).into_inner();
         assert_eq!(r, State::Data(new_buf(DEFAULT, b"bbb"), vec![]));
@@ -429,9 +424,9 @@ mod test {
         let r: State<_, Vec<_>, _> = many1(new_buf(DEFAULT, b""), |i| token(i, b'a')).into_inner();
         assert_eq!(r, State::Incomplete(new_buf(DEFAULT, b""), 1));
         let r: State<_, Vec<_>, _> = many1(new_buf(DEFAULT, b"a"), |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Incomplete(new_buf(DEFAULT, b"a"), 1));
+        assert_eq!(r, State::Incomplete(new_buf(DEFAULT, b""), 1));
         let r: State<_, Vec<_>, _> = many1(new_buf(DEFAULT, b"aa"), |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Incomplete(new_buf(DEFAULT, b"aa"), 1));
+        assert_eq!(r, State::Incomplete(new_buf(DEFAULT, b""), 1));
 
         let r: State<_, Vec<_>, _> = many1(new_buf(DEFAULT, b"bbb"), |i| token(i, b'a').map_err(|_| "token_error")).into_inner();
         assert_eq!(r, State::Error(new_buf(DEFAULT, b"bbb"), "token_error"));
@@ -456,9 +451,9 @@ mod test {
         let r: State<_, Vec<_>, _> = count(new_buf(DEFAULT, b""), 3,  |i| token(i, b'a')).into_inner();
         assert_eq!(r, State::Incomplete(new_buf(DEFAULT, b""), 1));
         let r: State<_, Vec<_>, _> = count(new_buf(DEFAULT, b"a"), 3,  |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Incomplete(new_buf(DEFAULT, b"a"), 1));
+        assert_eq!(r, State::Incomplete(new_buf(DEFAULT, b""), 1));
         let r: State<_, Vec<_>, _> = count(new_buf(DEFAULT, b"aa"), 3,  |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Incomplete(new_buf(DEFAULT, b"aa"), 1));
+        assert_eq!(r, State::Incomplete(new_buf(DEFAULT, b""), 1));
         let r: State<_, Vec<_>, _> = count(new_buf(DEFAULT, b"aaa"), 3,  |i| token(i, b'a')).into_inner();
         assert_eq!(r, State::Data(new_buf(DEFAULT, b""), vec![b'a', b'a', b'a']));
         let r: State<_, Vec<_>, _> = count(new_buf(DEFAULT, b"aaaa"), 3,  |i| token(i, b'a')).into_inner();
@@ -467,9 +462,9 @@ mod test {
         let r: State<_, Vec<_>, _> = count(new_buf(END_OF_INPUT, b""), 3,  |i| token(i, b'a')).into_inner();
         assert_eq!(r, State::Incomplete(new_buf(END_OF_INPUT, b""), 1));
         let r: State<_, Vec<_>, _> = count(new_buf(END_OF_INPUT, b"a"), 3,  |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Incomplete(new_buf(END_OF_INPUT, b"a"), 1));
+        assert_eq!(r, State::Incomplete(new_buf(END_OF_INPUT, b""), 1));
         let r: State<_, Vec<_>, _> = count(new_buf(END_OF_INPUT, b"aa"), 3,  |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Incomplete(new_buf(END_OF_INPUT, b"aa"), 1));
+        assert_eq!(r, State::Incomplete(new_buf(END_OF_INPUT, b""), 1));
         let r: State<_, Vec<_>, _> = count(new_buf(END_OF_INPUT, b"aaa"), 3,  |i| token(i, b'a')).into_inner();
         assert_eq!(r, State::Data(new_buf(END_OF_INPUT, b""), vec![b'a', b'a', b'a']));
         let r: State<_, Vec<_>, _> = count(new_buf(END_OF_INPUT, b"aaaa"), 3,  |i| token(i, b'a')).into_inner();
