@@ -255,9 +255,7 @@ pub fn many_till<I: Input, T, E, R, F, U, N, V>(i: I, p: R, end: F) -> ParseResu
 #[inline]
 pub fn skip_many<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, (), E>
   where F: FnMut(I) -> ParseResult<I, T, E> {
-    //bounded::skip_many(i, .., f)
-    //FIXME: Implement
-    unimplemented!()
+    bounded::skip_many(i, .., f)
 }
 
 /// Runs the given parser until it fails, discarding matched input, expects at least one match.
@@ -281,9 +279,7 @@ pub fn skip_many<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, (), E>
 #[inline]
 pub fn skip_many1<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, (), E>
   where F: FnMut(I) -> ParseResult<I, T, E> {
-      // FIXME: Implement
-    //bounded::skip_many(i, 1.., f)
-    unimplemented!()
+    bounded::skip_many(i, 1.., f)
 }
 
 /// Returns the result of the given parser as well as the slice which matched it.
@@ -470,7 +466,7 @@ mod test {
         assert_eq!(skip_many1(new_buf(DEFAULT, b"aabc"), |i| token(i, b'a')).into_inner(), State::Data(new_buf(DEFAULT, b"bc"), ()));
         assert_eq!(skip_many1(new_buf(DEFAULT, b"abc"), |i| token(i, b'a')).into_inner(), State::Data(new_buf(DEFAULT, b"bc"), ()));
         assert_eq!(skip_many1(new_buf(DEFAULT, b"bc"), |i| i.err::<(), _>("error")).into_inner(), State::Error(new_buf(DEFAULT, b"bc"), "error"));
-        assert_eq!(skip_many1(new_buf(DEFAULT, b"aaa"), |i| token(i, b'a')).into_inner(), State::Incomplete(new_buf(DEFAULT, b"aaa"), 1));
+        assert_eq!(skip_many1(new_buf(DEFAULT, b"aaa"), |i| token(i, b'a')).into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
         assert_eq!(skip_many1(new_buf(END_OF_INPUT, b"aabc"), |i| token(i, b'a')).into_inner(), State::Data(new_buf(END_OF_INPUT, b"bc"), ()));
         assert_eq!(skip_many1(new_buf(END_OF_INPUT, b"abc"), |i| token(i, b'a')).into_inner(), State::Data(new_buf(END_OF_INPUT, b"bc"), ()));
         assert_eq!(skip_many1(new_buf(END_OF_INPUT, b"bc"), |i| i.err::<(), _>("error")).into_inner(), State::Error(new_buf(END_OF_INPUT, b"bc"), "error"));

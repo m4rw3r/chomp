@@ -53,8 +53,6 @@ pub trait BoundedRange {
       where F: FnMut(I) -> ParseResult<I, U, E>,
             T: FromIterator<U>;
 
-    // FIXME: Uncomment
-    /*
     /// Applies the parser `F` multiple times until it fails or the maximum value of the range has
     /// been reached, throwing away any produced value.
     ///
@@ -71,10 +69,8 @@ pub trait BoundedRange {
     /// * If the last parser succeeds on the last input item then this parser is still considered
     ///   incomplete if the input flag END_OF_INPUT is not set as there might be more data to fill.
     #[inline]
-    fn skip_many<'a, I, T, E, F>(self, Input<'a, I>, F) -> ParseResult<'a, I, (), E>
-      where T: 'a,
-            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E>;
-    */
+    fn skip_many<I: Input, T, E, F>(self, I, F) -> ParseResult<I, (), E>
+      where F: FnMut(I) -> ParseResult<I, T, E>;
 
     // TODO: Fix documentation regarding incomplete
     /// Applies the parser `P` multiple times until the parser `F` succeeds and returns a value
@@ -152,12 +148,9 @@ impl BoundedRange for Range<usize> {
         }
     }
 
-    // FIXME: Uncomment
-    /*
     #[inline]
-    fn skip_many<'a, I, T, E, F>(self, mut i: Input<'a, I>, mut f: F) -> ParseResult<'a, I, (), E>
-      where T: 'a,
-            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+    fn skip_many<I: Input, T, E, F>(self, mut i: I, mut f: F) -> ParseResult<I, (), E>
+      where F: FnMut(I) -> ParseResult<I, T, E> {
         // Range does not perform this assertion
         assert!(self.start <= self.end);
 
@@ -169,7 +162,9 @@ impl BoundedRange for Range<usize> {
                 break;
             }
 
-            match f(i.clone()).into_inner() {
+            let m = i.mark();
+
+            match f(i).into_inner() {
                 State::Data(b, _)    => {
                     min  = if min == 0 { 0 } else { min - 1 };
                     max -= 1;
@@ -177,23 +172,26 @@ impl BoundedRange for Range<usize> {
                     i = b
                 },
                 State::Error(b, e)   => if min == 0 {
+                    i = b.restore(m);
+
                     break;
                 } else {
-                    // Not enough iterations
-                    return i.replace(b).err(e);
+                    // Not enough iterations, propagate
+                    return b.err(e);
                 },
-                State::Incomplete(n) => if min == 0 && i.is_end() {
+                State::Incomplete(b, n) => if min == 0 && b.is_end() {
+                    i = b.restore(m);
+
                     break;
                 } else {
                     // We have not done the minimum amount of iterations
-                    return i.incomplete(n);
+                    return b.incomplete(n);
                 }
             }
         }
 
         i.ret(())
     }
-    */
 
     #[inline]
     fn many_till<I: Input, T, E, R, F, U, N, V>(self, i: I, p: R, end: F) -> ParseResult<I, T, E>
@@ -309,40 +307,42 @@ impl BoundedRange for RangeFrom<usize> {
         }
     }
 
-    // FIXME: Uncomment
-    /*
     #[inline]
-    fn skip_many<'a, I, T, E, F>(self, mut i: Input<'a, I>, mut f: F) -> ParseResult<'a, I, (), E>
-      where T: 'a,
-            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+    fn skip_many<I: Input, T, E, F>(self, mut i: I, mut f: F) -> ParseResult<I, (), E>
+      where F: FnMut(I) -> ParseResult<I, T, E> {
         // Closed on left side, open on right
         let mut min = self.start;
 
         loop {
-            match f(i.clone()).into_inner() {
+            let m = i.mark();
+
+            match f(i).into_inner() {
                 State::Data(b, _)    => {
                     min  = if min == 0 { 0 } else { min - 1 };
 
                     i = b
                 },
                 State::Error(b, e)   => if min == 0 {
+                    i = b.restore(m);
+
                     break;
                 } else {
-                    // Not enough iterations
-                    return i.replace(b).err(e);
+                    // Not enough iterations, propagate
+                    return b.err(e);
                 },
-                State::Incomplete(n) => if min == 0 && i.is_end() {
+                State::Incomplete(b, n) => if min == 0 && b.is_end() {
+                    i = b.restore(m);
+
                     break;
                 } else {
                     // We have not done the minimum amount of iterations
-                    return i.incomplete(n);
+                    return b.incomplete(n);
                 }
             }
         }
 
         i.ret(())
     }
-    */
 
     #[inline]
     fn many_till<I: Input, T, E, R, F, U, N, V>(self, i: I, p: R, end: F) -> ParseResult<I, T, E>
@@ -418,26 +418,31 @@ impl BoundedRange for RangeFull {
         }
     }
 
-    /*
     #[inline]
-    fn skip_many<'a, I, T, E, F>(self, mut i: Input<'a, I>, mut f: F) -> ParseResult<'a, I, (), E>
-      where T: 'a,
-            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+    fn skip_many<I: Input, T, E, F>(self, mut i: I, mut f: F) -> ParseResult<I, (), E>
+      where F: FnMut(I) -> ParseResult<I, T, E> {
         loop {
-            match f(i.clone()).into_inner() {
+            let m = i.mark();
+
+            match f(i).into_inner() {
                 State::Data(b, _)    => i = b,
-                State::Error(_, _)   => break,
-                State::Incomplete(n) => if i.is_end() {
+                State::Error(b, _)   => {
+                    i = b.restore(m);
+
+                    break;
+                },
+                State::Incomplete(b, n) => if b.is_end() {
+                    i = b.restore(m);
+
                     break;
                 } else {
-                    return i.incomplete(n);
+                    return b.incomplete(n);
                 }
             }
         }
 
         i.ret(())
     }
-    */
 
     #[inline]
     fn many_till<I: Input, T, E, R, F, U, N, V>(self, i: I, p: R, end: F) -> ParseResult<I, T, E>
@@ -515,12 +520,9 @@ impl BoundedRange for RangeTo<usize> {
         }
     }
 
-    // FIXME: Uncomment
-    /*
     #[inline]
-    fn skip_many<'a, I, T, E, F>(self, mut i: Input<'a, I>, mut f: F) -> ParseResult<'a, I, (), E>
-      where T: 'a,
-            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+    fn skip_many<I: Input, T, E, F>(self, mut i: I, mut f: F) -> ParseResult<I, (), E>
+      where F: FnMut(I) -> ParseResult<I, T, E> {
         // [0, n)
         let mut max = max(self.end, 1) - 1;
 
@@ -529,25 +531,32 @@ impl BoundedRange for RangeTo<usize> {
                 break;
             }
 
-            match f(i.clone()).into_inner() {
+            let m = i.mark();
+
+            match f(i).into_inner() {
                 State::Data(b, _)    => {
                     max -= 1;
 
                     i = b
                 },
                 // Always ok to end iteration
-                State::Error(_, _)   => break,
-                State::Incomplete(n) => if i.is_end() {
+                State::Error(b, _)   => {
+                    i = b.restore(m);
+
+                    break;
+                },
+                State::Incomplete(b, n) => if b.is_end() {
+                    i = b.restore(m);
+
                     break;
                 } else {
-                    return i.incomplete(n);
+                    return b.incomplete(n);
                 }
             }
         }
 
         i.ret(())
     }
-    */
 
     #[inline]
     fn many_till<I: Input, T, E, R, F, U, N, V>(self, i: I, p: R, end: F) -> ParseResult<I, T, E>
@@ -652,12 +661,9 @@ impl BoundedRange for usize {
         }
     }
 
-    // FIXME: Uncomment
-    /*
     #[inline]
-    fn skip_many<'a, I, T, E, F>(self, mut i: Input<'a, I>, mut f: F) -> ParseResult<'a, I, (), E>
-      where T: 'a,
-            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+    fn skip_many<I: Input, T, E, F>(self, mut i: I, mut f: F) -> ParseResult<I, (), E>
+      where F: FnMut(I) -> ParseResult<I, T, E> {
         let mut n = self;
 
         loop {
@@ -665,29 +671,34 @@ impl BoundedRange for usize {
                 break;
             }
 
-            match f(i.clone()).into_inner() {
+            let m = i.mark();
+
+            match f(i).into_inner() {
                 State::Data(b, _)    => {
                     n -= 1;
 
                     i = b
                 },
                 State::Error(b, e)   => if n == 0 {
+                    i = b.restore(m);
+
                     break;
                 } else {
-                    // Not enough iterations
-                    return i.replace(b).err(e);
+                    // Not enough iterations, propagate
+                    return b.err(e);
                 },
-                State::Incomplete(n) => if n == 0 {
+                State::Incomplete(b, n) => if n == 0 {
+                    i = b.restore(m);
+
                     break;
                 } else {
-                    return i.incomplete(n);
+                    return b.incomplete(n);
                 }
             }
         }
 
         i.ret(())
     }
-    */
 
     #[inline]
     fn many_till<I: Input, T, E, R, F, U, N, V>(self, i: I, p: R, end: F) -> ParseResult<I, T, E>
@@ -756,7 +767,6 @@ pub fn many<I: Input, T, E, F, U, R>(i: I, r: R, f: F) -> ParseResult<I, T, E>
     BoundedRange::parse_many(r, i, f)
 }
 
-/*
 /// Applies the parser `F` multiple times until it fails or the maximum value of the range has
 /// been reached, throwing away any produced value.
 ///
@@ -772,13 +782,11 @@ pub fn many<I: Input, T, E, F, U, R>(i: I, r: R, f: F) -> ParseResult<I, T, E>
 /// * If the last parser succeeds on the last input item then this parser is still considered
 ///   incomplete if the input flag END_OF_INPUT is not set as there might be more data to fill.
 #[inline]
-pub fn skip_many<'a, I, T, E, F, R>(i: Input<'a, I>, r: R, f: F) -> ParseResult<'a, I, (), E>
-  where T: 'a,
-        R: BoundedRange,
-        F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+pub fn skip_many<I: Input, T, E, F, R>(i: I, r: R, f: F) -> ParseResult<I, (), E>
+  where R: BoundedRange,
+        F: FnMut(I) -> ParseResult<I, T, E> {
     BoundedRange::skip_many(r, i, f)
 }
-*/
 
 // TODO: Update documentation regarding incomplete behaviour
 /// Applies the parser `P` multiple times until the parser `F` succeeds and returns a value
@@ -851,7 +859,7 @@ mod test {
     use super::{
         many,
         many_till,
-        //skip_many,
+        skip_many,
     };
 
     #[test]
@@ -1323,16 +1331,14 @@ mod test {
         assert_eq!(r.into_inner(), State::Error(new_buf(DEFAULT, b"c"), Error::expected(b'b')));
     }
 
-    // FIXME: Uncomment
-    /*
     #[test]
     fn skip_range_full() {
         let r = skip_many(new_buf(DEFAULT, b""), .., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
         let r = skip_many(new_buf(DEFAULT, b"a"), .., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
         let r = skip_many(new_buf(DEFAULT, b"aa"), .., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
 
         let r = skip_many(new_buf(DEFAULT, b"b"), .., |i| token(i, b'a'));
         assert_eq!(r.into_inner(), State::Data(new_buf(DEFAULT, b"b"), ()));
@@ -1377,9 +1383,9 @@ mod test {
         assert_eq!(r.into_inner(), State::Data(new_buf(END_OF_INPUT, b"a"), ()));
 
         let r = skip_many(new_buf(DEFAULT, b""), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
         let r = skip_many(new_buf(DEFAULT, b"a"), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
         let r = skip_many(new_buf(DEFAULT, b"aa"), ..3, |i| token(i, b'a'));
         assert_eq!(r.into_inner(), State::Data(new_buf(DEFAULT, b""), ()));
         let r = skip_many(new_buf(DEFAULT, b"aaa"), ..3, |i| token(i, b'a'));
@@ -1412,34 +1418,34 @@ mod test {
     #[test]
     fn skip_range_from() {
         let r = skip_many(new_buf(DEFAULT, b""), 2.., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
         let r = skip_many(new_buf(DEFAULT, b"a"), 2.., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
         let r = skip_many(new_buf(DEFAULT, b"aa"), 2.., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
         let r = skip_many(new_buf(DEFAULT, b"aaa"), 2.., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
 
         let r = skip_many(new_buf(DEFAULT, b"b"), 2.., |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
+        assert_eq!(r.into_inner(), State::Error(new_buf(DEFAULT, b"b"), "token_err"));
         let r = skip_many(new_buf(DEFAULT, b"ab"), 2.., |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
+        assert_eq!(r.into_inner(), State::Error(new_buf(DEFAULT, b"b"), "token_err"));
         let r = skip_many(new_buf(DEFAULT, b"aab"), 2.., |i| token(i, b'a'));
         assert_eq!(r.into_inner(), State::Data(new_buf(DEFAULT, b"b"), ()));
 
         let r = skip_many(new_buf(END_OF_INPUT, b""), 2.., any);
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(END_OF_INPUT, b""), 1));
         let r = skip_many(new_buf(END_OF_INPUT, b"a"), 2.., any);
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(END_OF_INPUT, b""), 1));
         let r = skip_many(new_buf(END_OF_INPUT, b"aa"), 2.., any);
         assert_eq!(r.into_inner(), State::Data(new_buf(END_OF_INPUT, b""), ()));
         let r = skip_many(new_buf(END_OF_INPUT, b"aaa"), 2.., any);
         assert_eq!(r.into_inner(), State::Data(new_buf(END_OF_INPUT, b""), ()));
 
         let r = skip_many(new_buf(END_OF_INPUT, b"b"), 2.., |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
+        assert_eq!(r.into_inner(), State::Error(new_buf(END_OF_INPUT, b"b"), "token_err"));
         let r = skip_many(new_buf(END_OF_INPUT, b"ab"), 2.., |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
+        assert_eq!(r.into_inner(), State::Error(new_buf(END_OF_INPUT, b"b"), "token_err"));
         let r = skip_many(new_buf(END_OF_INPUT, b"aab"), 2.., |i| token(i, b'a'));
         assert_eq!(r.into_inner(), State::Data(new_buf(END_OF_INPUT, b"b"), ()));
         let r = skip_many(new_buf(END_OF_INPUT, b"aaab"), 2.., |i| token(i, b'a'));
@@ -1467,20 +1473,20 @@ mod test {
         assert_eq!(r.into_inner(), State::Data(new_buf(END_OF_INPUT, b"a"), ()));
 
         let r = skip_many(new_buf(DEFAULT, b""), 2..4, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
         let r = skip_many(new_buf(DEFAULT, b"a"), 2..4, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
         let r = skip_many(new_buf(DEFAULT, b"aa"), 2..4, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
         let r = skip_many(new_buf(DEFAULT, b"aaa"), 2..4, |i| token(i, b'a'));
         assert_eq!(r.into_inner(), State::Data(new_buf(DEFAULT, b""), ()));
         let r = skip_many(new_buf(DEFAULT, b"aaaa"), 2..4, |i| token(i, b'a'));
         assert_eq!(r.into_inner(), State::Data(new_buf(DEFAULT, b"a"), ()));
 
         let r = skip_many(new_buf(DEFAULT, b"b"), 2..4, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
+        assert_eq!(r.into_inner(), State::Error(new_buf(DEFAULT, b"b"), "token_err"));
         let r = skip_many(new_buf(DEFAULT, b"ab"), 2..4, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
+        assert_eq!(r.into_inner(), State::Error(new_buf(DEFAULT, b"b"), "token_err"));
         let r = skip_many(new_buf(DEFAULT, b"aab"), 2..4, |i| token(i, b'a'));
         assert_eq!(r.into_inner(), State::Data(new_buf(DEFAULT, b"b"), ()));
         let r = skip_many(new_buf(DEFAULT, b"aaab"), 2..4, |i| token(i, b'a'));
@@ -1489,9 +1495,9 @@ mod test {
         assert_eq!(r.into_inner(), State::Data(new_buf(DEFAULT, b"ab"), ()));
 
         let r = skip_many(new_buf(END_OF_INPUT, b""), 2..4, any);
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(END_OF_INPUT, b""), 1));
         let r = skip_many(new_buf(END_OF_INPUT, b"a"), 2..4, any);
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(END_OF_INPUT, b""), 1));
         let r = skip_many(new_buf(END_OF_INPUT, b"aa"), 2..4, any);
         assert_eq!(r.into_inner(), State::Data(new_buf(END_OF_INPUT, b""), ()));
         let r = skip_many(new_buf(END_OF_INPUT, b"aaa"), 2..4, any);
@@ -1500,9 +1506,9 @@ mod test {
         assert_eq!(r.into_inner(), State::Data(new_buf(END_OF_INPUT, b"a"), ()));
 
         let r = skip_many(new_buf(END_OF_INPUT, b"b"), 2..4, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
+        assert_eq!(r.into_inner(), State::Error(new_buf(END_OF_INPUT, b"b"), "token_err"));
         let r = skip_many(new_buf(END_OF_INPUT, b"ab"), 2..4, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
+        assert_eq!(r.into_inner(), State::Error(new_buf(END_OF_INPUT, b"b"), "token_err"));
         let r = skip_many(new_buf(END_OF_INPUT, b"aab"), 2..4, |i| token(i, b'a'));
         assert_eq!(r.into_inner(), State::Data(new_buf(END_OF_INPUT, b"b"), ()));
         let r = skip_many(new_buf(END_OF_INPUT, b"aaab"), 2..4, |i| token(i, b'a'));
@@ -1514,42 +1520,41 @@ mod test {
     #[test]
     fn skip_exact() {
         let r = skip_many(new_buf(DEFAULT, b""), 2, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
         let r = skip_many(new_buf(DEFAULT, b"a"), 2, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
         let r = skip_many(new_buf(DEFAULT, b"aa"), 2, |i| token(i, b'a'));
         assert_eq!(r.into_inner(), State::Data(new_buf(DEFAULT, b""), ()));
         let r = skip_many(new_buf(DEFAULT, b"aaa"), 2, |i| token(i, b'a'));
         assert_eq!(r.into_inner(), State::Data(new_buf(DEFAULT, b"a"), ()));
 
         let r = skip_many(new_buf(DEFAULT, b"b"), 2, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
+        assert_eq!(r.into_inner(), State::Error(new_buf(DEFAULT, b"b"), "token_err"));
         let r = skip_many(new_buf(DEFAULT, b"ab"), 2, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
+        assert_eq!(r.into_inner(), State::Error(new_buf(DEFAULT, b"b"), "token_err"));
         let r = skip_many(new_buf(DEFAULT, b"aab"), 2, |i| token(i, b'a'));
         assert_eq!(r.into_inner(), State::Data(new_buf(DEFAULT, b"b"), ()));
         let r = skip_many(new_buf(DEFAULT, b"aaab"), 2, |i| token(i, b'a'));
         assert_eq!(r.into_inner(), State::Data(new_buf(DEFAULT, b"ab"), ()));
 
         let r = skip_many(new_buf(END_OF_INPUT, b""), 2, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(END_OF_INPUT, b""), 1));
         let r = skip_many(new_buf(END_OF_INPUT, b"a"), 2, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(END_OF_INPUT, b""), 1));
         let r = skip_many(new_buf(END_OF_INPUT, b"aa"), 2, |i| token(i, b'a'));
         assert_eq!(r.into_inner(), State::Data(new_buf(END_OF_INPUT, b""), ()));
         let r = skip_many(new_buf(END_OF_INPUT, b"aaa"), 2, |i| token(i, b'a'));
         assert_eq!(r.into_inner(), State::Data(new_buf(END_OF_INPUT, b"a"), ()));
 
         let r = skip_many(new_buf(END_OF_INPUT, b"b"), 2, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
+        assert_eq!(r.into_inner(), State::Error(new_buf(END_OF_INPUT, b"b"), "token_err"));
         let r = skip_many(new_buf(END_OF_INPUT, b"ab"), 2, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
+        assert_eq!(r.into_inner(), State::Error(new_buf(END_OF_INPUT, b"b"), "token_err"));
         let r = skip_many(new_buf(END_OF_INPUT, b"aab"), 2, |i| token(i, b'a'));
         assert_eq!(r.into_inner(), State::Data(new_buf(END_OF_INPUT, b"b"), ()));
         let r = skip_many(new_buf(END_OF_INPUT, b"aaab"), 2, |i| token(i, b'a'));
         assert_eq!(r.into_inner(), State::Data(new_buf(END_OF_INPUT, b"ab"), ()));
     }
-    */
 
     #[test]
     #[should_panic]
@@ -1558,8 +1563,6 @@ mod test {
         assert_eq!(r.into_inner(), State::Data(new_buf(DEFAULT, b"ab"), vec![b'a', b'a', b'a']));
     }
 
-    // FIXME: Uncomment
-    /*
     #[test]
     #[should_panic]
     fn panic_skip_many_range_lt() {
@@ -1572,5 +1575,4 @@ mod test {
         let r: ParseResult<_, Vec<_>, _> = many_till(new_buf(DEFAULT, b"aaaab"), 2..1, |i| token(i, b'a'), |i| token(i, b'b'));
         assert_eq!(r.into_inner(), State::Data(new_buf(DEFAULT, b"ab"), vec![b'a', b'a', b'a']));
     }
-    */
 }
