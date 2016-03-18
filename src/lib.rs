@@ -210,10 +210,11 @@ extern crate debugtrace;
 mod macros;
 mod input;
 // FIXME: Uncomment
-//mod parse;
+mod parse;
 mod parse_result;
 
 // FIXME: Uncomment
+pub mod ascii;
 pub mod combinators;
 pub mod parsers;
 
@@ -236,28 +237,25 @@ pub use parsers::{
     token,
 };
 pub use parsers::Error;
-/*
-pub mod ascii;
-pub mod buffer;
+//pub mod buffer;
 
 pub use combinators::{
-    count,
+    //count,
     option,
     or,
-    many,
-    many1,
-    sep_by,
-    sep_by1,
-    many_till,
-    skip_many,
-    skip_many1,
+    //many,
+    //many1,
+    //sep_by,
+    //sep_by1,
+    //many_till,
+    //skip_many,
+    //skip_many1,
     matched_by,
 };
 pub use parse::{
     ParseError,
     parse_only,
 };
-*/
 pub use input::Input;
 pub use parse_result::{
     ParseResult,

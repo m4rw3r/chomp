@@ -1,13 +1,12 @@
-use {Input, ParseResult};
+use ParseResult;
 use primitives::{IntoInner, State};
-use primitives::input;
+use primitives::Primitives;
 
 /// Simple error type returned from `parse_only`.
 #[derive(Debug, Eq, PartialEq)]
-pub enum ParseError<'a, I, E>
-  where I: 'a {
+pub enum ParseError<I, E> {
     /// A parse error occurred.
-    Error(&'a [I], E),
+    Error(I, E),
     /// The parser attempted to read more data than available.
     Incomplete(usize),
 }
@@ -49,21 +48,25 @@ pub enum ParseError<'a, I, E>
 ///            Err(ParseError::Error(&b" and more"[..], Error::new())));
 /// # }
 /// ```
-pub fn parse_only<'a, I, T, E, F>(parser: F, input: &'a [I]) -> Result<T, ParseError<'a, I, E>>
+pub fn parse_only<'a, I: Copy, T, E, F>(parser: F, input: &'a [I]) -> Result<T, ParseError<&'a [I], E>>
   where T: 'a,
         E: 'a,
-        F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E> {
-    match parser(input::new(input::END_OF_INPUT, input)).into_inner() {
+        F: FnOnce(&'a [I]) -> ParseResult<&'a [I], T, E> {
+    match parser(input).into_inner() {
         State::Data(_, t)    => Ok(t),
-        State::Error(b, e)   => Err(ParseError::Error(b, e)),
-        State::Incomplete(n) => Err(ParseError::Incomplete(n)),
+        State::Error(mut b, e)   => Err(ParseError::Error({
+            let r = b.min_remaining();
+
+            b.consume(r)
+        }, e)),
+        State::Incomplete(_, n) => Err(ParseError::Incomplete(n)),
     }
 }
 
 #[cfg(test)]
 mod test {
-    use primitives::InputBuffer;
-
+    use Input;
+    use primitives::Primitives;
     use super::{
         ParseError,
         parse_only,
@@ -75,22 +78,22 @@ mod test {
         let mut input = None;
 
         assert_eq!(parse_only(|i| {
-            state = Some(i.is_last_slice());
-            input = Some(i.buffer());
+            state = Some(i.is_end());
+            input = Some(i.iter().cloned().collect());
 
             i.ret::<_, ()>("the result")
         }, b"the input"), Ok("the result"));
 
-        assert_eq!(input, Some(&b"the input"[..]));
+        assert_eq!(input, Some(b"the input".to_vec()));
         assert_eq!(state, Some(true));
     }
 
     #[test]
     fn err() {
-        assert_eq!(parse_only(|i| {
-            let buf = i.buffer();
+        assert_eq!(parse_only(|mut i| {
+            i.consume(4);
 
-            i.replace(&buf[4..]).err::<(), _>("my error")
+            i.err::<(), _>("my error")
         }, b"the input"), Err(ParseError::Error(&b"input"[..], "my error")));
     }
 

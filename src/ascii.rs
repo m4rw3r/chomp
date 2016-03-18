@@ -5,7 +5,7 @@ use conv::errors::UnwrapOk;
 
 use std::ops::{Add, Mul};
 
-use {Input, U8Result};
+use {Input, SimpleResult};
 use combinators::option;
 use parsers::{take_while, take_while1, satisfy};
 
@@ -79,7 +79,7 @@ pub fn is_alphanumeric(c: u8) -> bool {
 /// assert_eq!(parse_only(skip_whitespace, b" \t "), Ok(()));
 /// ```
 #[inline]
-pub fn skip_whitespace(i: Input<u8>) -> U8Result<()> {
+pub fn skip_whitespace<I: Input<Token=u8>>(i: I) -> SimpleResult<I, ()> {
     take_while(i, is_whitespace).map(|_| ())
 }
 
@@ -98,7 +98,7 @@ pub fn skip_whitespace(i: Input<u8>) -> U8Result<()> {
 /// assert_eq!(parse_only(digit, b"1"), Ok(b'1'));
 /// ```
 #[inline]
-pub fn digit(i: Input<u8>) -> U8Result<u8> {
+pub fn digit<I: Input<Token=u8>>(i: I) -> SimpleResult<I, u8> {
     satisfy(i, is_digit)
 }
 
@@ -120,9 +120,9 @@ pub fn digit(i: Input<u8>) -> U8Result<u8> {
 /// assert_eq!(r, Ok(-123i16));
 /// ```
 #[inline]
-pub fn signed<T, F>(i: Input<u8>, f: F) -> U8Result<T>
+pub fn signed<I: Input<Token=u8>, T, F>(i: I, f: F) -> SimpleResult<I, T>
   where T: Copy + ValueFrom<i8, Err=NoError> + Add<Output=T> + Mul<Output=T>,
-        F: FnOnce(Input<u8>) -> U8Result<T> {
+        F: FnOnce(I) -> SimpleResult<I, T> {
     option(i,
            |i| satisfy(i, |c| c == b'-' || c == b'+')
                .map(|s| T::value_from(if s == b'+' { 1 } else { -1 }).unwrap_ok()),
@@ -146,8 +146,9 @@ pub fn signed<T, F>(i: Input<u8>, f: F) -> U8Result<T>
 ///
 /// assert_eq!(r, Ok(123u8));
 /// ```
+// TODO: Use methods on `Buffer` to implement `to_decimal`
 #[inline]
-pub fn decimal<T: Copy + ValueFrom<u8, Err=NoError> + Add<Output=T> + Mul<Output=T>>(i: Input<u8>) -> U8Result<T> {
+pub fn decimal<'a, I: Input<Token=u8, Buffer=&'a [u8]>, T: Copy + ValueFrom<u8, Err=NoError> + Add<Output=T> + Mul<Output=T>>(i: I) -> SimpleResult<I, T> {
     take_while1(i, is_digit).map(to_decimal)
 }
 
