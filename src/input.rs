@@ -42,23 +42,34 @@ pub mod primitives {
         fn first(&self) -> Option<Self::Token> {
             self._first(Guard(()))
         }
+
         #[inline(always)]
         fn iter(&self) -> Self::Iter {
             self._iter(Guard(()))
         }
+
         #[inline(always)]
         fn consume(&mut self, n: usize) -> Self::Buffer {
             self._consume(Guard(()), n)
         }
+
         #[inline(always)]
         fn discard(&mut self, n: usize) {
             self._discard(Guard(()), n)
+        }
+
+        /// Returns the buffer from the marker `m` to the current position, discarding the
+        /// backtracking position carried by `m`.
+        #[inline(always)]
+        fn consume_from(&mut self, m: Self::Marker) -> Self::Buffer {
+            self._consume_from(Guard(()), m)
         }
 
         #[inline]
         fn min_remaining(&self) -> usize {
             self._min_remaining(Guard(()))
         }
+
         /// Returns true if this is the last available slice of the input.
         ///
         /// # Primitive
@@ -68,6 +79,8 @@ pub mod primitives {
         fn is_end(&self) -> bool {
             self._is_end(Guard(()))
         }
+
+        /// Marks the current position to be able to backtrack to it using `restore`.
         ///
         /// # Example
         ///
@@ -98,6 +111,7 @@ pub mod primitives {
         fn mark(&self) -> Self::Marker {
             self._mark(Guard(()))
         }
+
         #[inline(always)]
         fn restore(self, m: Self::Marker) -> Self {
             self._restore(Guard(()), m)
@@ -214,33 +228,46 @@ pub trait Input: Sized {
     /// Iterator over tokens in the input, does not consume any data.
     #[inline]
     fn _iter(&self, Guard) -> Self::Iter;
+
     /// **Primitive:** See `Primitives::consume` for documentation.
     ///
     /// Consumes a set amount of input tokens, returning a buffer containing them
     // TODO: Should probably be combined with a ret
     #[inline]
     fn _consume(&mut self, Guard, usize) -> Self::Buffer;
+
     /// **Primitive:** See `Primitives::discard` for documentation.
     ///
     /// Consumes a set amount of input tokens, discarding them.
     #[inline]
     fn _discard(&mut self, Guard, usize);
+
+    /// **Primitive:** See `Primitives::consume_from for documentation.
+    ///
+    /// Returns the buffer from the marker to the current position, discarding the
+    /// backtracking position carried by the marker.
+    #[inline]
+    fn _consume_from(&mut self, Guard, Self::Marker) -> Self::Buffer;
+
     /// **Primitive:** See `Primitives::remaining` for documentation.
     ///
     /// Returns the number of tokens remaining in this input (only this part of it, more might
     /// follow if `_is_end` is false).
     #[inline]
     fn _min_remaining(&self, Guard) -> usize;
+
     /// **Primitive:** See `Primitives::is_end` for documentation.
     ///
     /// Returns true if there are no more input in `Self` besides what has already been populated.
     #[inline]
     fn _is_end(&self, Guard) -> bool;
+
     /// **Primitive:** See `Primitives::mark` for documentation.
     ///
     /// Marks a position for backtracking along with relevant state.
     #[inline]
     fn _mark(&self, Guard)                 -> Self::Marker;
+
     /// **Primitive:** See `Primitives::restore` for documentation.
     ///
     /// Resumes from a previously marked state.
@@ -267,6 +294,10 @@ impl<'a, I: Copy> Input for &'a [I] {
     #[inline(always)]
     fn _discard(&mut self, _g: Guard, n: usize) {
         *self = &self[n..];
+    }
+    #[inline]
+    fn _consume_from(&mut self, _g: Guard, m: Self::Marker) -> Self::Buffer {
+        &m[..m.len() - self.len()]
     }
     #[inline(always)]
     fn _min_remaining(&self, _g: Guard) -> usize {
@@ -327,6 +358,10 @@ impl<'a, I: Copy> Input for InputBuf<'a, I> {
     #[inline(always)]
     fn _discard(&mut self, _g: Guard, n: usize) {
         self.1 = &self.1[n..];
+    }
+    #[inline]
+    fn _consume_from(&mut self, _g: Guard, m: Self::Marker) -> Self::Buffer {
+        &m[..m.len() - self.1.len()]
     }
     #[inline(always)]
     fn _min_remaining(&self, _g: Guard) -> usize {
@@ -505,17 +540,38 @@ mod test {
 
     #[test]
     fn primitives_slice() {
+        use primitives::Primitives;
         run_primitives_test(&b"abc"[..], true);
+
+        let mut s = &b"abc"[..];
+        let m = s.mark();
+        s.discard(2);
+        assert_eq!(s.consume_from(m), &b"ab"[..]);
+        assert_eq!(s, &b"c"[..]);
     }
 
     #[test]
     fn primitives_input_buf_default() {
+        use primitives::Primitives;
         run_primitives_test(new_buf(DEFAULT, b"abc"), false);
+
+        let mut s = new_buf(DEFAULT, b"abc");
+        let m = s.mark();
+        s.discard(2);
+        assert_eq!(s.consume_from(m), &b"ab"[..]);
+        assert_eq!(s, new_buf(DEFAULT, b"c"));
     }
 
     #[test]
     fn primitives_input_buf_end() {
+        use primitives::Primitives;
         run_primitives_test(new_buf(END_OF_INPUT, b"abc"), true);
+
+        let mut s = new_buf(END_OF_INPUT, b"abc");
+        let m = s.mark();
+        s.discard(2);
+        assert_eq!(s.consume_from(m), &b"ab"[..]);
+        assert_eq!(s, new_buf(END_OF_INPUT, b"c"));
     }
 
     fn run_primitives_test<B: Debug + for<'a> PartialEq<&'a [u8]>, I: Input<Token=u8, Buffer=B>>(mut s: I, last: bool) {

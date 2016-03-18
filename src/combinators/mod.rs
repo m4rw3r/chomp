@@ -293,23 +293,17 @@ pub fn skip_many1<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, (), E>
 #[inline]
 pub fn matched_by<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, (I::Buffer, T), E>
   where F: FnOnce(I) -> ParseResult<I, T, E> {
-    // TODO: Implement
-    unimplemented!()
-        /*
-    let buf = i.buffer();
+    let m = i.mark();
 
-    match f(i.clone()).into_inner() {
-        State::Data(b, t) => {
-            // b is remainder, find out how much the parser used
-            let diff = buf.len() - b.buffer().len();
-            let n    = &buf[..diff];
+    match f(i).into_inner() {
+        State::Data(mut b, t) => {
+            let n = b.consume_from(m);
 
             b.ret((n, t))
         },
-        State::Error(b, e)   => i.replace(b).err(e),
-        State::Incomplete(n) => i.incomplete(n),
+        State::Error(b, e)   => b.err(e),
+        State::Incomplete(b, n) => b.incomplete(n),
     }
-    */
 }
 
 /// Applies the parser `F` without consuming any input.
