@@ -239,16 +239,16 @@ pub use parsers::Error;
 //pub mod buffer;
 
 pub use combinators::{
-    //count,
+    count,
     option,
     or,
-    //many,
-    //many1,
-    //sep_by,
-    //sep_by1,
-    //many_till,
-    //skip_many,
-    //skip_many1,
+    many,
+    many1,
+    sep_by,
+    sep_by1,
+    many_till,
+    skip_many,
+    skip_many1,
     matched_by,
 };
 pub use parse::{
