@@ -124,6 +124,7 @@ impl BoundedRange for Range<usize> {
                     }
                 }
                 on {
+                    // TODO: Saturating sub?
                     self.data.0  = if self.data.0 == 0 { 0 } else { self.data.0 - 1 };
                     self.data.1 -= 1;
                 }
@@ -131,8 +132,9 @@ impl BoundedRange for Range<usize> {
 
             => result : T {
                 // Got all occurrences of the parser
-                // TODO: Can this even happen?
-                (s, (0, 0), _, _) => unreachable!(), // s.ret(result),
+                // First state or reached max => do not restore to mark since it is from last
+                // iteration
+                (s, (0, 0), _, _)                       => s.ret(result),
                 // Ok, last parser failed and we have reached minimum, we have iterated all.
                 // Return remainder of buffer and the collected result
                 (s, (0, _), m, EndState::Error(_))      => s.restore(m).ret(result),
@@ -381,7 +383,7 @@ impl BoundedRange for RangeFull {
             }
 
             => result : T {
-                (s, (), m, EndState::Error(_))   => s.restore(m).ret(result),
+                (s, (), m, EndState::Error(_))      => s.restore(m).ret(result),
                 // Nested parser incomplete, propagate if not at end
                 (s, (), m, EndState::Incomplete(n)) => if s.is_end() {
                     s.restore(m).ret(result)
@@ -438,7 +440,7 @@ impl BoundedRange for RangeFull {
 
             => result : T {
                 (s, (), EndStateTill::EndSuccess)    => s.ret(result),
-                (s, (), EndStateTill::Error(e))   => s.err(e),
+                (s, (), EndStateTill::Error(e))      => s.err(e),
                 // Nested parser incomplete, propagate if not at end
                 (s, (), EndStateTill::Incomplete(n)) => s.incomplete(n)
             }
@@ -473,9 +475,9 @@ impl BoundedRange for RangeTo<usize> {
             }
 
             => result : T {
-                // Either error or incomplete after the end
-                // TODO: Can this even happen?
-                (s, 0, _, _)                       => unreachable!(), // s.ret(result),
+                // First state or reached max => do not restore to mark since it is from last
+                // iteration
+                (s, 0, _, _)                       => s.ret(result),
                 // Inside of range, never outside
                 (s, _, m, EndState::Error(_))      => s.restore(m).ret(result),
                 // Nested parser incomplete, propagate if not at end

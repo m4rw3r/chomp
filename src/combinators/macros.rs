@@ -35,7 +35,7 @@ macro_rules! run_iter {
             /// Last good state.
             ///
             /// Wrapped in option to prevent two calls to destructors.
-            mark:   Option<I::Marker>,
+            mark:   I::Marker,
             /// Nested state
             data:   $data_ty,
             _t:     PhantomData<T>,
@@ -46,7 +46,7 @@ macro_rules! run_iter {
             #[inline]
             fn end_state(self) -> (I, $data_ty, I::Marker, EndState<E>) {
                 // TODO: Avoid branch, check if this can be guaranteed to always be Some(T)
-                (self.buf.expect("Iter.buf was None"), self.data, self.mark.expect("Iter.mark was None"), self.state)
+                (self.buf.expect("Iter.buf was None"), self.data, self.mark, self.state)
             }
         }
 
@@ -66,7 +66,8 @@ macro_rules! run_iter {
                 // TODO: Remove the branches here (ie. take + unwrap)
                 let i = $next_self.buf.take().expect("Iter.buf was None");
 
-                $next_self.mark = Some(i.mark());
+                // TODO: Any way to prevent marking here since it is not used at all times?
+                $next_self.mark = i.mark();
 
                 match ($next_self.parser)(i).into_inner() {
                     State::Data(b, v) => {
@@ -92,11 +93,14 @@ macro_rules! run_iter {
             }
         }
 
+        // TODO: Not always used
+        let m = $input.mark();
+
         let mut iter = Iter {
             state:  EndState::Incomplete(1),
             parser: $parser,
             buf:    Some($input),
-            mark:   None,
+            mark:   m,
             data:   $data,
             _t:     PhantomData,
         };

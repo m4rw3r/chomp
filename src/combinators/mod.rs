@@ -518,22 +518,22 @@ mod test {
         assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
 
         let r: ParseResult<_, Vec<_>, _> = sep_by(new_buf(DEFAULT, b"a"), any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b"a"), 1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
 
         let r: ParseResult<_, Vec<_>, _> = sep_by(new_buf(DEFAULT, b"a;"), any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b"a;"), 1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
 
         let r: ParseResult<_, Vec<_>, _> = sep_by(new_buf(DEFAULT, b"a;c"), any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b"a;c"), 1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
 
         let r: ParseResult<_, Vec<_>, _> = sep_by(new_buf(DEFAULT, b"a;c;"), any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b"a;c;"), 1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
 
         let r: ParseResult<_, Vec<_>, _> = sep_by(new_buf(DEFAULT, b"a--c-"), any, |i| string(i, b"--"));
-        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b"a--c-"), 1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b"-"), 1));
 
         let r: ParseResult<_, Vec<_>, _> = sep_by(new_buf(DEFAULT, b"aaa--a"), |i| string(i, b"aaa"), |i| string(i, b"--"));
-        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b"aaa--a"), 2));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b"a"), 2));
 
     }
 
@@ -560,22 +560,22 @@ mod test {
         assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
 
         let r: ParseResult<_, Vec<_>, _> = sep_by1(new_buf(DEFAULT, b"a"), any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b"a"), 1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
 
         let r: ParseResult<_, Vec<_>, _> = sep_by1(new_buf(DEFAULT, b"a;"), any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b"a;"), 1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
 
         let r: ParseResult<_, Vec<_>, _> = sep_by1(new_buf(DEFAULT, b"a;c"), any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b"a;c"), 1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
 
         let r: ParseResult<_, Vec<_>, _> = sep_by1(new_buf(DEFAULT, b"a;c;"), any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b"a;c;"), 1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
 
         let r: ParseResult<_, Vec<_>, _> = sep_by1(new_buf(DEFAULT, b"a--c-"), any, |i| string(i, b"--"));
-        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b"a--c-"), 1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b"-"), 1));
 
         let r: ParseResult<_, Vec<_>, _> = sep_by1(new_buf(DEFAULT, b"aaa--a"), |i| string(i, b"aaa"), |i| string(i, b"--"));
-        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b"aaa--a"), 2));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b"a"), 2));
     }
 
     #[test]
