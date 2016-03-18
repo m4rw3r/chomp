@@ -161,7 +161,6 @@ pub fn many<I: Input, T, E, F, U>(i: I, f: F) -> ParseResult<I, T, E>
 pub fn many1<I: Input, T, E, F, U>(i: I, f: F) -> ParseResult<I, T, E>
   where F: FnMut(I) -> ParseResult<I, U, E>,
         T: FromIterator<U> {
-            // FIXME: implement
     bounded::many(i, 1.., f)
 }
 
@@ -187,9 +186,7 @@ pub fn sep_by<I: Input, T, E, R, F, U, N, V>(i: I, p: R, sep: F) -> ParseResult<
         E: From<N>,
         R: FnMut(I) -> ParseResult<I, U, E>,
         F: FnMut(I) -> ParseResult<I, V, N> {
-            // FIXME: implement
-    //bounded::sep_by(i, .., p, sep)
-    unimplemented!()
+    bounded::sep_by(i, .., p, sep)
 }
 
 
@@ -215,9 +212,7 @@ pub fn sep_by1<I: Input, T, E, R, F, U, N, V>(i: I, p: R, sep: F) -> ParseResult
         E: From<N>,
         R: FnMut(I) -> ParseResult<I, U, E>,
         F: FnMut(I) -> ParseResult<I, V, N> {
-            // FIXME: Implement
-    //bounded::sep_by(i, 1.., p, sep)
-    unimplemented!()
+    bounded::sep_by(i, 1.., p, sep)
 }
 
 /// Applies the parser `R` multiple times until the parser `F` succeeds and returns a
@@ -239,9 +234,7 @@ pub fn many_till<I: Input, T, E, R, F, U, N, V>(i: I, p: R, end: F) -> ParseResu
   where T: FromIterator<U>,
         R: FnMut(I) -> ParseResult<I, U, E>,
         F: FnMut(I) -> ParseResult<I, V, N> {
-    //bounded::many_till(i, .., p, end)
-    // FIXME: Implement
-    unimplemented!()
+    bounded::many_till(i, .., p, end)
 }
 
 /// Runs the given parser until it fails, discarding matched input.
@@ -487,7 +480,7 @@ mod test {
     fn many_till_test() {
         assert_eq!(many_till(new_buf(DEFAULT, b"abcd"), any, |i| token(i, b'c')).into_inner(), State::Data(new_buf(DEFAULT, b"d"), vec![b'a', b'b']));
         let r: ParseResult<_, Vec<_>, _> = many_till(new_buf(DEFAULT, b"abd"), any, |i| token(i, b'c'));
-        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b"abd"), 1));
+        assert_eq!(r.into_inner(), State::Incomplete(new_buf(DEFAULT, b""), 1));
 
         let r: ParseResult<_, Vec<u8>, _> = many_till(new_buf(DEFAULT, b"abcd"), |i| i.err(()), |i| token(i, b'c'));
         assert_eq!(r.into_inner(), State::Error(new_buf(DEFAULT, b"abcd"), ()));
