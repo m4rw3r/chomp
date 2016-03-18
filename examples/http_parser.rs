@@ -20,16 +20,16 @@ use chomp::*;
 use chomp::buffer::{Source, Stream, StreamError};
 
 #[derive(Debug)]
-struct Request<'a> {
-    method:  &'a [u8],
-    uri:     &'a [u8],
-    version: &'a [u8],
+struct Request<B> {
+    method:  B,
+    uri:     B,
+    version: B,
 }
 
 #[derive(Debug)]
-struct Header<'a> {
-    name:  &'a [u8],
-    value: Vec<&'a [u8]>,
+struct Header<B> {
+    name:  B,
+    value: Vec<B>,
 }
 
 fn is_token(c: u8) -> bool {
@@ -64,7 +64,7 @@ fn is_not_space(c: u8)        -> bool { c != b' ' }
 fn is_end_of_line(c: u8)      -> bool { c == b'\r' || c == b'\n' }
 fn is_http_version(c: u8)     -> bool { c >= b'0' && c <= b'9' || c == b'.' }
 
-fn end_of_line(i: Input<u8>) -> U8Result<u8> {
+fn end_of_line<I: Input<Token=u8>>(i: I) -> SimpleResult<I, u8> {
     or(i, |i| parse!{i;
                token(b'\r');
                token(b'\n');
@@ -72,14 +72,14 @@ fn end_of_line(i: Input<u8>) -> U8Result<u8> {
           |i| token(i, b'\n'))
 }
 
-fn http_version(i: Input<u8>) -> U8Result<&[u8]> {
+fn http_version<I: Input<Token=u8>>(i: I) -> SimpleResult<I, I::Buffer> {
     parse!{i;
         string(b"HTTP/");
         take_while1(is_http_version)
     }
 }
 
-fn request_line(i: Input<u8>) -> U8Result<Request> {
+fn request_line<I: Input<Token=u8>>(i: I) -> SimpleResult<I, Request<I::Buffer>> {
     parse!{i;
         let method  = take_while1(is_token);
                       take_while1(is_space);
@@ -95,7 +95,7 @@ fn request_line(i: Input<u8>) -> U8Result<Request> {
     }
 }
 
-fn message_header_line(i: Input<u8>) -> U8Result<&[u8]> {
+fn message_header_line<I: Input<Token=u8>>(i: I) -> SimpleResult<I, I::Buffer> {
     parse!{i;
                    take_while1(is_horizontal_space);
         let line = take_till(is_end_of_line);
@@ -105,7 +105,7 @@ fn message_header_line(i: Input<u8>) -> U8Result<&[u8]> {
     }
 }
 
-fn message_header(i: Input<u8>) -> U8Result<Header> {
+fn message_header<I: Input<Token=u8>>(i: I) -> SimpleResult<I, Header<I::Buffer>> {
     parse!{i;
         let name  = take_while1(is_token);
                     token(b':');
@@ -118,7 +118,7 @@ fn message_header(i: Input<u8>) -> U8Result<Header> {
     }
 }
 
-fn request(i: Input<u8>) -> U8Result<(Request, Vec<Header>)> {
+fn request<I: Input<Token=u8>>(i: I) -> SimpleResult<I, (Request<I::Buffer>, Vec<Header<I::Buffer>>)> {
     parse!{i;
         let r = request_line();
                 end_of_line();

@@ -1,7 +1,7 @@
 use primitives::input;
-use primitives::{State, InputBuffer, IntoInner};
+use primitives::{State, IntoInner};
 
-use {Input, ParseResult};
+use {InputBuf, ParseResult};
 use buffer::{IntoStream, StreamError, Stream};
 
 /// Stream implementation for immutable slices.
@@ -68,7 +68,7 @@ impl<'i, I: 'i> SliceStream<'i, I> {
     }
 }
 
-impl<'a, 'i, I: 'i> IntoStream<'a, 'i> for &'i [I] {
+impl<'a, 'i, I: 'i + Copy> IntoStream<'a, 'i> for &'i [I] {
     type Item = I;
     type Into = SliceStream<'i, I>;
 
@@ -78,33 +78,37 @@ impl<'a, 'i, I: 'i> IntoStream<'a, 'i> for &'i [I] {
     }
 }
 
-impl<'a, 'i, I: 'i> Stream<'a, 'i> for SliceStream<'i, I> {
+impl<'a, 'i, I: 'i + Copy> Stream<'a, 'i> for SliceStream<'i, I> {
     type Item = I;
 
     #[inline]
     fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, StreamError<'i, Self::Item, E>>
-      where F: FnOnce(Input<'i, Self::Item>) -> ParseResult<'i, Self::Item, T, E>,
+      where F: FnOnce(InputBuf<'i, Self::Item>) -> ParseResult<InputBuf<'i, Self::Item>, T, E>,
             T: 'i,
             E: 'i {
+        use primitives::Primitives;
+
         if self.is_empty() {
             return Err(StreamError::EndOfInput);
         }
 
-        match f(input::new(input::END_OF_INPUT, &self.slice[self.pos..])).into_inner() {
+        match f(input::new_buf(input::END_OF_INPUT, &self.slice[self.pos..])).into_inner() {
             State::Data(remainder, data) => {
                 // TODO: Do something neater with the remainder
-                self.pos += self.len() - remainder.buffer().len();
+                self.pos += self.len() - remainder.min_remaining();
 
                 Ok(data)
             },
-            State::Error(remainder, err) => {
+            State::Error(mut remainder, err) => {
                 // TODO: Do something neater with the remainder
                 // TODO: Detail this behaviour, maybe make it configurable
-                self.pos += self.len() - remainder.len();
+                let r = remainder.min_remaining();
 
-                Err(StreamError::ParseError(remainder, err))
+                self.pos += self.len() - r;
+
+                Err(StreamError::ParseError(remainder.consume(r), err))
             },
-            State::Incomplete(n) => Err(StreamError::Incomplete(n + self.len())),
+            State::Incomplete(_, n) => Err(StreamError::Incomplete(n + self.len())),
         }
     }
 }

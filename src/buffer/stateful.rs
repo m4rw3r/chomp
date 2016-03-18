@@ -1,9 +1,9 @@
 use std::io;
 use std::cmp;
 
-use {Input, ParseResult};
+use {InputBuf, ParseResult};
 use primitives::input;
-use primitives::{InputBuffer, State, IntoInner};
+use primitives::{State, IntoInner};
 
 use buffer::{
     Buffer,
@@ -56,7 +56,8 @@ impl<R: io::Read, B: Buffer<u8>> Source<ReadDataSource<R>, B> {
     }
 }
 
-impl<I: Iterator, B: Buffer<I::Item>> Source<IteratorDataSource<I>, B> {
+impl<I: Iterator, B: Buffer<I::Item>> Source<IteratorDataSource<I>, B>
+  where I::Item: Copy {
     /// Creates a new `Source` from `Iterator` and `Buffer` instances.
     #[inline]
     pub fn from_iter(source: I, buffer: B) -> Self {
@@ -204,9 +205,11 @@ impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
 
     #[inline]
     fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, StreamError<'a, Self::Item, E>>
-      where F: FnOnce(Input<'a, Self::Item>) -> ParseResult<'a, Self::Item, T, E>,
+      where F: FnOnce(InputBuf<'a, Self::Item>) -> ParseResult<InputBuf<'a, Self::Item>, T, E>,
             T: 'a,
             E: 'a {
+        use primitives::Primitives;
+
         if self.state.contains(INCOMPLETE | AUTOMATIC_FILL) {
             try!(self.fill().map_err(StreamError::IoError));
         }
@@ -217,21 +220,23 @@ impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
 
         let input_state = if self.state.contains(END_OF_INPUT) { input::END_OF_INPUT } else { input::DEFAULT };
 
-        match f(input::new(input_state, &self.buffer)).into_inner() {
+        match f(input::new_buf(input_state, &self.buffer)).into_inner() {
             State::Data(remainder, data) => {
                 // TODO: Do something neater with the remainder
-                self.buffer.consume(self.buffer.len() - remainder.buffer().len());
+                self.buffer.consume(self.buffer.len() - remainder.min_remaining());
 
                 Ok(data)
             },
-            State::Error(remainder, err) => {
+            State::Error(mut remainder, err) => {
                 // TODO: Do something neater with the remainder
                 // TODO: Detail this behaviour, maybe make it configurable
-                self.buffer.consume(self.buffer.len() - remainder.len());
+                let r = remainder.min_remaining();
 
-                Err(StreamError::ParseError(remainder, err))
+                self.buffer.consume(self.buffer.len() - r);
+
+                Err(StreamError::ParseError(remainder.consume(r), err))
             },
-            State::Incomplete(n) => {
+            State::Incomplete(_, n) => {
                 self.request = self.buffer.len() + n;
 
                 if self.state.contains(END_OF_INPUT) {
@@ -249,7 +254,7 @@ impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
 #[cfg(test)]
 mod test {
     use std::io;
-    use {any, take};
+    use {Input, any, take};
     use Error;
     use buffer::{
         FixedSizeBuffer,

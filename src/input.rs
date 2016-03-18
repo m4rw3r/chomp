@@ -3,6 +3,8 @@ use parse_result;
 
 use primitives::Guard;
 
+pub trait U8Input: Input<Token=u8> {}
+
 /// Primitive operations on `Input` types.
 ///
 /// All parsers only require a few primitive operations to parse data:

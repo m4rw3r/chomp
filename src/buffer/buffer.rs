@@ -12,7 +12,7 @@ const DEFAULT_BUFFER_SIZE: usize = 6 * 1024;
 ///
 /// Enables the consumer to request specific amounts of data and only consume partial parts of the
 /// buffer.
-pub trait Buffer<I>: ops::Deref<Target=[I]> {
+pub trait Buffer<I: Copy>: ops::Deref<Target=[I]> {
     /// Attempt to fill the buffer using the closure `F`.
     ///
     /// The successful return from `F` should contain the number of items successfully written to

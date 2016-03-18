@@ -236,7 +236,7 @@ pub use parsers::{
     token,
 };
 pub use parsers::Error;
-//pub mod buffer;
+pub mod buffer;
 
 pub use combinators::{
     count,
@@ -255,12 +255,14 @@ pub use parse::{
     ParseError,
     parse_only,
 };
-pub use input::Input;
+pub use input::{
+    Input,
+    InputBuf,
+    U8Input,
+};
 pub use parse_result::{
     ParseResult,
-    // FIXME: Uncomment
     SimpleResult,
-    //U8Result,
 };
 
 /// Module used to construct fundamental parsers and combinators.
