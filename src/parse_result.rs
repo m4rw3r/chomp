@@ -22,9 +22,6 @@ pub enum State<I: Input, T, E> {
     /// Parse error state, first item is a slice from where the error occurred in the input buffer
     /// to the end of the input buffer and the second item is the error value.
     Error(I, E),
-    /// Incomplete state, a parser attempted to request more data than available in the slice, the
-    /// provided number is a guess at how many items are needed.
-    Incomplete(I, usize),
 }
 
 /// **Primitive:** Consumes self and reveals the inner state.
@@ -142,7 +139,6 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
         match self.0 {
             State::Data(i, t)       => f(i, t).map_err(From::from),
             State::Error(i, e)      => ParseResult(State::Error(i, From::from(e))),
-            State::Incomplete(i, n) => ParseResult(State::Incomplete(i, n)),
         }
     }
 
@@ -196,7 +192,6 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
         match self.0 {
             State::Data(i, t)       => ParseResult(State::Data(i, f(t))),
             State::Error(i, e)      => ParseResult(State::Error(i, e)),
-            State::Incomplete(i, n) => ParseResult(State::Incomplete(i, n)),
         }
     }
 
@@ -219,7 +214,6 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
         match self.0 {
             State::Data(i, t)       => ParseResult(State::Data(i, t)),
             State::Error(i, e)      => ParseResult(State::Error(i, f(e))),
-            State::Incomplete(i, n) => ParseResult(State::Incomplete(i, n)),
         }
     }
 
@@ -410,25 +404,6 @@ mod test {
 
         assert_eq!(r1.0, State::Error(input::new_buf(DEFAULT, b"test1"), 23));
         assert_eq!(r2.0, State::Error(input::new_buf(END_OF_INPUT, b"test2"), 24));
-        assert_eq!(n1_calls, 0);
-        assert_eq!(n2_calls, 0);
-    }
-
-    #[test]
-    fn incomplete_propagation() {
-        use primitives::Primitives;
-
-        let mut n1_calls = 0;
-        let mut n2_calls = 0;
-
-        let i1 = input::new_buf(DEFAULT, b"test1").incomplete::<(), ()>(23);
-        let i2 = input::new_buf(END_OF_INPUT, b"test2").incomplete::<(), ()>(24);
-
-        let r1: ParseResult<_, _, ()> = i1.bind(|i, t| { n1_calls += 1; i.ret(t) });
-        let r2: ParseResult<_, _, ()> = i2.bind(|i, t| { n2_calls += 1; i.ret(t) });
-
-        assert_eq!(r1.0, State::Incomplete(input::new_buf(DEFAULT, b"test1"), 23));
-        assert_eq!(r2.0, State::Incomplete(input::new_buf(END_OF_INPUT, b"test2"), 24));
         assert_eq!(n1_calls, 0);
         assert_eq!(n2_calls, 0);
     }

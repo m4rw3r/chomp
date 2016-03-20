@@ -14,18 +14,13 @@ macro_rules! run_iter {
         }
 
         => $result:ident : $t:ty {
-             $($pat:pat => $arm:expr),*
+             $($pat:pat => $arm:expr),*$(,)*
         }
     ) => { {
-        enum EndState<E> {
-            Error(E),
-            Incomplete(usize),
-        }
-
         struct Iter<I: Input, T, E, F>
           where F: FnMut(I) -> ParseResult<I, T, E> {
             /// Last state of the parser
-            state:  EndState<E>,
+            state:  Option<E>,
             /// Parser to execute once for each iteration
             parser: F,
             /// Remaining buffer
@@ -44,7 +39,7 @@ macro_rules! run_iter {
         impl<I: Input, T, E, F> Iter<I, T, E, F>
           where F: FnMut(I) -> ParseResult<I, T, E> {
             #[inline]
-            fn end_state(self) -> (I, $data_ty, I::Marker, EndState<E>) {
+            fn end_state(self) -> (I, $data_ty, I::Marker, Option<E>) {
                 // TODO: Avoid branch, check if this can be guaranteed to always be Some(T)
                 (self.buf.expect("Iter.buf was None"), self.data, self.mark, self.state)
             }
@@ -79,13 +74,7 @@ macro_rules! run_iter {
                     },
                     State::Error(b, e) => {
                         $next_self.buf   = Some(b);
-                        $next_self.state = EndState::Error(e);
-
-                        None
-                    },
-                    State::Incomplete(b, n) => {
-                        $next_self.buf   = Some(b);
-                        $next_self.state = EndState::Incomplete(n);
+                        $next_self.state = Some(e);
 
                         None
                     },
@@ -97,7 +86,7 @@ macro_rules! run_iter {
         let m = $input.mark();
 
         let mut iter = Iter {
-            state:  EndState::Incomplete(1),
+            state:  None,
             parser: $parser,
             buf:    Some($input),
             mark:   m,
@@ -129,12 +118,12 @@ macro_rules! run_iter_till {
         }
 
         => $result:ident : $t:ty {
-             $($pat:pat => $arm:expr),*
+             $($pat:pat => $arm:expr),*$(,)*
         }
     ) => { {
         enum EndStateTill<E> {
             Error(E),
-            Incomplete(usize),
+            Incomplete,
             EndSuccess,
         }
 
@@ -196,18 +185,12 @@ macro_rules! run_iter_till {
 
                         None
                     },
-                    State::Incomplete(b, n) => {
-                        $next_self.buf   = Some(b);
-                        $next_self.state = EndStateTill::Incomplete(n);
-
-                        None
-                    },
                 }
             }
         }
 
         let mut iter = IterTill {
-            state:  EndStateTill::Incomplete(1),
+            state:  EndStateTill::Incomplete,
             parser: $parser,
             end:    $end,
             buf:    Some($input),
@@ -241,7 +224,6 @@ macro_rules! iter_till_end_test {
             },
             // Failed to end, restore and continue
             State::Error(b, _)      => $the_self.buf = Some(b.restore(m)),
-            State::Incomplete(b, _) => $the_self.buf = Some(b.restore(m)),
         }
     } }
 }

@@ -286,7 +286,7 @@ pub mod primitives {
     ///
     /// Only used by fundamental parsers and combinators.
     pub mod input {
-        pub use input::{DEFAULT, END_OF_INPUT, new_buf};
+        pub use input::{DEFAULT, END_OF_INPUT, INCOMPLETE, new_buf};
     }
 
     /// ParseResult utilities.

@@ -131,19 +131,13 @@ impl BoundedRange for Range<usize> {
                 // Got all occurrences of the parser
                 // First state or reached max => do not restore to mark since it is from last
                 // iteration
-                (s, (0, 0), _, _)                       => s.ret(result),
+                (s, (0, 0), _, _)            => s.ret(result),
                 // Ok, last parser failed and we have reached minimum, we have iterated all.
                 // Return remainder of buffer and the collected result
-                (s, (0, _), m, EndState::Error(_))      => s.restore(m).ret(result),
-                // Nested parser incomplete but reached at least minimum, propagate if not at end
-                (s, (0, _), m, EndState::Incomplete(n)) => if s.is_end() {
-                    s.restore(m).ret(result)
-                } else {
-                    s.incomplete(n)
-                },
+                (s, (0, _), m, Some(_))      => s.restore(m).ret(result),
                 // Did not reach minimum, propagate
-                (s, (_, _), _, EndState::Error(e))      => s.err(e),
-                (s, (_, _), _, EndState::Incomplete(n)) => s.incomplete(n)
+                (s, (_, _), _, Some(e))      => s.err(e),
+                (_, _, _, None) => unreachable!(),
             }
         }
     }
@@ -179,14 +173,6 @@ impl BoundedRange for Range<usize> {
                     // Not enough iterations, propagate
                     return b.err(e);
                 },
-                State::Incomplete(b, n) => if min == 0 && b.is_end() {
-                    i = b.restore(m);
-
-                    break;
-                } else {
-                    // We have not done the minimum amount of iterations
-                    return b.incomplete(n);
-                }
             }
         }
 
@@ -237,15 +223,8 @@ impl BoundedRange for Range<usize> {
 
                                 return None;
                             },
-                            (0, State::Incomplete(b, n)) => {
-                                self.buf   = Some(b);
-                                self.state = EndStateTill::Incomplete(n);
-
-                                return None;
-                            },
                             // Failed to end, restore and continue since we can parse more
                             (_, State::Error(b, _))      => self.buf = Some(b.restore(m)),
-                            (_, State::Incomplete(b, _)) => self.buf = Some(b.restore(m)),
                         }
                     }
                 }
@@ -260,7 +239,7 @@ impl BoundedRange for Range<usize> {
                 (s, (0, _), EndStateTill::EndSuccess)    => s.ret(result),
                 // Did not reach minimum or a failure, propagate
                 (s, (_, _), EndStateTill::Error(e))   => s.err(e),
-                (s, (_, _), EndStateTill::Incomplete(n)) => s.incomplete(n),
+                (s, (_, _), EndStateTill::Incomplete) => unreachable!(),
                 // We cannot reach this since we only run the end test once we have reached the
                 // minimum number of matches
                 (_, (_, _), EndStateTill::EndSuccess)    => unreachable!()
@@ -293,16 +272,10 @@ impl BoundedRange for RangeFrom<usize> {
 
             => result : T {
                 // We got at least n items
-                (s, 0, m, EndState::Error(_))      => s.restore(m).ret(result),
-                // Nested parser incomplete, propagate if not at end
-                (s, 0, m, EndState::Incomplete(n)) => if s.is_end() {
-                    s.restore(m).ret(result)
-                } else {
-                    s.incomplete(n)
-                },
+                (s, 0, m, Some(_))      => s.restore(m).ret(result),
                 // Items still remaining, propagate
-                (s, _, _, EndState::Error(e))      => s.err(e),
-                (s, _, _, EndState::Incomplete(n)) => s.incomplete(n)
+                (s, _, _, Some(e))      => s.err(e),
+                (_, _, _, None) => unreachable!(),
             }
         }
     }
@@ -330,14 +303,6 @@ impl BoundedRange for RangeFrom<usize> {
                     // Not enough iterations, propagate
                     return b.err(e);
                 },
-                State::Incomplete(b, n) => if min == 0 && b.is_end() {
-                    i = b.restore(m);
-
-                    break;
-                } else {
-                    // We have not done the minimum amount of iterations
-                    return b.incomplete(n);
-                }
             }
         }
 
@@ -378,7 +343,7 @@ impl BoundedRange for RangeFrom<usize> {
                 (s, 0, EndStateTill::EndSuccess)    => s.ret(result),
                 // Did not reach minimum or a failure, propagate
                 (s, _, EndStateTill::Error(e))   => s.err(e),
-                (s, _, EndStateTill::Incomplete(n)) => s.incomplete(n),
+                (s, _, EndStateTill::Incomplete) => unreachable!(),
                 // We cannot reach this since we only run the end test once we have reached the
                 // minimum number of matches
                 (_, _, EndStateTill::EndSuccess)    => unreachable!()
@@ -407,13 +372,8 @@ impl BoundedRange for RangeFull {
             }
 
             => result : T {
-                (s, (), m, EndState::Error(_))      => s.restore(m).ret(result),
-                // Nested parser incomplete, propagate if not at end
-                (s, (), m, EndState::Incomplete(n)) => if s.is_end() {
-                    s.restore(m).ret(result)
-                } else {
-                    s.incomplete(n)
-                }
+                (s, (), m, Some(_))      => s.restore(m).ret(result),
+                (_, _, _, None) => unreachable!(),
             }
         }
     }
@@ -431,13 +391,6 @@ impl BoundedRange for RangeFull {
 
                     break;
                 },
-                State::Incomplete(b, n) => if b.is_end() {
-                    i = b.restore(m);
-
-                    break;
-                } else {
-                    return b.incomplete(n);
-                }
             }
         }
 
@@ -472,7 +425,7 @@ impl BoundedRange for RangeFull {
                 (s, (), EndStateTill::EndSuccess)    => s.ret(result),
                 (s, (), EndStateTill::Error(e))      => s.err(e),
                 // Nested parser incomplete, propagate if not at end
-                (s, (), EndStateTill::Incomplete(n)) => s.incomplete(n)
+                (s, (), EndStateTill::Incomplete) => unreachable!()
             }
         }
     }
@@ -509,13 +462,8 @@ impl BoundedRange for RangeTo<usize> {
                 // iteration
                 (s, 0, _, _)                       => s.ret(result),
                 // Inside of range, never outside
-                (s, _, m, EndState::Error(_))      => s.restore(m).ret(result),
-                // Nested parser incomplete, propagate if not at end
-                (s, _, m, EndState::Incomplete(n)) => if s.is_end() {
-                    s.restore(m).ret(result)
-                } else {
-                    s.incomplete(n)
-                }
+                (s, _, m, Some(_))      => s.restore(m).ret(result),
+                (_, _, _, None) => unreachable!(),
             }
         }
     }
@@ -545,13 +493,6 @@ impl BoundedRange for RangeTo<usize> {
 
                     break;
                 },
-                State::Incomplete(b, n) => if b.is_end() {
-                    i = b.restore(m);
-
-                    break;
-                } else {
-                    return b.incomplete(n);
-                }
             }
         }
 
@@ -596,15 +537,8 @@ impl BoundedRange for RangeTo<usize> {
 
                             return None;
                         },
-                        (0, State::Incomplete(b, n)) => {
-                            self.buf   = Some(b);
-                            self.state = EndStateTill::Incomplete(n);
-
-                            return None;
-                        },
                         // Failed to end, restore and continue since we can parse more
                         (_, State::Error(b, _))      => self.buf = Some(b.restore(m)),
-                        (_, State::Incomplete(b, _)) => self.buf = Some(b.restore(m)),
                     }
                 }
                 on {
@@ -617,7 +551,7 @@ impl BoundedRange for RangeTo<usize> {
                 (s, _, EndStateTill::EndSuccess)    => s.ret(result),
                 // Did not reach minimum or a failure, propagate
                 (s, _, EndStateTill::Error(e))   => s.err(e),
-                (s, _, EndStateTill::Incomplete(n)) => s.incomplete(n)
+                (s, _, EndStateTill::Incomplete) => unreachable!(),
             }
         }
     }
@@ -654,9 +588,8 @@ impl BoundedRange for usize {
                 // Got exact
                 (s, 0, _, _)                       => s.ret(result),
                 // We have got too few items, propagate error
-                (s, _, _, EndState::Error(e))      => s.err(e),
-                // Nested parser incomplete, propagate
-                (s, _, _, EndState::Incomplete(n)) => s.incomplete(n)
+                (s, _, _, Some(e))      => s.err(e),
+                (_, _, _, None) => unreachable!(),
             }
         }
     }
@@ -687,13 +620,6 @@ impl BoundedRange for usize {
                     // Not enough iterations, propagate
                     return b.err(e);
                 },
-                State::Incomplete(b, n) => if n == 0 {
-                    i = b.restore(m);
-
-                    break;
-                } else {
-                    return b.incomplete(n);
-                }
             }
         }
 
@@ -735,7 +661,7 @@ impl BoundedRange for usize {
                 (s, 0, EndStateTill::EndSuccess)    => s.ret(result),
                 // Did not reach minimum or a failure, propagate
                 (s, _, EndStateTill::Error(e))      => s.err(e),
-                (s, _, EndStateTill::Incomplete(n)) => s.incomplete(n),
+                (s, _, EndStateTill::Incomplete) => unreachable!(),
                 // We cannot reach this since we only run the end test once we have reached the
                 // minimum number of matches
                 (_, _, EndStateTill::EndSuccess)    => unreachable!()

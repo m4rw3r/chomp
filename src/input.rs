@@ -5,6 +5,78 @@ use primitives::Guard;
 
 pub trait U8Input: Input<Token=u8> {}
 
+// TODO: More restrictions? Buffer=&[u8]?
+impl<T> U8Input for T
+  where T: Input<Token=u8> {}
+
+/*
+Behaviour on incomplete:
+
+any:
+  error, unexpected eof
+satisfy:
+  error, unexpected eof
+satisfy_with:
+  error, unexpected eof
+token:
+  error, unexpected eof
+not_token:
+  error, unexpected eof
+peek:
+  return None
+peek_next
+  error, unexpected eof
+take:
+  error, unexpected eof
+take_while:
+  try refill (success: resume scanning, fail: return remainder)
+take_while1:
+  try refill (success: resume scanning, fail: return remainder)
+take_till:
+  try refill (success: resume scanning, fail: error, unexpected eof)
+scan:
+  try refill (success: resume scanning, fail: error, unexpected eof)
+run_scanner:
+  try refill (success: resume scanning, fail: error, unexpected eof)
+take_remainder:
+  try refill, return remainder
+string:
+  try refill (success: resume scanning, fail: error, unexpected eof)
+eof:
+  try refill (success: fail, unexpected, fail: success)
+
+option:
+  failed incomplete == error
+or:
+  failed incomplete == error
+matched_by:
+  failed incomplete == error
+look_ahead:
+  failed incomplete == error
+
+Range<usize>
+  many:
+    failed incomplete == error
+  skip:
+    failed incomplete == error
+  many_till:
+    failed incomplete == error
+RangeFrom
+  many:
+    failed incomplete == error
+  skip:
+    failed incomplete == error
+  many_till:
+    failed incomplete == error
+RangeFull
+  many:
+    failed incomplete == error
+  skip:
+    failed incomplete == error
+  many_till:
+    failed incomplete == error
+*/
+
 /// Primitive operations on `Input` types.
 ///
 /// All parsers only require a few primitive operations to parse data:
@@ -29,18 +101,6 @@ pub mod primitives {
     // FIXME: Rename
     pub trait Primitives: Input {
         #[inline(always)]
-        /// **Primitive:** Notifies that a parser has reached the end of the currently supplied slice but
-        /// requires more data.
-        ///
-        /// # Primitive
-        ///
-        /// Only used by fundamental parsers and combinators.
-        #[inline]
-        fn incomplete<T, E>(self, n: usize) -> ParseResult<Self, T, E> {
-            new_result(State::Incomplete(self, n))
-        }
-
-        #[inline(always)]
         fn first(&self) -> Option<Self::Token> {
             self._first(Guard(()))
         }
@@ -55,8 +115,9 @@ pub mod primitives {
             self._consume(Guard(()), n)
         }
 
+        // TODO: Change to self -> self?
         #[inline(always)]
-        fn discard(&mut self, n: usize) {
+        fn discard(self, n: usize) -> Self {
             self._discard(Guard(()), n)
         }
 
@@ -72,14 +133,15 @@ pub mod primitives {
             self._min_remaining(Guard(()))
         }
 
-        /// Returns true if this is the last available slice of the input.
+        /// Attempts to populate the input with more data, returning the number of additional
+        /// tokens which were added.
         ///
         /// # Primitive
         ///
         /// Only used by fundamental parsers and combinators.
         #[inline(always)]
-        fn is_end(&self) -> bool {
-            self._is_end(Guard(()))
+        fn fill(&mut self) -> usize {
+            self._fill(Guard(()))
         }
 
         /// Marks the current position to be able to backtrack to it using `restore`.
@@ -242,7 +304,7 @@ pub trait Input: Sized {
     ///
     /// Consumes a set amount of input tokens, discarding them.
     #[inline]
-    fn _discard(&mut self, Guard, usize);
+    fn _discard(self, Guard, usize) -> Self;
 
     /// **Primitive:** See `Primitives::consume_from for documentation.
     ///
@@ -258,11 +320,12 @@ pub trait Input: Sized {
     #[inline]
     fn _min_remaining(&self, Guard) -> usize;
 
-    /// **Primitive:** See `Primitives::is_end` for documentation.
+    /// **Primitive:** See `Primitives::fill` for documentation.
     ///
-    /// Returns true if there are no more input in `Self` besides what has already been populated.
-    #[inline]
-    fn _is_end(&self, Guard) -> bool;
+    /// Attempts to populate the input with more data, returning the number of additional
+    /// tokens which were added.
+    #[inline(always)]
+    fn _fill(&mut self, Guard) -> usize;
 
     /// **Primitive:** See `Primitives::mark` for documentation.
     ///
@@ -294,8 +357,8 @@ impl<'a, I: Copy> Input for &'a [I] {
         b
     }
     #[inline(always)]
-    fn _discard(&mut self, _g: Guard, n: usize) {
-        *self = &self[n..];
+    fn _discard(self, _g: Guard, n: usize) -> Self {
+        &self[n..]
     }
     #[inline]
     fn _consume_from(&mut self, _g: Guard, m: Self::Marker) -> Self::Buffer {
@@ -306,8 +369,8 @@ impl<'a, I: Copy> Input for &'a [I] {
         self.len()
     }
     #[inline(always)]
-    fn _is_end(&self, _g: Guard) -> bool {
-        true
+    fn _fill(&mut self, _g: Guard) -> usize {
+        0
     }
     fn _mark(&self, _g: Guard) -> Self::Marker {
         &self
@@ -323,6 +386,8 @@ bitflags!{
         const DEFAULT      = 0,
         /// If set the current slice of input is the last one.
         const END_OF_INPUT = 1,
+        /// If a parser has attempted to read incomplete
+        const INCOMPLETE   = 2,
     }
 }
 
@@ -341,8 +406,15 @@ pub fn new_buf<I>(state: InputMode, buffer: &[I]) -> InputBuf<I> {
     InputBuf(state, buffer)
 }
 
+impl<'a, I: 'a> InputBuf<'a, I> {
+    pub fn is_incomplete(&self) -> bool {
+        self.0.contains(INCOMPLETE)
+    }
+}
+
 impl<'a, I: Copy> Input for InputBuf<'a, I> {
     type Token  = I;
+    // TODO: InputMode? INCOMPLETE must be set no matter what
     type Marker = &'a [I];
     type Iter   = ::std::iter::Cloned<::std::slice::Iter<'a, I>>;
     type Buffer = &'a [I];
@@ -358,8 +430,10 @@ impl<'a, I: Copy> Input for InputBuf<'a, I> {
         b
     }
     #[inline(always)]
-    fn _discard(&mut self, _g: Guard, n: usize) {
+    fn _discard(mut self, _g: Guard, n: usize) -> Self {
         self.1 = &self.1[n..];
+
+        self
     }
     #[inline]
     fn _consume_from(&mut self, _g: Guard, m: Self::Marker) -> Self::Buffer {
@@ -370,8 +444,10 @@ impl<'a, I: Copy> Input for InputBuf<'a, I> {
         self.1.len()
     }
     #[inline(always)]
-    fn _is_end(&self, _g: Guard) -> bool {
-        self.0.contains(END_OF_INPUT)
+    fn _fill(&mut self, _g: Guard) -> usize {
+        self.0.insert(INCOMPLETE);
+
+        0
     }
     fn _mark(&self, _g: Guard) -> Self::Marker {
         &self.1
@@ -524,20 +600,6 @@ mod test {
 
         assert_eq!(r1.into_inner(), State::Error(new_buf(END_OF_INPUT, b"in1"), 23u32));
         assert_eq!(r2.into_inner(), State::Error(new_buf(DEFAULT, b"in2"), 23i32));
-    }
-
-    #[test]
-    fn make_incomplete() {
-        use primitives::Primitives;
-
-        let i1: InputBuf<u8> = new_buf(END_OF_INPUT, b"in1");
-        let i2: InputBuf<u8> = new_buf(DEFAULT,      b"in2");
-
-        let r1: ParseResult<_, (), u32> = i1.incomplete::<(), _>(23);
-        let r2: ParseResult<_, (), i32> = i2.incomplete::<(), _>(23);
-
-        assert_eq!(r1.into_inner(), State::Incomplete(new_buf(END_OF_INPUT, b"in1"), 23));
-        assert_eq!(r2.into_inner(), State::Incomplete(new_buf(DEFAULT, b"in2"), 23));
     }
 
     #[test]

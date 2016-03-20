@@ -100,15 +100,19 @@ impl<'a, 'i, I: 'i + Copy> Stream<'a, 'i> for SliceStream<'i, I> {
                 Ok(data)
             },
             State::Error(mut remainder, err) => {
-                // TODO: Do something neater with the remainder
-                // TODO: Detail this behaviour, maybe make it configurable
-                let r = remainder.min_remaining();
+                if remainder.is_incomplete() {
+                    // TODO: 1 is not correct, n is expected len but we can't obtain that right now
+                    Err(StreamError::Incomplete(self.len() + 1))
+                } else {
+                    // TODO: Do something neater with the remainder
+                    // TODO: Detail this behaviour, maybe make it configurable
+                    let r = remainder.min_remaining();
 
-                self.pos += self.len() - r;
+                    self.pos += self.len() - r;
 
-                Err(StreamError::ParseError(remainder.consume(r), err))
+                    Err(StreamError::ParseError(remainder.consume(r), err))
+                }
             },
-            State::Incomplete(_, n) => Err(StreamError::Incomplete(n + self.len())),
         }
     }
 }

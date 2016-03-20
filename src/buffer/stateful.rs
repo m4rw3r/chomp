@@ -222,29 +222,40 @@ impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
 
         match f(input::new_buf(input_state, &self.buffer)).into_inner() {
             State::Data(remainder, data) => {
-                // TODO: Do something neater with the remainder
-                self.buffer.consume(self.buffer.len() - remainder.min_remaining());
+                if remainder.is_incomplete() && self.state.contains(END_OF_INPUT) {
+                    // We can't accept this since we might have hit a premature end
+                    self.request = self.buffer.len() + 1;
 
-                Ok(data)
-            },
-            State::Error(mut remainder, err) => {
-                // TODO: Do something neater with the remainder
-                // TODO: Detail this behaviour, maybe make it configurable
-                let r = remainder.min_remaining();
-
-                self.buffer.consume(self.buffer.len() - r);
-
-                Err(StreamError::ParseError(remainder.consume(r), err))
-            },
-            State::Incomplete(_, n) => {
-                self.request = self.buffer.len() + n;
-
-                if self.state.contains(END_OF_INPUT) {
-                    Err(StreamError::Incomplete(self.request))
-                } else {
                     self.state.insert(INCOMPLETE);
 
                     Err(StreamError::Retry)
+                } else {
+                    // TODO: Do something neater with the remainder
+                    self.buffer.consume(self.buffer.len() - remainder.min_remaining());
+
+                    Ok(data)
+                }
+            },
+            State::Error(mut remainder, err) => {
+                if remainder.is_incomplete() {
+                    // TODO: How to deal with n, no longer present?
+                    self.request = self.buffer.len() + 1;
+
+                    if self.state.contains(END_OF_INPUT) {
+                        Err(StreamError::Incomplete(self.request))
+                    } else {
+                        self.state.insert(INCOMPLETE);
+
+                        Err(StreamError::Retry)
+                    }
+                } else {
+                    // TODO: Do something neater with the remainder
+                    // TODO: Detail this behaviour, maybe make it configurable
+                    let r = remainder.min_remaining();
+
+                    self.buffer.consume(self.buffer.len() - r);
+
+                    Err(StreamError::ParseError(remainder.consume(r), err))
                 }
             },
         }

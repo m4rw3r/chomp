@@ -59,7 +59,6 @@ pub fn parse_only<'a, I: Copy, T, E, F>(parser: F, input: &'a [I]) -> Result<T, 
 
             b.consume(r)
         }, e)),
-        State::Incomplete(_, n) => Err(ParseError::Incomplete(n)),
     }
 }
 

@@ -61,15 +61,6 @@ pub fn option<I: Input, T, E, F>(i: I, f: F, default: T) -> ParseResult<I, T, E>
         State::Error(b, _)   => {
             b.restore(m).ret(default)
         },
-        State::Incomplete(b, n) => {
-            let b = b.restore(m);
-
-            if b.is_end() {
-                b.ret(default)
-            } else {
-                b.incomplete(n)
-            }
-        },
     }
 }
 
@@ -101,15 +92,6 @@ pub fn or<I: Input, T, E, F, G>(i: I, f: F, g: G) -> ParseResult<I, T, E>
     match f(i).into_inner() {
         State::Data(b, d)    => b.ret(d),
         State::Error(b, _)   => g(b.restore(m)),
-        State::Incomplete(b, n) => {
-            let b = b.restore(m);
-
-            if b.is_end() {
-                g(b)
-            } else {
-                b.incomplete(n)
-            }
-        },
     }
 }
 
@@ -302,7 +284,6 @@ pub fn matched_by<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, (I::Buffer, T
             b.ret((n, t))
         },
         State::Error(b, e)   => b.err(e),
-        State::Incomplete(b, n) => b.incomplete(n),
     }
 }
 
@@ -324,7 +305,6 @@ pub fn look_ahead<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, T, E>
     match f(i).into_inner() {
         State::Data(b, t)       => b.restore(m).ret(t),
         State::Error(b, t)      => b.restore(m).err(t),
-        State::Incomplete(b, n) => b.restore(m).incomplete(n),
     }
 }
 
