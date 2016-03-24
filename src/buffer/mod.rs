@@ -85,12 +85,8 @@ impl<'a, T, I: Input<Buffer=&'a [T]>, E> From<ParseError<I, E>> for StreamError<
         use primitives::Primitives;
 
         match e {
-            ParseError::Error(mut b, e)   => {
-                let r = b.min_remaining();
-
-                StreamError::ParseError(b.consume(r), e)
-            },
-            ParseError::Incomplete(n) => StreamError::Incomplete(n),
+            ParseError::Error(mut b, e) => StreamError::ParseError(b.consume_remaining(), e),
+            ParseError::Incomplete(n)   => StreamError::Incomplete(n),
         }
     }
 }
@@ -98,7 +94,7 @@ impl<'a, T, I: Input<Buffer=&'a [T]>, E> From<ParseError<I, E>> for StreamError<
 /// Trait wrapping the state management in reading from a data source while parsing.
 pub trait Stream<'a, 'i> {
     /// The input item type, usually depending on which `DataSource` is used.
-    type Item: 'i + Copy;
+    type Item: 'i + Copy + PartialEq;
 
     /// Attempts to run the supplied parser `F` once on the currently populated data in this
     /// stream, providing a borrow of the inner data storage.
@@ -115,7 +111,7 @@ pub trait Stream<'a, 'i> {
 /// Trait for conversion into a `Stream`.
 pub trait IntoStream<'a, 'i> {
     /// The input item type provided by the stream.
-    type Item: 'i + Copy;
+    type Item: 'i + Copy + PartialEq;
     /// The `Stream` instance type.
     type Into: Stream<'a, 'i, Item=Self::Item>;
 

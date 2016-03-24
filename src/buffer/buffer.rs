@@ -12,7 +12,7 @@ const DEFAULT_BUFFER_SIZE: usize = 6 * 1024;
 ///
 /// Enables the consumer to request specific amounts of data and only consume partial parts of the
 /// buffer.
-pub trait Buffer<I: Copy>: ops::Deref<Target=[I]> {
+pub trait Buffer<I: Copy + PartialEq>: ops::Deref<Target=[I]> {
     /// Attempt to fill the buffer using the closure `F`.
     ///
     /// The successful return from `F` should contain the number of items successfully written to
@@ -59,7 +59,7 @@ pub trait Buffer<I: Copy>: ops::Deref<Target=[I]> {
 /// Only allocates when created.
 // TODO: Tests
 #[derive(Debug, Eq, PartialEq)]
-pub struct FixedSizeBuffer<I: Copy> {
+pub struct FixedSizeBuffer<I: Copy + PartialEq> {
     /// Backing memory.
     buffer:    Vec<I>,
     /// Number of items of `buffer` which contain actual data.
@@ -70,7 +70,7 @@ pub struct FixedSizeBuffer<I: Copy> {
     used:      Cell<usize>,
 }
 
-impl<I: Copy> FixedSizeBuffer<I> {
+impl<I: Copy + PartialEq> FixedSizeBuffer<I> {
     /// Creates a fixed-size buffer with the default buffer size.
     #[inline]
     pub fn new() -> Self {
@@ -101,7 +101,7 @@ impl<I: Copy> FixedSizeBuffer<I> {
     }
 }
 
-impl<I: Copy> ops::Deref for FixedSizeBuffer<I> {
+impl<I: Copy + PartialEq> ops::Deref for FixedSizeBuffer<I> {
     type Target = [I];
 
     #[inline]
@@ -110,14 +110,14 @@ impl<I: Copy> ops::Deref for FixedSizeBuffer<I> {
     }
 }
 
-impl<I: Copy> ops::DerefMut for FixedSizeBuffer<I> {
+impl<I: Copy + PartialEq> ops::DerefMut for FixedSizeBuffer<I> {
     #[inline]
     fn deref_mut(&mut self) -> &mut [I] {
         &mut self.buffer[self.used.get()..self.populated]
     }
 }
 
-impl<I: Copy> Buffer<I> for FixedSizeBuffer<I> {
+impl<I: Copy + PartialEq> Buffer<I> for FixedSizeBuffer<I> {
     #[inline]
     fn fill<S: DataSource<Item=I>>(&mut self, s: &mut S) -> io::Result<usize> {
         s.read(&mut self.buffer[self.populated..]).map(|n| {
@@ -171,7 +171,7 @@ impl<I: Copy> Buffer<I> for FixedSizeBuffer<I> {
 /// Will not decrease in size.
 // TODO: Tests
 #[derive(Debug)]
-pub struct GrowingBuffer<I: Copy> {
+pub struct GrowingBuffer<I: Copy + PartialEq> {
     /// Backing memory.
     buffer:    Vec<I>,
     /// Number of items of `buffer` which contain actual data.
@@ -184,7 +184,7 @@ pub struct GrowingBuffer<I: Copy> {
     used:      Cell<usize>,
 }
 
-impl<I: Copy> GrowingBuffer<I> {
+impl<I: Copy + PartialEq> GrowingBuffer<I> {
     /// Creates a new unlimited `GrowingBuffer`.
     #[inline]
     pub fn new() -> Self {
@@ -208,7 +208,7 @@ impl<I: Copy> GrowingBuffer<I> {
     }
 }
 
-impl<I: Copy> ops::Deref for GrowingBuffer<I> {
+impl<I: Copy + PartialEq> ops::Deref for GrowingBuffer<I> {
     type Target = [I];
 
     #[inline]
@@ -217,14 +217,14 @@ impl<I: Copy> ops::Deref for GrowingBuffer<I> {
     }
 }
 
-impl<I: Copy> ops::DerefMut for GrowingBuffer<I> {
+impl<I: Copy + PartialEq> ops::DerefMut for GrowingBuffer<I> {
     #[inline]
     fn deref_mut(&mut self) -> &mut [I] {
         &mut self.buffer[self.used.get()..self.populated]
     }
 }
 
-impl<I: Copy> Buffer<I> for GrowingBuffer<I> {
+impl<I: Copy + PartialEq> Buffer<I> for GrowingBuffer<I> {
     #[inline]
     fn fill<S: DataSource<Item=I>>(&mut self, s: &mut S) -> io::Result<usize> {
         s.read(&mut self.buffer[self.populated..]).map(|n| {

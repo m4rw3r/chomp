@@ -4,7 +4,7 @@ use std::mem;
 
 use input::Input;
 use parse_result::SimpleResult;
-use primitives::Primitives;
+use primitives::{Primitives, Buffer};
 
 pub use self::error::Error;
 
@@ -24,7 +24,10 @@ pub use debugtrace::StackFrame;
 /// ```
 #[inline]
 pub fn any<I: Input>(mut i: I) -> SimpleResult<I, I::Token> {
-    peek_next(i).bind(|i, c| i.discard(1).ret(c))
+    match i.pop() {
+        Some(c) => i.ret(c),
+        None    => i.err(Error::unexpected()),
+    }
 }
 
 /// Matches an item using ``f``, the item is returned if ``f`` yields true, otherwise this parser
@@ -40,11 +43,10 @@ pub fn any<I: Input>(mut i: I) -> SimpleResult<I, I::Token> {
 #[inline]
 pub fn satisfy<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Token>
   where F: FnOnce(I::Token) -> bool {
-    peek_next(i).bind(|i, c| if f(c) {
-            i.discard(1).ret(c)
-        } else {
-            i.err(Error::unexpected())
-        })
+    match i.peek() {
+        Some(c) if f(c) => { i.pop(); i.ret(c) },
+        _               => i.err(Error::unexpected()),
+    }
 }
 
 /// Reads a single token, applies the transformation `F` and then succeeds with the transformed
@@ -65,15 +67,18 @@ pub fn satisfy<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Token>
 pub fn satisfy_with<I: Input, T: Clone, F, P>(mut i: I, f: F, p: P) -> SimpleResult<I, T>
   where F: FnOnce(I::Token) -> T,
         P: FnOnce(T) -> bool {
-    peek_next(i).bind(|i, c| {
-        let t = f(c);
+    match i.peek().map(f) {
+        Some(c) => {
+            if p(c.clone()) {
+                i.pop();
 
-        if p(t.clone()) {
-            i.discard(1).ret(t)
-        } else {
-            i.err(Error::unexpected())
-        }
-    })
+                i.ret(c)
+            } else {
+                i.err(Error::unexpected())
+            }
+        },
+        _                           => i.err(Error::unexpected()),
+    }
 }
 
 /// Matches a single token, returning the match on success.
@@ -86,13 +91,11 @@ pub fn satisfy_with<I: Input, T: Clone, F, P>(mut i: I, f: F, p: P) -> SimpleRes
 /// assert_eq!(parse_only(|i| token(i, b'a'), b"abc"), Ok(b'a'));
 /// ```
 #[inline]
-pub fn token<I: Input>(mut i: I, t: I::Token) -> SimpleResult<I, I::Token>
-  where I::Token: PartialEq {
-    peek_next(i).bind(|i, c| if t == c {
-            i.discard(1).ret(c)
-        } else {
-            i.err(Error::expected(t))
-        })
+pub fn token<I: Input>(mut i: I, t: I::Token) -> SimpleResult<I, I::Token> {
+    match i.peek() {
+        Some(c) if c == t => { i.pop(); i.ret(c) },
+        _                 => i.err(Error::unexpected()),
+    }
 }
 
 /// Matches a single token as long as it is not equal to `t`, returning the match on success.
@@ -105,13 +108,11 @@ pub fn token<I: Input>(mut i: I, t: I::Token) -> SimpleResult<I, I::Token>
 /// assert_eq!(parse_only(|i| not_token(i, b'b'), b"abc"), Ok(b'a'));
 /// ```
 #[inline]
-pub fn not_token<I: Input>(mut i: I, t: I::Token) -> SimpleResult<I, I::Token>
-  where I::Token: PartialEq {
-    peek_next(i).bind(|i, c| if t != c {
-            i.discard(1).ret(c)
-        } else {
-            i.err(Error::unexpected())
-        })
+pub fn not_token<I: Input>(mut i: I, t: I::Token) -> SimpleResult<I, I::Token> {
+    match i.peek() {
+        Some(c) if c != t => { i.pop(); i.ret(c) },
+        _                 => i.err(Error::unexpected()),
+    }
 }
 
 /// Matches any item but does not consume it, on success it gives ``Some`` but if no input remains
@@ -127,11 +128,10 @@ pub fn not_token<I: Input>(mut i: I, t: I::Token) -> SimpleResult<I, I::Token>
 /// assert_eq!(parse_only(peek, b""), Ok(None));
 /// ```
 #[inline(always)]
-pub fn peek<I: Input>(i: I) -> SimpleResult<I, Option<I::Token>>
-  where I::Token: Clone {
-    let c = i.first();
+pub fn peek<I: Input>(mut i: I) -> SimpleResult<I, Option<I::Token>> {
+    let t = i.peek();
 
-    i.ret(c)
+    i.ret(t)
 }
 
 /// Matches any item but does not consume it.
@@ -144,18 +144,10 @@ pub fn peek<I: Input>(i: I) -> SimpleResult<I, Option<I::Token>>
 /// assert_eq!(parse_only(peek_next, b"abc"), Ok(b'a'));
 /// ```
 #[inline(always)]
-pub fn peek_next<I: Input>(mut i: I) -> SimpleResult<I, I::Token>
-  where I::Token: Clone {
-    match i.first() {
+pub fn peek_next<I: Input>(mut i: I) -> SimpleResult<I, I::Token> {
+    match i.peek() {
         Some(c) => i.ret(c),
-        None    => if i.fill() > 0 {
-            let c = i.first()
-                .expect("peek_next: Failed to obtain first token after fill() returned > 0");
-
-            i.ret(c)
-        } else {
-            i.err(Error::unexpected())
-        },
+        None    => i.err(Error::unexpected()),
     }
 }
 
@@ -170,22 +162,11 @@ pub fn peek_next<I: Input>(mut i: I) -> SimpleResult<I, I::Token>
 /// ```
 #[inline]
 pub fn take<I: Input>(mut i: I, num: usize) -> SimpleResult<I, I::Buffer> {
-    let mut r = i.min_remaining();
-
-    while r < num {
-        let n = i.fill();
-
-        if n == 0 {
-            // TODO: Proper incomplete error here?
-            return i.err(Error::unexpected());
-        }
-
-        r += n
+    match i.consume(num) {
+        Some(b) => i.ret(b),
+        // TODO: Proper incomplete error here?
+        None    => i.err(Error::unexpected()),
     }
-
-    let b = i.consume(num);
-
-    i.ret(b)
 }
 
 /// Matches all items while ``f`` returns false, returns a slice of all the matched items.
@@ -213,24 +194,9 @@ pub fn take<I: Input>(mut i: I, num: usize) -> SimpleResult<I, I::Buffer> {
 #[inline]
 pub fn take_while<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Buffer>
   where F: Fn(I::Token) -> bool {
-    loop {
-        if let Some(n) = i.iter().position(|c| f(c) == false) {
-            let b = i.consume(n);
+    let b = i.consume_while(f);
 
-            return i.ret(b);
-        }
-
-        // Attempt to fill
-        if i.fill() > 0 {
-            continue;
-        }
-
-        // Last slice and we fail to get more, take remainder
-        let r = i.min_remaining();
-        let b = i.consume(r);
-
-        return i.ret(b);
-    }
+    i.ret(b)
 }
 
 /// Matches all items while ``f`` returns true, if at least one item matched this parser succeeds
@@ -249,27 +215,12 @@ pub fn take_while<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Buffer>
 #[inline]
 pub fn take_while1<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Buffer>
   where F: Fn(I::Token) -> bool {
-    loop {
-        match i.iter().position(|c| f(c) == false) {
-            Some(0) => return i.err(Error::unexpected()),
-            Some(n) => {
-                let b = i.consume(n);
+    let b = i.consume_while(f);
 
-                return i.ret(b);
-            },
-            None    => {},
-        }
-
-        // Attempt to fill
-        if i.fill() > 0 {
-            continue;
-        }
-
-        // Last slice and we fail to get more, take remainder
-        let r = i.min_remaining();
-        let b = i.consume(r);
-
-        return i.ret(b);
+    if b.is_empty() {
+        i.err(Error::unexpected())
+    } else {
+        i.ret(b)
     }
 }
 
@@ -290,20 +241,24 @@ pub fn take_while1<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Buffer>
 pub fn take_till<I: Input<Token=u8>, F>(mut i: I, f: F) -> SimpleResult<I, I::Buffer>
   where F: Fn(I::Token) -> bool,
         I::Token: Clone {
-    loop {
-        if let Some(n) = i.iter().position(&f) {
-            let b = i.consume(n);
+    // TODO: How to check the last token? to make sure f succeeded on it?
+    let mut ok = false;
 
-            return i.ret(b);
+    let b = i.consume_while(|c| {
+        if !f(c) {
+            true
+        } else {
+            ok = true;
+
+            false
         }
+    });
 
-        // Attempt to fill
-        if i.fill() > 0 {
-            continue;
-        }
-
-        // TODO: Incomplete
-        return i.err(Error::unexpected());
+    if ok {
+        i.ret(b)
+    } else {
+        // TODO: Error could not find
+        i.err(Error::unexpected())
     }
 }
 
@@ -324,21 +279,11 @@ pub fn take_till<I: Input<Token=u8>, F>(mut i: I, f: F) -> SimpleResult<I, I::Bu
 #[inline]
 pub fn scan<I: Input, S, F>(mut i: I, s: S, mut f: F) -> SimpleResult<I, I::Buffer>
   where F: FnMut(S, I::Token) -> Option<S> {
-    unimplemented!()
-    /*
     let mut state = Some(s);
 
-    match i.iter().position(|c| { state = f(mem::replace(&mut state, None).unwrap(), c); state.is_none()}) {
-        Some(n) => {
-            let b = i.consume(n);
+    let b = i.consume_while(|c| { state = f(mem::replace(&mut state, None).unwrap(), c); state.is_none()});
 
-            i.ret(b)
-        },
-        // TODO: Should this following 1 be something else, seeing as take_while1 is potentially
-        // infinite?
-        None    => i.incomplete(1),
-    }
-    */
+    i.ret(b)
 }
 
 /// Like `scan` but generalized to return the final state of the scanner.
@@ -357,21 +302,17 @@ pub fn scan<I: Input, S, F>(mut i: I, s: S, mut f: F) -> SimpleResult<I, I::Buff
 // TODO: Remove Copy bound on S
 pub fn run_scanner<I: Input, S: Copy, F>(mut i: I, s: S, mut f: F) -> SimpleResult<I, (I::Buffer, S)>
   where F: FnMut(S, I::Token) -> Option<S> {
-    unimplemented!()
-    /*
     let mut state = s;
 
-    match i.iter().position(|c| { let t = f(state, c); match t { None => true, Some(v) => { state = v; false } } }) {
-        Some(n) => {
-            let b = i.consume(n);
+    let b = i.consume_while(|c| {
+        let t = f(state, c);
+        match t {
+            None => true,
+            Some(v) => { state = v; false }
+        }
+    });
 
-            i.ret((b, state))
-        },
-        // TODO: Should this following 1 be something else, seeing as take_while1 is potentially
-        // infinite?
-        None    => i.incomplete(1),
-    }
-    */
+    i.ret((b, state))
 }
 
 /// Matches the remainder of the buffer and returns it, always succeeds.
@@ -383,11 +324,7 @@ pub fn run_scanner<I: Input, S: Copy, F>(mut i: I, s: S, mut f: F) -> SimpleResu
 /// ```
 #[inline]
 pub fn take_remainder<I: Input>(mut i: I) -> SimpleResult<I, I::Buffer> {
-
-    while i.fill() > 0 {}
-
-    let r = i.min_remaining();
-    let b = i.consume(r);
+    let b = i.consume_remaining();
 
     i.ret(b)
 }
@@ -405,29 +342,32 @@ pub fn take_remainder<I: Input>(mut i: I) -> SimpleResult<I, I::Buffer> {
 #[inline]
 pub fn string<'b, T: Copy + PartialEq, I: Input<Token=T>>(mut i: I, s: &'b [T])
     -> SimpleResult<I, I::Buffer> {
-    let mut r = i.min_remaining();
+    let mut n  = 0;
+    let len    = s.len();
+    let mut ok = true;
 
-    while r < s.len() {
-        let n = i.fill();
-
-        if n == 0 {
-            // TODO: Proper incomplete error here?
-            return i.err(Error::unexpected());
+    // TODO: There has to be some more efficient way here
+    //       also doesn't seem to work nicely with string yet
+    let b = i.consume_while(|c| {
+        if n >= len {
+            false
         }
+        else if c == s[n] {
+            n += 1;
 
-        r += n
-    }
+            true
+        } else {
+            ok = false;
 
-    // TODO: Check if this is efficient:
-    for (n, (a, b)) in i.iter().zip(s.iter()).enumerate() {
-        if a != *b {
-            return i.discard(n).err(Error::expected(*b));
+            false
         }
+    });
+
+    if ok {
+        i.ret(b)
+    } else {
+        i.err(Error::expected(s[b.len()]))
     }
-
-    let b = i.consume(s.len());
-
-    i.ret(b)
 }
 
 /// Matches the end of the input.
@@ -441,7 +381,7 @@ pub fn string<'b, T: Copy + PartialEq, I: Input<Token=T>>(mut i: I, s: &'b [T])
 /// ```
 #[inline]
 pub fn eof<I: Input>(mut i: I) -> SimpleResult<I, ()> {
-    if i.min_remaining() == 0 && i.fill() == 0 {
+    if i.peek() == None {
         i.ret(())
     } else {
         i.err(Error::unexpected())
@@ -603,6 +543,7 @@ mod error {
     }
 }
 
+/*
 #[cfg(test)]
 mod test {
     use primitives::input::{new_buf, DEFAULT};
@@ -766,3 +707,4 @@ mod test {
         assert!(this.name.as_ref().map(|n| n.contains("parsers::test::backtrace_test")).unwrap_or(false), "Expected trace to contain \"parsers::test::backtrace_test\", got: {:?}", this.name.as_ref());
     }
 }
+*/

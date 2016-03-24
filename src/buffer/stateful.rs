@@ -57,7 +57,7 @@ impl<R: io::Read, B: Buffer<u8>> Source<ReadDataSource<R>, B> {
 }
 
 impl<I: Iterator, B: Buffer<I::Item>> Source<IteratorDataSource<I>, B>
-  where I::Item: Copy {
+  where I::Item: Copy + PartialEq {
     /// Creates a new `Source` from `Iterator` and `Buffer` instances.
     #[inline]
     pub fn from_iter(source: I, buffer: B) -> Self {
@@ -218,9 +218,7 @@ impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
             return Err(StreamError::EndOfInput);
         }
 
-        let input_state = if self.state.contains(END_OF_INPUT) { input::END_OF_INPUT } else { input::DEFAULT };
-
-        match f(input::new_buf(input_state, &self.buffer)).into_inner() {
+        match f(input::new_buf(input::DEFAULT, &self.buffer)).into_inner() {
             State::Data(remainder, data) => {
                 if remainder.is_incomplete() && self.state.contains(END_OF_INPUT) {
                     // We can't accept this since we might have hit a premature end
@@ -231,7 +229,7 @@ impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
                     Err(StreamError::Retry)
                 } else {
                     // TODO: Do something neater with the remainder
-                    self.buffer.consume(self.buffer.len() - remainder.min_remaining());
+                    self.buffer.consume(self.buffer.len() - remainder.len());
 
                     Ok(data)
                 }
@@ -251,11 +249,9 @@ impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
                 } else {
                     // TODO: Do something neater with the remainder
                     // TODO: Detail this behaviour, maybe make it configurable
-                    let r = remainder.min_remaining();
+                    self.buffer.consume(self.buffer.len() - remainder.len());
 
-                    self.buffer.consume(self.buffer.len() - r);
-
-                    Err(StreamError::ParseError(remainder.consume(r), err))
+                    Err(StreamError::ParseError(remainder.consume_remaining(), err))
                 }
             },
         }

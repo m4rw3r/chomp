@@ -308,6 +308,7 @@ pub fn look_ahead<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, T, E>
     }
 }
 
+/*
 #[cfg(test)]
 mod test {
     use {Input, Error, ParseResult};
@@ -556,3 +557,4 @@ mod test {
         assert_eq!(look_ahead(new_buf(DEFAULT, b"aa"), |i| token(i, b'a').then(|i| token(i, b'b')).map_err(|_| "err")).into_inner(), State::Error(new_buf(DEFAULT, b"aa"), "err"));
     }
 }
+*/

@@ -5,7 +5,7 @@ use std::io;
 /// Abstraction over `io::Read`, `Iterator` and others.
 pub trait DataSource {
     /// The type of items this data source produces.
-    type Item: Copy;
+    type Item: Copy + PartialEq;
 
     /// Populates the supplied buffer with data, returns the number of items written.
     ///
@@ -69,7 +69,7 @@ impl<I: Iterator> IteratorDataSource<I> {
 }
 
 impl<I: Iterator> DataSource for IteratorDataSource<I>
-  where I::Item: Copy {
+  where I::Item: Copy + PartialEq {
     type Item = I::Item;
 
     #[inline]

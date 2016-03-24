@@ -9,81 +9,11 @@ pub trait U8Input: Input<Token=u8> {}
 impl<T> U8Input for T
   where T: Input<Token=u8> {}
 
-/*
-Behaviour on incomplete:
-
-any:
-  error, unexpected eof
-satisfy:
-  error, unexpected eof
-satisfy_with:
-  error, unexpected eof
-token:
-  error, unexpected eof
-not_token:
-  error, unexpected eof
-peek:
-  return None
-peek_next
-  error, unexpected eof
-take:
-  error, unexpected eof
-take_while:
-  try refill (success: resume scanning, fail: return remainder)
-take_while1:
-  try refill (success: resume scanning, fail: return remainder)
-take_till:
-  try refill (success: resume scanning, fail: error, unexpected eof)
-scan:
-  try refill (success: resume scanning, fail: error, unexpected eof)
-run_scanner:
-  try refill (success: resume scanning, fail: error, unexpected eof)
-take_remainder:
-  try refill, return remainder
-string:
-  try refill (success: resume scanning, fail: error, unexpected eof)
-eof:
-  try refill (success: fail, unexpected, fail: success)
-
-option:
-  failed incomplete == error
-or:
-  failed incomplete == error
-matched_by:
-  failed incomplete == error
-look_ahead:
-  failed incomplete == error
-
-Range<usize>
-  many:
-    failed incomplete == error
-  skip:
-    failed incomplete == error
-  many_till:
-    failed incomplete == error
-RangeFrom
-  many:
-    failed incomplete == error
-  skip:
-    failed incomplete == error
-  many_till:
-    failed incomplete == error
-RangeFull
-  many:
-    failed incomplete == error
-  skip:
-    failed incomplete == error
-  many_till:
-    failed incomplete == error
-*/
-
 /// Primitive operations on `Input` types.
 ///
 /// All parsers only require a few primitive operations to parse data:
 pub mod primitives {
-    use {Input, ParseResult};
-    use primitives::State;
-    use primitives::parse_result::new as new_result;
+    use Input;
 
     /// This is a zero-sized type used by the `Primitives` trait implementation to guarantee that
     /// access to primitive methods on `Input` only happens when the `Primitives` trait has been
@@ -98,27 +28,27 @@ pub mod primitives {
     ///
     /// Only used by fundamental parsers and combinators.
     ///
-    // FIXME: Rename
+    // FIXME: Rename and documentation
     pub trait Primitives: Input {
         #[inline(always)]
-        fn first(&self) -> Option<Self::Token> {
-            self._first(Guard(()))
+        fn peek(&mut self) -> Option<Self::Token> {
+            self._peek(Guard(()))
         }
 
         #[inline(always)]
-        fn iter(&self) -> Self::Iter {
-            self._iter(Guard(()))
+        fn pop(&mut self) -> Option<Self::Token> {
+            self._pop(Guard(()))
         }
 
-        #[inline(always)]
-        fn consume(&mut self, n: usize) -> Self::Buffer {
+        #[inline]
+        fn consume(&mut self, n: usize) -> Option<Self::Buffer> {
             self._consume(Guard(()), n)
         }
 
-        // TODO: Change to self -> self?
-        #[inline(always)]
-        fn discard(self, n: usize) -> Self {
-            self._discard(Guard(()), n)
+        #[inline]
+        fn consume_while<F>(&mut self, f: F) -> Self::Buffer
+          where F: FnMut(Self::Token) -> bool {
+            self._consume_while(Guard(()), f)
         }
 
         /// Returns the buffer from the marker `m` to the current position, discarding the
@@ -128,20 +58,9 @@ pub mod primitives {
             self._consume_from(Guard(()), m)
         }
 
-        #[inline]
-        fn min_remaining(&self) -> usize {
-            self._min_remaining(Guard(()))
-        }
-
-        /// Attempts to populate the input with more data, returning the number of additional
-        /// tokens which were added.
-        ///
-        /// # Primitive
-        ///
-        /// Only used by fundamental parsers and combinators.
         #[inline(always)]
-        fn fill(&mut self) -> usize {
-            self._fill(Guard(()))
+        fn consume_remaining(&mut self) -> Self::Buffer {
+            self._consume_remaining(Guard(()))
         }
 
         /// Marks the current position to be able to backtrack to it using `restore`.
@@ -185,6 +104,16 @@ pub mod primitives {
     impl<I: Input> Primitives for I {}
 }
 
+// FIXME: Docs
+// TODO: More methods?
+pub trait Buffer {
+    fn len(&self) -> usize;
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
 // FIXME: Update, do not refer to type or linear type
 /// Linear type containing the parser state, this type is threaded though `bind` and is also the
 /// initial type passed to a parser.
@@ -201,12 +130,14 @@ pub mod primitives {
 pub trait Input: Sized {
     /// The token type of the input
     // TODO: Maybe remove the copy bound at some point?
-    type Token: Copy;
+    type Token: Copy + PartialEq;
     /// A marker type which is used to backtrack using `_mark` and `_restore`.
     type Marker;
 
+    /// An iterator over the loaded data in the input.
     type Iter: Iterator<Item=Self::Token>;
-    type Buffer;
+    // TODO: Bounds for common usage (eg. to iterator?)
+    type Buffer: Buffer;
 
     /// Returns `t` as a success value in the parsing context.
     ///
@@ -279,32 +210,39 @@ pub trait Input: Sized {
     }
 
     // Primitive methods
-    /// **Primitive:** See `Primitives::first` for documentation.
-    ///
-    /// Returns the first remaining item if there are still data to read.
-    #[inline(always)]
-    fn _first(&self, g: Guard) -> Option<Self::Token> {
-        self._iter(g).next()
-    }
 
-    /// **Primitive:** See `Primitives::iter` for documentation.
+    /// **Primitive:** See `Primitives::peek` for documentation.
     ///
-    /// Iterator over tokens in the input, does not consume any data.
+    /// Peeks at the next token in the input without consuming it. `None` if no more input is
+    /// available.
+    ///
+    /// Note: Will refill automatically.
     #[inline]
-    fn _iter(&self, Guard) -> Self::Iter;
+    fn _peek(&mut self, Guard) -> Option<Self::Token>;
+
+    /// **Primitive:** See `Primitives::pop` for documentation.
+    ///
+    /// Pops a token off the start of the input. `None` if no more input is available.
+    ///
+    /// Note: Will refill automatically.
+    #[inline]
+    fn _pop(&mut self, Guard) -> Option<Self::Token>;
 
     /// **Primitive:** See `Primitives::consume` for documentation.
     ///
-    /// Consumes a set amount of input tokens, returning a buffer containing them
-    // TODO: Should probably be combined with a ret
+    /// Attempt to consume `n` tokens, if it fails do not advance the position but return `None`.
     #[inline]
-    fn _consume(&mut self, Guard, usize) -> Self::Buffer;
+    fn _consume(&mut self, Guard, usize) -> Option<Self::Buffer>;
 
-    /// **Primitive:** See `Primitives::discard` for documentation.
+    /// **Primitive:** See `Primitives::consume_while` for documentation.
     ///
-    /// Consumes a set amount of input tokens, discarding them.
+    /// Runs the closure `F` on the tokens in order until it returns false, all tokens up to that
+    /// token will be returned as a buffer and discarded from the current input.
+    ///
+    /// Note: Will refill automatically.
     #[inline]
-    fn _discard(self, Guard, usize) -> Self;
+    fn _consume_while<F>(&mut self, Guard, F) -> Self::Buffer
+      where F: FnMut(Self::Token) -> bool;
 
     /// **Primitive:** See `Primitives::consume_from for documentation.
     ///
@@ -313,19 +251,13 @@ pub trait Input: Sized {
     #[inline]
     fn _consume_from(&mut self, Guard, Self::Marker) -> Self::Buffer;
 
-    /// **Primitive:** See `Primitives::remaining` for documentation.
+    /// **Primitive:** See `Primitives::consume_remaining` for documentation.
     ///
-    /// Returns the number of tokens remaining in this input (only this part of it, more might
-    /// follow if `_is_end` is false).
-    #[inline]
-    fn _min_remaining(&self, Guard) -> usize;
-
-    /// **Primitive:** See `Primitives::fill` for documentation.
+    /// Returns the remainder of the input in a buffer.
     ///
-    /// Attempts to populate the input with more data, returning the number of additional
-    /// tokens which were added.
-    #[inline(always)]
-    fn _fill(&mut self, Guard) -> usize;
+    /// Note: Will refill the intenal buffer until no more data is available if the underlying
+    /// implementation supports it.
+    fn _consume_remaining(&mut self, Guard) -> Self::Buffer;
 
     /// **Primitive:** See `Primitives::mark` for documentation.
     ///
@@ -340,41 +272,79 @@ pub trait Input: Sized {
     fn _restore(self, Guard, Self::Marker) -> Self;
 }
 
-impl<'a, I: Copy> Input for &'a [I] {
+impl<'a, I> Buffer for &'a [I] {
+    fn len(&self) -> usize {
+        (&self[..]).len()
+    }
+}
+
+impl<'a, I: Copy + PartialEq> Input for &'a [I] {
     type Token  = I;
     type Marker = &'a [I];
     type Iter   = ::std::iter::Cloned<::std::slice::Iter<'a, I>>;
     type Buffer = &'a [I];
 
-    #[inline(always)]
-    fn _iter(&self, _g: Guard) -> Self::Iter {
-        self.iter().cloned()
+    #[inline]
+    fn _peek(&mut self, _g: Guard) -> Option<Self::Token> {
+        self.first().cloned()
     }
-    #[inline(always)]
-    fn _consume(&mut self, _g: Guard, n: usize) -> Self::Buffer {
-        let b = &self[..n];
-        *self = &self[n..];
-        b
+    #[inline]
+    fn _pop(&mut self, _g: Guard) -> Option<Self::Token> {
+        self.first().cloned().map(|c| {
+            *self = &self[1..];
+
+            c
+        })
     }
-    #[inline(always)]
-    fn _discard(self, _g: Guard, n: usize) -> Self {
-        &self[n..]
+    #[inline]
+    fn _consume(&mut self, _g: Guard, n: usize) -> Option<Self::Buffer> {
+        if n > self.len() {
+            None
+        } else {
+            let b = &self[..n];
+
+            *self = &self[n..];
+
+            Some(b)
+        }
+    }
+    #[inline]
+    fn _consume_while<F>(&mut self, _g: Guard, mut f: F) -> Self::Buffer
+      where F: FnMut(Self::Token) -> bool {
+        match self.iter().position(|c| !f(*c)) {
+            Some(n) => {
+                let b = &self[..n];
+
+                *self = &self[n..];
+
+                b
+            },
+            None => {
+                let b = &self[..];
+
+                *self = &self[..0];
+
+                b
+            }
+        }
     }
     #[inline]
     fn _consume_from(&mut self, _g: Guard, m: Self::Marker) -> Self::Buffer {
         &m[..m.len() - self.len()]
     }
-    #[inline(always)]
-    fn _min_remaining(&self, _g: Guard) -> usize {
-        self.len()
+    #[inline]
+    fn _consume_remaining(&mut self, _g: Guard) -> Self::Buffer {
+        let b = &self[..];
+
+        *self = &self[..0];
+
+        b
     }
-    #[inline(always)]
-    fn _fill(&mut self, _g: Guard) -> usize {
-        0
-    }
+    #[inline]
     fn _mark(&self, _g: Guard) -> Self::Marker {
         &self
     }
+    #[inline]
     fn _restore(self, _g: Guard, m: Self::Marker) -> Self {
         m
     }
@@ -384,10 +354,8 @@ bitflags!{
     pub flags InputMode: u32 {
         /// Default (empty) input state.
         const DEFAULT      = 0,
-        /// If set the current slice of input is the last one.
-        const END_OF_INPUT = 1,
         /// If a parser has attempted to read incomplete
-        const INCOMPLETE   = 2,
+        const INCOMPLETE   = 1,
     }
 }
 
@@ -410,48 +378,95 @@ impl<'a, I: 'a> InputBuf<'a, I> {
     pub fn is_incomplete(&self) -> bool {
         self.0.contains(INCOMPLETE)
     }
+
+    pub fn len(&self) -> usize {
+        self.1.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
-impl<'a, I: Copy> Input for InputBuf<'a, I> {
+impl<'a, I: Copy + PartialEq> Input for InputBuf<'a, I> {
     type Token  = I;
     // TODO: InputMode? INCOMPLETE must be set no matter what
     type Marker = &'a [I];
     type Iter   = ::std::iter::Cloned<::std::slice::Iter<'a, I>>;
     type Buffer = &'a [I];
 
-    #[inline(always)]
-    fn _iter(&self, _g: Guard) -> Self::Iter {
-        self.1.iter().cloned()
-    }
-    #[inline(always)]
-    fn _consume(&mut self, _g: Guard, n: usize) -> Self::Buffer {
-        let b = &self.1[..n];
-        self.1 = &self.1[n..];
-        b
-    }
-    #[inline(always)]
-    fn _discard(mut self, _g: Guard, n: usize) -> Self {
-        self.1 = &self.1[n..];
+    #[inline]
+    fn _peek(&mut self, _g: Guard) -> Option<Self::Token> {
+        match self.1.first() {
+            Some(c) => Some(*c),
+            None    => {
+                self.0.insert(INCOMPLETE);
 
-        self
+                None
+            },
+        }
+    }
+    #[inline]
+    fn _pop(&mut self, g: Guard) -> Option<Self::Token> {
+        self._peek(g).map(|c| {
+            self.1 = &self.1[1..];
+
+            c
+        })
+    }
+    #[inline]
+    fn _consume(&mut self, _g: Guard, n: usize) -> Option<Self::Buffer> {
+        if n > self.1.len() {
+            self.0.insert(INCOMPLETE);
+
+            None
+        } else {
+            let b = &self.1[..n];
+
+            self.1 = &self.1[n..];
+
+            Some(b)
+        }
+    }
+    #[inline]
+    fn _consume_while<F>(&mut self, _g: Guard, mut f: F) -> Self::Buffer
+      where F: FnMut(Self::Token) -> bool {
+        match self.1.iter().position(|c| !f(*c)) {
+            Some(n) => {
+                let b = &self.1[..n];
+
+                self.1 = &self.1[n..];
+
+                b
+            },
+            None => {
+                self.0.insert(INCOMPLETE);
+
+                let b = self.1;
+
+                self.1 = &self.1[..0];
+
+                b
+            }
+        }
     }
     #[inline]
     fn _consume_from(&mut self, _g: Guard, m: Self::Marker) -> Self::Buffer {
         &m[..m.len() - self.1.len()]
     }
-    #[inline(always)]
-    fn _min_remaining(&self, _g: Guard) -> usize {
-        self.1.len()
-    }
-    #[inline(always)]
-    fn _fill(&mut self, _g: Guard) -> usize {
-        self.0.insert(INCOMPLETE);
+    #[inline]
+    fn _consume_remaining(&mut self, _g: Guard) -> Self::Buffer {
+        let b = self.1;
 
-        0
+        self.1 = &self.1[..0];
+
+        b
     }
+    #[inline]
     fn _mark(&self, _g: Guard) -> Self::Marker {
         &self.1
     }
+    #[inline]
     fn _restore(mut self, _g: Guard, m: Self::Marker) -> Self {
         self.1 = m;
 
@@ -459,117 +474,93 @@ impl<'a, I: Copy> Input for InputBuf<'a, I> {
     }
 }
 
-// FIXME: Delete
+impl<'a> Buffer for &'a str {
+    fn len(&self) -> usize {
+        (&self[..]).len()
+    }
+}
+
+impl<'a> Input for &'a str {
+    type Token  = char;
+    type Marker = &'a str;
+    type Iter   = ::std::str::Chars<'a>;
+    type Buffer = &'a str;
+
+    #[inline]
+    fn _peek(&mut self, _g: Guard) -> Option<Self::Token> {
+        self.chars().next()
+    }
+    #[inline]
+    fn _pop(&mut self, _g: Guard) -> Option<Self::Token> {
+        let mut iter = self.char_indices();
+
+        iter.next().map(|(_, c)| {
+            match iter.next().map(|(p, _)| p) {
+                Some(n) => *self = &self[n..],
+                None    => *self = &self[..0],
+            }
+
+            c
+        })
+    }
+    #[inline]
+    fn _consume(&mut self, _g: Guard, n: usize) -> Option<Self::Buffer> {
+        match self.char_indices().enumerate().take(n + 1).last() {
+            // n always less than num if self contains more than n characters
+            Some((num, (pos, _))) if n < num => {
+                let b = &self[..pos];
+
+                *self = &self[pos..];
+
+                Some(b)
+            },
+            _ => None,
+        }
+    }
+    #[inline]
+    fn _consume_while<F>(&mut self, _g: Guard, mut f: F) -> Self::Buffer
+      where F: FnMut(Self::Token) -> bool {
+        // We need to find the character following the one which did not match
+        match self.char_indices().skip_while(|&(_, c)| f(c)).next() {
+            Some((pos, _)) => {
+                let b = &self[..pos];
+
+                *self = &self[pos..];
+
+                b
+            },
+            None => {
+                let b = &self[..];
+
+                *self = &self[..0];
+
+                b
+            }
+        }
+    }
+    #[inline]
+    fn _consume_from(&mut self, _g: Guard, m: Self::Marker) -> Self::Buffer {
+        &m[..m.len() - self.len()]
+    }
+    #[inline]
+    fn _consume_remaining(&mut self, _g: Guard) -> Self::Buffer {
+        let b = &self[..];
+
+        *self = &self[..0];
+
+        b
+    }
+    #[inline]
+    fn _mark(&self, _g: Guard) -> Self::Marker {
+        &self
+    }
+    #[inline]
+    fn _restore(self, _g: Guard, m: Self::Marker) -> Self {
+        m
+    }
+}
+
 /*
-/// **Primitive:** Trait limiting the use of `Clone` for `Input`.
-///
-/// # Primitive
-///
-/// Only used by fundamental parsers and combinators.
-///
-pub trait InputClone {
-    /// Creates a clone of the instance.
-    ///
-    /// # Primitive
-    ///
-    /// Only used by fundamental parsers and combinators.
-    #[inline(always)]
-    fn clone(&self) -> Self;
-}
-
-/// **Primitive:** Trait exposing the buffer of `Input`.
-///
-/// # Primitive
-///
-/// Only used by fundamental parsers and combinators.
-///
-pub trait InputBuffer<'a> {
-    /// The type of each element of the buffer.
-    type Item: 'a;
-
-    /// Reveals the internal buffer containig the remainder of the input.
-    ///
-    /// # Primitive
-    ///
-    /// Only used by fundamental parsers and combinators.
-    #[inline(always)]
-    fn buffer(&self) -> &'a [Self::Item];
-
-    /// Modifies the inner data without leaving the `Input` context.
-    ///
-    /// # Primitive
-    ///
-    /// Only used by fundamental parsers and combinators.
-    #[inline(always)]
-    fn replace(self, &'a [Self::Item]) -> Self;
-
-    /// Returns true if this is the last available slice of the input.
-    ///
-    /// # Primitive
-    ///
-    /// Only used by fundamental parsers and combinators.
-    #[inline(always)]
-    fn is_last_slice(&self) -> bool;
-}
-
-/// Trait limiting the use of `Clone` for `Input`.
-///
-/// # Primitive
-///
-/// Only used by fundamental parsers and combinators.
-///
-/// # Motivation
-///
-/// The `Input` type is supposed to be an approximation of a linear type when observed in the
-/// monadic parser context. This means that it should not be possible to duplicate or accidentally
-/// throw it away as well as restrict when and where an `Input` can be constructed. Not
-/// implementing `Clone` or `Copy` solves the first issue.
-///
-/// However, cloning an `Input` is necessary for backtracking and also allows for slightly more
-/// efficient iteration in combinators. This trait allows us to enable cloning selectively.
-impl<'a, I: 'a> InputClone for Input<'a, I> {
-    #[inline(always)]
-    fn clone(&self) -> Self {
-        Input(self.0, self.1)
-    }
-}
-
-/// Trait exposing the buffer of `Input`.
-///
-/// # Primitive
-///
-/// Only used by fundamental parsers and combinators.
-///
-/// # Motivation
-///
-/// The `Input` type is supposed to be an approximation of a linear type when observed in the
-/// monadic parser context. This means that it should not be possible to duplicate or accidentally
-/// throw it away as well as restrict when and where an `Input` can be constructed. Not exposing
-/// the constructor (to allow destructuring) as well as using `#[must_use]` solves the second
-/// issue.
-///
-/// But to be able to parse data the contents of the `Input` type must be exposed in at least one
-/// point, so that data can be examined, and this trait that makes it possible.
-impl<'a, I: 'a> InputBuffer<'a> for Input<'a, I> {
-    type Item = I;
-
-    #[inline(always)]
-    fn buffer(&self) -> &'a [Self::Item] {
-        self.1
-    }
-
-    #[inline(always)]
-    fn replace(self, b: &'a [Self::Item]) -> Self {
-        Input(self.0, b)
-    }
-
-    #[inline(always)]
-    fn is_last_slice(&self) -> bool {
-        self.0.contains(END_OF_INPUT)
-    }
-}
-*/
-
 #[cfg(test)]
 mod test {
     use std::fmt::Debug;
@@ -602,6 +593,7 @@ mod test {
         assert_eq!(r2.into_inner(), State::Error(new_buf(DEFAULT, b"in2"), 23i32));
     }
 
+    /*
     #[test]
     fn primitives_slice() {
         use primitives::Primitives;
@@ -641,7 +633,6 @@ mod test {
     fn run_primitives_test<B: Debug + for<'a> PartialEq<&'a [u8]>, I: Input<Token=u8, Buffer=B>>(mut s: I, last: bool) {
         use primitives::Primitives;
 
-        assert_eq!(s.is_end(), last);
         assert_eq!(s.min_remaining(), 3);
         let m = s.mark();
         assert_eq!(s.min_remaining(), 3);
@@ -655,7 +646,6 @@ mod test {
         assert_eq!(s.consume(1), &b"c"[..]);
         assert_eq!(s.min_remaining(), 0);
         assert_eq!(s.iter().collect::<Vec<_>>(), vec![]);
-        assert_eq!(s.is_end(), last);
         let mut s = s.restore(m);
         assert_eq!(s.min_remaining(), 3);
         assert_eq!(s.iter().collect::<Vec<_>>(), vec![b'a', b'b', b'c']);
@@ -664,4 +654,5 @@ mod test {
         assert_eq!(s.min_remaining(), 2);
         assert_eq!(s.iter().collect::<Vec<_>>(), vec![b'b', b'c']);
     }
-}
+    */
+}*/

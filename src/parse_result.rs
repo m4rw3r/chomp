@@ -286,6 +286,7 @@ impl<I: Input, T, E> IntoInner for ParseResult<I, T, E> {
     }
 }
 
+/*
 #[cfg(test)]
 mod test {
     use input;
@@ -419,3 +420,4 @@ mod test {
         assert_eq!(rhs.0, State::Data(&b"test"[..], 124));
     }
 }
+*/

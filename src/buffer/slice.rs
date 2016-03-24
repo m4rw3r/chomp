@@ -68,7 +68,7 @@ impl<'i, I: 'i> SliceStream<'i, I> {
     }
 }
 
-impl<'a, 'i, I: 'i + Copy> IntoStream<'a, 'i> for &'i [I] {
+impl<'a, 'i, I: 'i + Copy + PartialEq> IntoStream<'a, 'i> for &'i [I] {
     type Item = I;
     type Into = SliceStream<'i, I>;
 
@@ -78,7 +78,7 @@ impl<'a, 'i, I: 'i + Copy> IntoStream<'a, 'i> for &'i [I] {
     }
 }
 
-impl<'a, 'i, I: 'i + Copy> Stream<'a, 'i> for SliceStream<'i, I> {
+impl<'a, 'i, I: 'i + Copy + PartialEq> Stream<'a, 'i> for SliceStream<'i, I> {
     type Item = I;
 
     #[inline]
@@ -92,10 +92,10 @@ impl<'a, 'i, I: 'i + Copy> Stream<'a, 'i> for SliceStream<'i, I> {
             return Err(StreamError::EndOfInput);
         }
 
-        match f(input::new_buf(input::END_OF_INPUT, &self.slice[self.pos..])).into_inner() {
+        match f(input::new_buf(input::DEFAULT, &self.slice[self.pos..])).into_inner() {
             State::Data(remainder, data) => {
                 // TODO: Do something neater with the remainder
-                self.pos += self.len() - remainder.min_remaining();
+                self.pos += self.len() - remainder.len();
 
                 Ok(data)
             },
@@ -106,11 +106,11 @@ impl<'a, 'i, I: 'i + Copy> Stream<'a, 'i> for SliceStream<'i, I> {
                 } else {
                     // TODO: Do something neater with the remainder
                     // TODO: Detail this behaviour, maybe make it configurable
-                    let r = remainder.min_remaining();
+                    let r = remainder.len();
 
                     self.pos += self.len() - r;
 
-                    Err(StreamError::ParseError(remainder.consume(r), err))
+                    Err(StreamError::ParseError(remainder.consume_remaining(), err))
                 }
             },
         }
