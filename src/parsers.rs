@@ -127,7 +127,7 @@ pub fn not_token<I: Input>(mut i: I, t: I::Token) -> SimpleResult<I, I::Token> {
 ///
 /// assert_eq!(parse_only(peek, b""), Ok(None));
 /// ```
-#[inline(always)]
+#[inline]
 pub fn peek<I: Input>(mut i: I) -> SimpleResult<I, Option<I::Token>> {
     let t = i.peek();
 
@@ -143,7 +143,7 @@ pub fn peek<I: Input>(mut i: I) -> SimpleResult<I, Option<I::Token>> {
 ///
 /// assert_eq!(parse_only(peek_next, b"abc"), Ok(b'a'));
 /// ```
-#[inline(always)]
+#[inline]
 pub fn peek_next<I: Input>(mut i: I) -> SimpleResult<I, I::Token> {
     match i.peek() {
         Some(c) => i.ret(c),
@@ -339,6 +339,7 @@ pub fn take_remainder<I: Input>(mut i: I) -> SimpleResult<I, I::Buffer> {
 ///
 /// assert_eq!(parse_only(|i| string(i, b"abc"), b"abcdef"), Ok(&b"abc"[..]));
 /// ```
+// TODO: Does not actually work with &str yet
 #[inline]
 pub fn string<'b, T: Copy + PartialEq, I: Input<Token=T>>(mut i: I, s: &'b [T])
     -> SimpleResult<I, I::Buffer> {
@@ -347,7 +348,6 @@ pub fn string<'b, T: Copy + PartialEq, I: Input<Token=T>>(mut i: I, s: &'b [T])
     let mut ok = true;
 
     // TODO: There has to be some more efficient way here
-    //       also doesn't seem to work nicely with string yet
     let b = i.consume_while(|c| {
         if n >= len {
             false
@@ -543,6 +543,7 @@ mod error {
     }
 }
 
+// FIXME: Uncomment and fix
 /*
 #[cfg(test)]
 mod test {

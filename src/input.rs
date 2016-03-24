@@ -40,12 +40,12 @@ pub mod primitives {
             self._pop(Guard(()))
         }
 
-        #[inline]
+        #[inline(always)]
         fn consume(&mut self, n: usize) -> Option<Self::Buffer> {
             self._consume(Guard(()), n)
         }
 
-        #[inline]
+        #[inline(always)]
         fn consume_while<F>(&mut self, f: F) -> Self::Buffer
           where F: FnMut(Self::Token) -> bool {
             self._consume_while(Guard(()), f)
@@ -131,11 +131,11 @@ pub trait Input: Sized {
     /// The token type of the input
     // TODO: Maybe remove the copy bound at some point?
     type Token: Copy + PartialEq;
-    /// A marker type which is used to backtrack using `_mark` and `_restore`.
+    /// A marker type which is used to backtrack using `_mark` and `_restore`. It should also be
+    /// possible to use this type to consume the data from the marked position to the current
+    /// position.
     type Marker;
 
-    /// An iterator over the loaded data in the input.
-    type Iter: Iterator<Item=Self::Token>;
     // TODO: Bounds for common usage (eg. to iterator?)
     type Buffer: Buffer;
 
@@ -236,8 +236,9 @@ pub trait Input: Sized {
 
     /// **Primitive:** See `Primitives::consume_while` for documentation.
     ///
-    /// Runs the closure `F` on the tokens in order until it returns false, all tokens up to that
-    /// token will be returned as a buffer and discarded from the current input.
+    /// Runs the closure `F` on the tokens *in order* until it returns false, all tokens up to that
+    /// token will be returned as a buffer and discarded from the current input. MUST never run the
+    /// closure more than once on the exact same token.
     ///
     /// Note: Will refill automatically.
     #[inline]
@@ -257,6 +258,7 @@ pub trait Input: Sized {
     ///
     /// Note: Will refill the intenal buffer until no more data is available if the underlying
     /// implementation supports it.
+    #[inline]
     fn _consume_remaining(&mut self, Guard) -> Self::Buffer;
 
     /// **Primitive:** See `Primitives::mark` for documentation.
@@ -274,6 +276,7 @@ pub trait Input: Sized {
 
 impl<'a, I> Buffer for &'a [I] {
     fn len(&self) -> usize {
+        // Slice to reach inherent method to prevent infinite recursion
         (&self[..]).len()
     }
 }
@@ -281,13 +284,13 @@ impl<'a, I> Buffer for &'a [I] {
 impl<'a, I: Copy + PartialEq> Input for &'a [I] {
     type Token  = I;
     type Marker = &'a [I];
-    type Iter   = ::std::iter::Cloned<::std::slice::Iter<'a, I>>;
     type Buffer = &'a [I];
 
     #[inline]
     fn _peek(&mut self, _g: Guard) -> Option<Self::Token> {
         self.first().cloned()
     }
+
     #[inline]
     fn _pop(&mut self, _g: Guard) -> Option<Self::Token> {
         self.first().cloned().map(|c| {
@@ -296,6 +299,7 @@ impl<'a, I: Copy + PartialEq> Input for &'a [I] {
             c
         })
     }
+
     #[inline]
     fn _consume(&mut self, _g: Guard, n: usize) -> Option<Self::Buffer> {
         if n > self.len() {
@@ -308,6 +312,7 @@ impl<'a, I: Copy + PartialEq> Input for &'a [I] {
             Some(b)
         }
     }
+
     #[inline]
     fn _consume_while<F>(&mut self, _g: Guard, mut f: F) -> Self::Buffer
       where F: FnMut(Self::Token) -> bool {
@@ -328,10 +333,12 @@ impl<'a, I: Copy + PartialEq> Input for &'a [I] {
             }
         }
     }
+
     #[inline]
     fn _consume_from(&mut self, _g: Guard, m: Self::Marker) -> Self::Buffer {
         &m[..m.len() - self.len()]
     }
+
     #[inline]
     fn _consume_remaining(&mut self, _g: Guard) -> Self::Buffer {
         let b = &self[..];
@@ -340,16 +347,19 @@ impl<'a, I: Copy + PartialEq> Input for &'a [I] {
 
         b
     }
+
     #[inline]
     fn _mark(&self, _g: Guard) -> Self::Marker {
         &self
     }
+
     #[inline]
     fn _restore(self, _g: Guard, m: Self::Marker) -> Self {
         m
     }
 }
 
+// TODO: Replace with boolean flag
 bitflags!{
     pub flags InputMode: u32 {
         /// Default (empty) input state.
@@ -359,8 +369,9 @@ bitflags!{
     }
 }
 
-
+// FIXME: Docs
 /// Input buffer type which contains a flag which tells if we might have more data to read.
+// TODO: Move to buffer module and make public?
 #[must_use]
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct InputBuf<'a, I: 'a>(InputMode, &'a [I]);
@@ -370,19 +381,25 @@ pub struct InputBuf<'a, I: 'a>(InputMode, &'a [I]);
 /// # Primitive
 ///
 /// Only used by fundamental parsers and combinators.
+// TODO: Remove and replace with new?
+#[inline]
 pub fn new_buf<I>(state: InputMode, buffer: &[I]) -> InputBuf<I> {
     InputBuf(state, buffer)
 }
 
+// FIXME: Docs
 impl<'a, I: 'a> InputBuf<'a, I> {
+    #[inline]
     pub fn is_incomplete(&self) -> bool {
         self.0.contains(INCOMPLETE)
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         self.1.len()
     }
 
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -390,9 +407,7 @@ impl<'a, I: 'a> InputBuf<'a, I> {
 
 impl<'a, I: Copy + PartialEq> Input for InputBuf<'a, I> {
     type Token  = I;
-    // TODO: InputMode? INCOMPLETE must be set no matter what
     type Marker = &'a [I];
-    type Iter   = ::std::iter::Cloned<::std::slice::Iter<'a, I>>;
     type Buffer = &'a [I];
 
     #[inline]
@@ -406,6 +421,7 @@ impl<'a, I: Copy + PartialEq> Input for InputBuf<'a, I> {
             },
         }
     }
+
     #[inline]
     fn _pop(&mut self, g: Guard) -> Option<Self::Token> {
         self._peek(g).map(|c| {
@@ -414,6 +430,7 @@ impl<'a, I: Copy + PartialEq> Input for InputBuf<'a, I> {
             c
         })
     }
+
     #[inline]
     fn _consume(&mut self, _g: Guard, n: usize) -> Option<Self::Buffer> {
         if n > self.1.len() {
@@ -428,6 +445,7 @@ impl<'a, I: Copy + PartialEq> Input for InputBuf<'a, I> {
             Some(b)
         }
     }
+
     #[inline]
     fn _consume_while<F>(&mut self, _g: Guard, mut f: F) -> Self::Buffer
       where F: FnMut(Self::Token) -> bool {
@@ -450,10 +468,12 @@ impl<'a, I: Copy + PartialEq> Input for InputBuf<'a, I> {
             }
         }
     }
+
     #[inline]
     fn _consume_from(&mut self, _g: Guard, m: Self::Marker) -> Self::Buffer {
         &m[..m.len() - self.1.len()]
     }
+
     #[inline]
     fn _consume_remaining(&mut self, _g: Guard) -> Self::Buffer {
         let b = self.1;
@@ -462,10 +482,14 @@ impl<'a, I: Copy + PartialEq> Input for InputBuf<'a, I> {
 
         b
     }
+
     #[inline]
     fn _mark(&self, _g: Guard) -> Self::Marker {
+        // Incomplete state is separate from the parsed state, no matter how we hit incomplete we
+        // want to keep it.
         &self.1
     }
+
     #[inline]
     fn _restore(mut self, _g: Guard, m: Self::Marker) -> Self {
         self.1 = m;
@@ -476,6 +500,7 @@ impl<'a, I: Copy + PartialEq> Input for InputBuf<'a, I> {
 
 impl<'a> Buffer for &'a str {
     fn len(&self) -> usize {
+        // Slice to reach inherent method to prevent infinite recursion
         (&self[..]).len()
     }
 }
@@ -483,13 +508,13 @@ impl<'a> Buffer for &'a str {
 impl<'a> Input for &'a str {
     type Token  = char;
     type Marker = &'a str;
-    type Iter   = ::std::str::Chars<'a>;
     type Buffer = &'a str;
 
     #[inline]
     fn _peek(&mut self, _g: Guard) -> Option<Self::Token> {
         self.chars().next()
     }
+
     #[inline]
     fn _pop(&mut self, _g: Guard) -> Option<Self::Token> {
         let mut iter = self.char_indices();
@@ -503,6 +528,7 @@ impl<'a> Input for &'a str {
             c
         })
     }
+
     #[inline]
     fn _consume(&mut self, _g: Guard, n: usize) -> Option<Self::Buffer> {
         match self.char_indices().enumerate().take(n + 1).last() {
@@ -517,6 +543,7 @@ impl<'a> Input for &'a str {
             _ => None,
         }
     }
+
     #[inline]
     fn _consume_while<F>(&mut self, _g: Guard, mut f: F) -> Self::Buffer
       where F: FnMut(Self::Token) -> bool {
@@ -538,10 +565,12 @@ impl<'a> Input for &'a str {
             }
         }
     }
+
     #[inline]
     fn _consume_from(&mut self, _g: Guard, m: Self::Marker) -> Self::Buffer {
         &m[..m.len() - self.len()]
     }
+
     #[inline]
     fn _consume_remaining(&mut self, _g: Guard) -> Self::Buffer {
         let b = &self[..];
@@ -550,10 +579,12 @@ impl<'a> Input for &'a str {
 
         b
     }
+
     #[inline]
     fn _mark(&self, _g: Guard) -> Self::Marker {
         &self
     }
+
     #[inline]
     fn _restore(self, _g: Guard, m: Self::Marker) -> Self {
         m
