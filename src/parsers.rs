@@ -2,11 +2,17 @@
 
 use std::mem;
 
-use input::Input;
-use parse_result::SimpleResult;
-use primitives::{Primitives, Buffer};
+use types::{
+    Buffer,
+    Input,
+    ParseResult,
+};
+use primitives::Primitives;
 
 pub use self::error::Error;
+
+/// Result returned from the basic parsers.
+pub type SimpleResult<I, T> = ParseResult<I, T, Error<<I as Input>::Token>>;
 
 // Only export if we have backtraces enabled, in debug/test profiles the StackFrame is only used
 // to debug-print.

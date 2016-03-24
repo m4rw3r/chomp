@@ -1,108 +1,13 @@
-use parse_result::{ParseResult, State};
-use parse_result;
+use types::ParseResult;
+use super::parse_result;
 
-use primitives::Guard;
+use primitives::{Guard, State};
 
 pub trait U8Input: Input<Token=u8> {}
 
 // TODO: More restrictions? Buffer=&[u8]?
 impl<T> U8Input for T
   where T: Input<Token=u8> {}
-
-/// Primitive operations on `Input` types.
-///
-/// All parsers only require a few primitive operations to parse data:
-pub mod primitives {
-    use Input;
-
-    /// This is a zero-sized type used by the `Primitives` trait implementation to guarantee that
-    /// access to primitive methods on `Input` only happens when the `Primitives` trait has been
-    /// imported.
-    ///
-    /// It cannot be instantiated outside of the `Primitives` trait blanket implementation.
-    pub struct Guard(());
-
-    /// **Primitive:** Trait enabling primitive actions on an `Input` type.
-    ///
-    /// # Primitive
-    ///
-    /// Only used by fundamental parsers and combinators.
-    ///
-    // FIXME: Rename and documentation
-    pub trait Primitives: Input {
-        #[inline(always)]
-        fn peek(&mut self) -> Option<Self::Token> {
-            self._peek(Guard(()))
-        }
-
-        #[inline(always)]
-        fn pop(&mut self) -> Option<Self::Token> {
-            self._pop(Guard(()))
-        }
-
-        #[inline(always)]
-        fn consume(&mut self, n: usize) -> Option<Self::Buffer> {
-            self._consume(Guard(()), n)
-        }
-
-        #[inline(always)]
-        fn consume_while<F>(&mut self, f: F) -> Self::Buffer
-          where F: FnMut(Self::Token) -> bool {
-            self._consume_while(Guard(()), f)
-        }
-
-        /// Returns the buffer from the marker `m` to the current position, discarding the
-        /// backtracking position carried by `m`.
-        #[inline(always)]
-        fn consume_from(&mut self, m: Self::Marker) -> Self::Buffer {
-            self._consume_from(Guard(()), m)
-        }
-
-        #[inline(always)]
-        fn consume_remaining(&mut self) -> Self::Buffer {
-            self._consume_remaining(Guard(()))
-        }
-
-        /// Marks the current position to be able to backtrack to it using `restore`.
-        ///
-        /// # Example
-        ///
-        /// ```
-        /// use chomp::{take, Input};
-        /// use chomp::primitives::Primitives;
-        /// use chomp::primitives::{InputBuffer, IntoInner, State};
-        ///
-        /// let i = &b"Testing";
-        ///
-        /// assert_eq!(i.buffer(), b"Testing");
-        /// assert_eq!(i.is_end(), true);
-        ///
-        /// // mark and eat one token
-        /// let m = i.mark();
-        /// let i = i.consume(1);
-        ///
-        /// assert_eq!(i.buffer(), b"esting");
-        ///
-        /// // restore and continue parsing
-        /// let j = i.restore(m);
-        ///
-        /// let r = take(j, 4);
-        ///
-        /// assert_eq!(r.into_inner(), State::Data(input::new(input::END_OF_INPUT, b""), &b"Test"[..]));
-        /// ```
-        #[inline(always)]
-        fn mark(&self) -> Self::Marker {
-            self._mark(Guard(()))
-        }
-
-        #[inline(always)]
-        fn restore(self, m: Self::Marker) -> Self {
-            self._restore(Guard(()), m)
-        }
-    }
-
-    impl<I: Input> Primitives for I {}
-}
 
 // FIXME: Docs
 // TODO: More methods?
@@ -359,39 +264,29 @@ impl<'a, I: Copy + PartialEq> Input for &'a [I] {
     }
 }
 
-// TODO: Replace with boolean flag
-bitflags!{
-    pub flags InputMode: u32 {
-        /// Default (empty) input state.
-        const DEFAULT      = 0,
-        /// If a parser has attempted to read incomplete
-        const INCOMPLETE   = 1,
-    }
-}
-
 // FIXME: Docs
 /// Input buffer type which contains a flag which tells if we might have more data to read.
 // TODO: Move to buffer module and make public?
+// TODO: Replace mode with boolean
 #[must_use]
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct InputBuf<'a, I: 'a>(InputMode, &'a [I]);
-
-/// **Primitive:** Creates a new input from the given state and buffer.
-///
-/// # Primitive
-///
-/// Only used by fundamental parsers and combinators.
-// TODO: Remove and replace with new?
-#[inline]
-pub fn new_buf<I>(state: InputMode, buffer: &[I]) -> InputBuf<I> {
-    InputBuf(state, buffer)
-}
+pub struct InputBuf<'a, I: 'a>(
+    /// If this is set to true a parser has tried to read past the end of this buffer.
+    pub bool,
+    /// Current buffer slice
+    pub &'a [I],
+);
 
 // FIXME: Docs
 impl<'a, I: 'a> InputBuf<'a, I> {
     #[inline]
+    pub fn new(buf: &'a [I]) -> Self {
+        InputBuf(false, buf)
+    }
+
+    #[inline]
     pub fn is_incomplete(&self) -> bool {
-        self.0.contains(INCOMPLETE)
+        self.0
     }
 
     #[inline]
@@ -415,7 +310,7 @@ impl<'a, I: Copy + PartialEq> Input for InputBuf<'a, I> {
         match self.1.first() {
             Some(c) => Some(*c),
             None    => {
-                self.0.insert(INCOMPLETE);
+                self.0 = true;
 
                 None
             },
@@ -434,7 +329,7 @@ impl<'a, I: Copy + PartialEq> Input for InputBuf<'a, I> {
     #[inline]
     fn _consume(&mut self, _g: Guard, n: usize) -> Option<Self::Buffer> {
         if n > self.1.len() {
-            self.0.insert(INCOMPLETE);
+            self.0 = true;
 
             None
         } else {
@@ -458,7 +353,7 @@ impl<'a, I: Copy + PartialEq> Input for InputBuf<'a, I> {
                 b
             },
             None => {
-                self.0.insert(INCOMPLETE);
+                self.0 = true;
 
                 let b = self.1;
 

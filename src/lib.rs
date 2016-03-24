@@ -208,99 +208,60 @@ extern crate debugtrace;
 
 #[macro_use]
 mod macros;
-mod input;
 mod parse;
-mod parse_result;
 
-// FIXME: Uncomment
 pub mod ascii;
+pub mod buffer;
 pub mod combinators;
 pub mod parsers;
+pub mod primitives;
+pub mod types;
 
-pub use parsers::{
-    any,
-    eof,
-    not_token,
-    peek,
-    peek_next,
-    satisfy,
-    satisfy_with,
-    scan,
-    string,
-    run_scanner,
-    take,
-    take_remainder,
-    take_till,
-    take_while,
-    take_while1,
-    token,
-};
-pub use parsers::Error;
-pub mod buffer;
+pub mod prelude {
+    pub use parsers::{
+        any,
+        eof,
+        not_token,
+        peek,
+        peek_next,
+        satisfy,
+        satisfy_with,
+        scan,
+        string,
+        run_scanner,
+        take,
+        take_remainder,
+        take_till,
+        take_while,
+        take_while1,
+        token,
+    };
+    pub use parsers::{
+        Error,
+        SimpleResult,
+    };
 
-pub use combinators::{
-    count,
-    option,
-    or,
-    many,
-    many1,
-    sep_by,
-    sep_by1,
-    many_till,
-    skip_many,
-    skip_many1,
-    matched_by,
-};
+    pub use combinators::{
+        count,
+        option,
+        or,
+        many,
+        many1,
+        sep_by,
+        sep_by1,
+        many_till,
+        skip_many,
+        skip_many1,
+        matched_by,
+    };
+    pub use types::{
+        Input,
+        U8Input,
+        ParseResult,
+    };
+}
+
 pub use parse::{
     ParseError,
     parse_only,
 };
-pub use input::{
-    Input,
-    InputBuf,
-    U8Input,
-};
-pub use parse_result::{
-    ParseResult,
-    SimpleResult,
-};
-
-/// Module used to construct fundamental parsers and combinators.
-///
-/// # Primitive
-///
-/// Only used by fundamental parsers and combinators.
-pub mod primitives {
-    pub use input::Buffer;
-    pub use input::primitives::{
-        Primitives,
-        Guard,
-    };
-    pub use parse_result::{
-        IntoInner,
-        State,
-    };
-
-    /// Input utilities.
-    ///
-    /// # Primitive
-    ///
-    /// Only used by fundamental parsers and combinators.
-    pub mod input {
-        pub use input::{DEFAULT, INCOMPLETE, new_buf};
-    }
-
-    /// ParseResult utilities.
-    ///
-    /// # Primitive
-    ///
-    /// Only used by fundamental parsers and combinators.
-    ///
-    /// # Note
-    ///
-    /// Prefer to use ``Input::ret``, ``Input::err`` or ``Input::incomplete`` instead of using
-    /// ``parse_result::new``.
-    pub mod parse_result {
-        pub use parse_result::new;
-    }
-}

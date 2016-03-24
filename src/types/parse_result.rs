@@ -1,46 +1,5 @@
-use input::Input;
-use parsers::Error;
-
-/// Result for dealing with the basic parsers when parsing a stream of `u8`.
-// FIXME: Uncomment
-//pub type U8Result<T>        = ParseResult<, T, Error<u8>>;
-/// Result returned from the basic parsers.
-// FIXME: Uncomment
-pub type SimpleResult<I, T> = ParseResult<I, T, Error<<I as Input>::Token>>;
-
-/// **Primitive:** Primitive inner type containing the parse-state.
-///
-/// # Primitive
-///
-/// Only used by fundamental parsers and combinators.
-#[must_use]
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub enum State<I: Input, T, E> {
-    /// Successful parser state, first item is the input state and the second item is the contained
-    /// value.
-    Data(I, T),
-    /// Parse error state, first item is a slice from where the error occurred in the input buffer
-    /// to the end of the input buffer and the second item is the error value.
-    Error(I, E),
-}
-
-/// **Primitive:** Consumes self and reveals the inner state.
-///
-/// # Primitive
-///
-/// Only used by fundamental parsers and combinators.
-pub trait IntoInner {
-    /// The inner type to be revealed.
-    type Inner;
-
-    /// **Primitive:** Consumes self and reveals the inner state.
-    ///
-    /// # Primitive
-    ///
-    /// Only used by fundamental parsers and combinators.
-    #[inline(always)]
-    fn into_inner(self) -> Self::Inner;
-}
+use types::Input;
+use primitives::{IntoInner, State};
 
 /// The basic return type of a parser.
 ///

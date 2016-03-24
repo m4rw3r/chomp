@@ -7,10 +7,16 @@ pub mod bounded;
 
 use std::iter::FromIterator;
 
-use {ParseResult, Input};
+use types::{
+    ParseResult,
+    Input,
+};
 
-use primitives::State;
-use primitives::{IntoInner, Primitives};
+use primitives::{
+    IntoInner,
+    Primitives,
+    State,
+};
 
 /// Applies the parser ``p`` exactly ``num`` times collecting all items into `T: FromIterator`.
 ///

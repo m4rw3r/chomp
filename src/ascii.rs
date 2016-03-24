@@ -1,13 +1,21 @@
 //! Utilities and parsers for dealing with ASCII data in `u8` format.
 
-use conv::{NoError, ValueFrom};
-use conv::errors::UnwrapOk;
-
 use std::ops::{Add, Mul};
 
-use {Input, SimpleResult};
+use conv::{
+    NoError,
+    ValueFrom,
+};
+use conv::errors::UnwrapOk;
+
+use types::Input;
 use combinators::option;
-use parsers::{take_while, take_while1, satisfy};
+use parsers::{
+    SimpleResult,
+    satisfy,
+    take_while,
+    take_while1,
+};
 
 /// Lowercase ASCII predicate.
 #[inline]

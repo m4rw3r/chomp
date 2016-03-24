@@ -1,7 +1,6 @@
-use primitives::input;
 use primitives::{State, IntoInner};
 
-use {InputBuf, ParseResult};
+use types::{InputBuf, ParseResult};
 use buffer::{IntoStream, StreamError, Stream};
 
 /// Stream implementation for immutable slices.
@@ -92,7 +91,7 @@ impl<'a, 'i, I: 'i + Copy + PartialEq> Stream<'a, 'i> for SliceStream<'i, I> {
             return Err(StreamError::EndOfInput);
         }
 
-        match f(input::new_buf(input::DEFAULT, &self.slice[self.pos..])).into_inner() {
+        match f(InputBuf::new(&self.slice[self.pos..])).into_inner() {
             State::Data(remainder, data) => {
                 // TODO: Do something neater with the remainder
                 self.pos += self.len() - remainder.len();

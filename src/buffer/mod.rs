@@ -35,7 +35,7 @@ pub mod data_source;
 
 use std::io;
 
-use {ParseResult, Input, InputBuf};
+use types::{ParseResult, Input, InputBuf};
 use parse::ParseError;
 
 pub use self::slice::SliceStream;

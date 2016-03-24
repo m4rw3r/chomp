@@ -25,7 +25,7 @@ use std::ops::{
 };
 use std::cmp::max;
 
-use {Input, ParseResult};
+use types::{Input, ParseResult};
 use primitives::{Primitives, IntoInner, State};
 
 /// Trait for applying a parser multiple times based on a range.

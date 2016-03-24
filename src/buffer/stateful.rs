@@ -1,8 +1,7 @@
 use std::io;
 use std::cmp;
 
-use {InputBuf, ParseResult};
-use primitives::input;
+use types::{InputBuf, ParseResult};
 use primitives::{State, IntoInner};
 
 use buffer::{
@@ -218,7 +217,7 @@ impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
             return Err(StreamError::EndOfInput);
         }
 
-        match f(input::new_buf(input::DEFAULT, &self.buffer)).into_inner() {
+        match f(InputBuf::new(&self.buffer)).into_inner() {
             State::Data(remainder, data) => {
                 if remainder.is_incomplete() && self.state.contains(END_OF_INPUT) {
                     // We can't accept this since we might have hit a premature end

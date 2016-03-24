@@ -1,6 +1,9 @@
-use ParseResult;
-use primitives::{IntoInner, State};
-use primitives::Primitives;
+use types::ParseResult;
+use primitives::{
+    IntoInner,
+    Primitives,
+    State,
+};
 
 /// Simple error type returned from `parse_only`.
 #[derive(Debug, Eq, PartialEq)]
