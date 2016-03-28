@@ -7,8 +7,8 @@ use test::Bencher;
 
 use std::iter;
 
-use chomp::*;
-use chomp::primitives::input::{new_buf, DEFAULT};
+use chomp::prelude::*;
+use chomp::types::InputBuf;
 
 #[bench]
 fn count_vec_1k(b: &mut Bencher) {
@@ -97,7 +97,7 @@ fn count_vec_10k_maybe_incomplete(b: &mut Bencher) {
     }
 
     b.iter(|| {
-        count_vec(new_buf(DEFAULT, &data))
+        count_vec(InputBuf::new(&data))
     })
 }
 
@@ -110,7 +110,7 @@ fn many_vec_10k_maybe_incomplete(b: &mut Bencher) {
     }
 
     b.iter(|| {
-        many_vec(new_buf(DEFAULT, &data))
+        many_vec(InputBuf::new(&data))
     })
 }
 
@@ -123,6 +123,6 @@ fn many1_vec_10k_maybe_incomplete(b: &mut Bencher) {
     }
 
     b.iter(|| {
-        many1_vec(new_buf(DEFAULT, &data))
+        many1_vec(InputBuf::new(&data))
     })
 }

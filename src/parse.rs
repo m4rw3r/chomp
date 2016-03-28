@@ -62,7 +62,7 @@ pub fn parse_only<'a, I, T, E, F>(parser: F, input: &'a [I]) -> Result<T, ParseE
 
 #[cfg(test)]
 mod test {
-    use Input;
+    use types::Input;
     use primitives::Primitives;
     use super::{
         ParseError,

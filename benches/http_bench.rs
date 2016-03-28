@@ -4,7 +4,7 @@ extern crate test;
 extern crate chomp;
 
 use test::Bencher;
-use chomp::*;
+use chomp::prelude::*;
 
 #[derive(Debug)]
 struct Request<B> {

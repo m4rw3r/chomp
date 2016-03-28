@@ -170,7 +170,7 @@ pub trait Input: Sized {
     ///
     /// Marks a position for backtracking along with relevant state.
     #[inline]
-    fn _mark(&self, Guard)                 -> Self::Marker;
+    fn _mark(&self, Guard) -> Self::Marker;
 
     /// **Primitive:** See `Primitives::restore` for documentation.
     ///
@@ -342,7 +342,7 @@ impl<'a, I: Copy + PartialEq> Input for InputBuf<'a, I> {
     }
 
     #[inline]
-    fn _consume_while<F>(&mut self, _g: Guard, mut f: F) -> Self::Buffer
+    fn _consume_while<F>(&mut self, g: Guard, mut f: F) -> Self::Buffer
       where F: FnMut(Self::Token) -> bool {
         match self.1.iter().position(|c| !f(*c)) {
             Some(n) => {
@@ -352,15 +352,7 @@ impl<'a, I: Copy + PartialEq> Input for InputBuf<'a, I> {
 
                 b
             },
-            None => {
-                self.0 = true;
-
-                let b = self.1;
-
-                self.1 = &self.1[..0];
-
-                b
-            }
+            None    => self._consume_remaining(g),
         }
     }
 

@@ -15,7 +15,7 @@ extern crate chomp;
 use std::fs::File;
 use std::env;
 
-use chomp::*;
+use chomp::prelude::*;
 
 use chomp::buffer::{Source, Stream, StreamError};
 

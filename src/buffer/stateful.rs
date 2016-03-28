@@ -260,8 +260,13 @@ impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
 #[cfg(test)]
 mod test {
     use std::io;
-    use {Input, any, take};
-    use Error;
+
+    use types::Input;
+    use parsers::{
+        Error,
+        any,
+        take,
+    };
     use buffer::{
         FixedSizeBuffer,
         StreamError,
