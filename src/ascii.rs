@@ -8,7 +8,7 @@ use conv::{
 };
 use conv::errors::UnwrapOk;
 
-use types::Input;
+use types::{Buffer, Input};
 use combinators::option;
 use parsers::{
     SimpleResult,
@@ -156,8 +156,8 @@ pub fn signed<I: Input<Token=u8>, T, F>(i: I, f: F) -> SimpleResult<I, T>
 /// ```
 // TODO: Use methods on `Buffer` to implement `to_decimal`
 #[inline]
-pub fn decimal<'a, I: Input<Token=u8, Buffer=&'a [u8]>, T: Copy + ValueFrom<u8, Err=NoError> + Add<Output=T> + Mul<Output=T>>(i: I) -> SimpleResult<I, T> {
-    take_while1(i, is_digit).map(to_decimal)
+pub fn decimal<'a, I: Input<Token=u8>, T: Copy + ValueFrom<u8, Err=NoError> + Add<Output=T> + Mul<Output=T>>(i: I) -> SimpleResult<I, T> {
+    take_while1(i, is_digit).map(|b| to_decimal(b.iter()))
 }
 
 /// Internal function converting a `[u8]` to the given integer type `T`.
@@ -167,8 +167,8 @@ pub fn decimal<'a, I: Input<Token=u8, Buffer=&'a [u8]>, T: Copy + ValueFrom<u8, 
 /// * The slice must not contain any other characters besides 0 to 9.
 /// * The `T` type must be larger than `u8` if it is signed.
 #[inline]
-fn to_decimal<T: Copy + ValueFrom<u8, Err=NoError> + Add<Output=T> + Mul<Output=T>>(buf: &[u8]) -> T {
-    buf.iter().fold(T::value_from(0).unwrap_ok(), |a, n| a * T::value_from(10).unwrap_ok() + T::value_from(n - b'0').unwrap_ok())
+fn to_decimal<T: Copy + ValueFrom<u8, Err=NoError> + Add<Output=T> + Mul<Output=T>, I: Iterator<Item=u8>>(iter: I) -> T {
+    iter.fold(T::value_from(0).unwrap_ok(), |a, n| a * T::value_from(10).unwrap_ok() + T::value_from(n - b'0').unwrap_ok())
 }
 
 #[cfg(test)]
@@ -177,13 +177,13 @@ mod test {
 
     macro_rules! test_to_decimal {
         ( $($n:ty),+ ) => { $(
-            assert_eq!(to_decimal::<$n>(b""), 0);
-            assert_eq!(to_decimal::<$n>(b"0"), 0);
-            assert_eq!(to_decimal::<$n>(b"1"), 1);
-            assert_eq!(to_decimal::<$n>(b"2"), 2);
-            assert_eq!(to_decimal::<$n>(b"10"), 10);
-            assert_eq!(to_decimal::<$n>(b"20"), 20);
-            assert_eq!(to_decimal::<$n>(b"25"), 25);
+            assert_eq!(to_decimal::<$n, _>(b"".iter().cloned()), 0);
+            assert_eq!(to_decimal::<$n, _>(b"0".iter().cloned()), 0);
+            assert_eq!(to_decimal::<$n, _>(b"1".iter().cloned()), 1);
+            assert_eq!(to_decimal::<$n, _>(b"2".iter().cloned()), 2);
+            assert_eq!(to_decimal::<$n, _>(b"10".iter().cloned()), 10);
+            assert_eq!(to_decimal::<$n, _>(b"20".iter().cloned()), 20);
+            assert_eq!(to_decimal::<$n, _>(b"25".iter().cloned()), 25);
         )+ }
     }
 

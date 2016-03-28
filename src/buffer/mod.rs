@@ -79,7 +79,7 @@ impl<'a, I, E> PartialEq for StreamError<'a, I, E>
     }
 }
 
-impl<'a, T, I: Input<Buffer=&'a [T]>, E> From<ParseError<I, E>> for StreamError<'a, T, E>
+impl<'a, T: Copy + PartialEq, I: Input<Token=T, Buffer=&'a [T]>, E> From<ParseError<I, E>> for StreamError<'a, T, E>
   where I: 'a {
     fn from(e: ParseError<I, E>) -> Self {
         use primitives::Primitives;

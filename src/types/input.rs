@@ -1,3 +1,7 @@
+use std::iter;
+use std::slice;
+use std::str;
+
 use types::ParseResult;
 use super::parse_result;
 
@@ -12,6 +16,10 @@ impl<T> U8Input for T
 // FIXME: Docs
 // TODO: More methods?
 pub trait Buffer {
+    type Token: Copy + PartialEq;
+    type Iter: Iterator<Item=Self::Token>;
+
+    fn iter(&self) -> Self::Iter;
     fn len(&self) -> usize;
 
     fn is_empty(&self) -> bool {
@@ -42,7 +50,8 @@ pub trait Input: Sized {
     type Marker;
 
     // TODO: Bounds for common usage (eg. to iterator?)
-    type Buffer: Buffer;
+    // FIXME: Docs
+    type Buffer: Buffer<Token=Self::Token>;
 
     /// Returns `t` as a success value in the parsing context.
     ///
@@ -179,7 +188,14 @@ pub trait Input: Sized {
     fn _restore(self, Guard, Self::Marker) -> Self;
 }
 
-impl<'a, I> Buffer for &'a [I] {
+impl<'a, I: Copy + PartialEq> Buffer for &'a [I] {
+    type Token = I;
+    type Iter  = iter::Cloned<slice::Iter<'a, Self::Token>>;
+
+    fn iter(&self) -> Self::Iter {
+        (&self[..]).iter().cloned()
+    }
+
     fn len(&self) -> usize {
         // Slice to reach inherent method to prevent infinite recursion
         (&self[..]).len()
@@ -386,6 +402,13 @@ impl<'a, I: Copy + PartialEq> Input for InputBuf<'a, I> {
 }
 
 impl<'a> Buffer for &'a str {
+    type Token = char;
+    type Iter  = str::Chars<'a>;
+
+    fn iter(&self) -> Self::Iter {
+        self.chars()
+    }
+
     fn len(&self) -> usize {
         // Slice to reach inherent method to prevent infinite recursion
         (&self[..]).len()
