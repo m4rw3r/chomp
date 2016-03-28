@@ -26,7 +26,7 @@ use std::ops::{
 use std::cmp::max;
 
 use types::{Input, ParseResult};
-use primitives::{Primitives, IntoInner, State};
+use primitives::{Primitives, IntoInner};
 
 /// Trait for applying a parser multiple times based on a range.
 pub trait BoundedRange {
@@ -159,13 +159,13 @@ impl BoundedRange for Range<usize> {
             let m = i.mark();
 
             match f(i).into_inner() {
-                State::Data(b, _)    => {
+                (b, Ok(_))    => {
                     min  = if min == 0 { 0 } else { min - 1 };
                     max -= 1;
 
                     i = b
                 },
-                State::Error(b, e)   => if min == 0 {
+                (b, Err(e))   => if min == 0 {
                     i = b.restore(m);
 
                     break;
@@ -210,21 +210,21 @@ impl BoundedRange for Range<usize> {
 
                         match (self.data.1, (self.end)(i).into_inner()) {
                             // We can always end
-                            (_, State::Data(b, _)) => {
+                            (_, (b, Ok(_))) => {
                                 self.buf   = Some(b);
                                 self.state = EndStateTill::EndSuccess;
 
                                 return None
                             },
                             // We have reached end, end must match or it is an error
-                            (0, State::Error(b, e))      => {
+                            (0, (b, Err(e)))      => {
                                 self.buf   = Some(b);
                                 self.state = EndStateTill::Error(From::from(e));
 
                                 return None;
                             },
                             // Failed to end, restore and continue since we can parse more
-                            (_, State::Error(b, _))      => self.buf = Some(b.restore(m)),
+                            (_, (b, Err(_)))      => self.buf = Some(b.restore(m)),
                         }
                     }
                 }
@@ -290,12 +290,12 @@ impl BoundedRange for RangeFrom<usize> {
             let m = i.mark();
 
             match f(i).into_inner() {
-                State::Data(b, _)    => {
+                (b, Ok(_))    => {
                     min  = if min == 0 { 0 } else { min - 1 };
 
                     i = b
                 },
-                State::Error(b, e)   => if min == 0 {
+                (b, Err(e))   => if min == 0 {
                     i = b.restore(m);
 
                     break;
@@ -372,8 +372,8 @@ impl BoundedRange for RangeFull {
             }
 
             => result : T {
-                (s, (), m, Some(_))      => s.restore(m).ret(result),
-                (_, _, _, None) => unreachable!(),
+                (s, (), m, Some(_)) => s.restore(m).ret(result),
+                (_, _, _, None)     => unreachable!(),
             }
         }
     }
@@ -385,8 +385,8 @@ impl BoundedRange for RangeFull {
             let m = i.mark();
 
             match f(i).into_inner() {
-                State::Data(b, _)    => i = b,
-                State::Error(b, _)   => {
+                (b, Ok(_))  => i = b,
+                (b, Err(_)) => {
                     i = b.restore(m);
 
                     break;
@@ -482,13 +482,13 @@ impl BoundedRange for RangeTo<usize> {
             let m = i.mark();
 
             match f(i).into_inner() {
-                State::Data(b, _)    => {
+                (b, Ok(_))    => {
                     max -= 1;
 
                     i = b
                 },
                 // Always ok to end iteration
-                State::Error(b, _)   => {
+                (b, Err(_))   => {
                     i = b.restore(m);
 
                     break;
@@ -524,21 +524,21 @@ impl BoundedRange for RangeTo<usize> {
 
                     match (self.data, (self.end)(i).into_inner()) {
                         // We can always end
-                        (_, State::Data(b, _)) => {
+                        (_, (b, Ok(_))) => {
                             self.buf   = Some(b);
                             self.state = EndStateTill::EndSuccess;
 
                             return None
                         },
                         // We have reached end, end must match or it is an error
-                        (0, State::Error(b, e))      => {
+                        (0, (b, Err(e)))      => {
                             self.buf   = Some(b);
                             self.state = EndStateTill::Error(From::from(e));
 
                             return None;
                         },
                         // Failed to end, restore and continue since we can parse more
-                        (_, State::Error(b, _))      => self.buf = Some(b.restore(m)),
+                        (_, (b, Err(_)))      => self.buf = Some(b.restore(m)),
                     }
                 }
                 on {
@@ -607,12 +607,12 @@ impl BoundedRange for usize {
             let m = i.mark();
 
             match f(i).into_inner() {
-                State::Data(b, _)    => {
+                (b, Ok(_))    => {
                     n -= 1;
 
                     i = b
                 },
-                State::Error(b, e)   => if n == 0 {
+                (b, Err(e))   => if n == 0 {
                     i = b.restore(m);
 
                     break;

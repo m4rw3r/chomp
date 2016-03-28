@@ -1,4 +1,4 @@
-use primitives::{State, IntoInner};
+use primitives::IntoInner;
 
 use types::{InputBuf, ParseResult};
 use buffer::{IntoStream, StreamError, Stream};
@@ -92,13 +92,13 @@ impl<'a, 'i, I: 'i + Copy + PartialEq> Stream<'a, 'i> for SliceStream<'i, I> {
         }
 
         match f(InputBuf::new(&self.slice[self.pos..])).into_inner() {
-            State::Data(remainder, data) => {
+            (remainder, Ok(data)) => {
                 // TODO: Do something neater with the remainder
                 self.pos += self.len() - remainder.len();
 
                 Ok(data)
             },
-            State::Error(mut remainder, err) => {
+            (mut remainder, Err(err)) => {
                 if remainder.is_incomplete() {
                     // TODO: 1 is not correct, n is expected len but we can't obtain that right now
                     Err(StreamError::Incomplete(self.len() + 1))

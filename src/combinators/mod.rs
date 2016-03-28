@@ -15,7 +15,6 @@ use types::{
 use primitives::{
     IntoInner,
     Primitives,
-    State,
 };
 
 /// Applies the parser ``p`` exactly ``num`` times collecting all items into `T: FromIterator`.
@@ -61,12 +60,9 @@ pub fn option<I: Input, T, E, F>(i: I, f: F, default: T) -> ParseResult<I, T, E>
   where F: FnOnce(I) -> ParseResult<I, T, E> {
     let m = i.mark();
 
-    // TODO: Make macro? Shared with or
     match f(i).into_inner() {
-        State::Data(b, d)    => b.ret(d),
-        State::Error(b, _)   => {
-            b.restore(m).ret(default)
-        },
+        (b, Ok(d))  => b.ret(d),
+        (b, Err(_)) => b.restore(m).ret(default),
     }
 }
 
@@ -96,8 +92,8 @@ pub fn or<I: Input, T, E, F, G>(i: I, f: F, g: G) -> ParseResult<I, T, E>
     let m = i.mark();
 
     match f(i).into_inner() {
-        State::Data(b, d)    => b.ret(d),
-        State::Error(b, _)   => g(b.restore(m)),
+        (b, Ok(d))  => b.ret(d),
+        (b, Err(_)) => g(b.restore(m)),
     }
 }
 
@@ -284,12 +280,12 @@ pub fn matched_by<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, (I::Buffer, T
     let m = i.mark();
 
     match f(i).into_inner() {
-        State::Data(mut b, t) => {
+        (mut b, Ok(t)) => {
             let n = b.consume_from(m);
 
             b.ret((n, t))
         },
-        State::Error(b, e)   => b.err(e),
+        (b, Err(e))   => b.err(e),
     }
 }
 
@@ -309,8 +305,8 @@ pub fn look_ahead<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, T, E>
     let m = i.mark();
 
     match f(i).into_inner() {
-        State::Data(b, t)       => b.restore(m).ret(t),
-        State::Error(b, t)      => b.restore(m).err(t),
+        (b, Ok(t))  => b.restore(m).ret(t),
+        (b, Err(t)) => b.restore(m).err(t),
     }
 }
 

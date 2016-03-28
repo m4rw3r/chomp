@@ -24,22 +24,6 @@ pub trait IntoInner {
     fn into_inner(self) -> Self::Inner;
 }
 
-/// **Primitive:** Primitive inner type containing the parse-state.
-///
-/// # Primitive
-///
-/// Only used by fundamental parsers and combinators.
-#[must_use]
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub enum State<I: Input, T, E> {
-    /// Successful parser state, first item is the input state and the second item is the contained
-    /// value.
-    Data(I, T),
-    /// Parse error state, first item is a slice from where the error occurred in the input buffer
-    /// to the end of the input buffer and the second item is the error value.
-    Error(I, E),
-}
-
 /// This is a zero-sized type used by the `Primitives` trait implementation to guarantee that
 /// access to primitive methods on `Input` only happens when the `Primitives` trait has been
 /// imported.

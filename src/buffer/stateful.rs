@@ -2,7 +2,7 @@ use std::io;
 use std::cmp;
 
 use types::{InputBuf, ParseResult};
-use primitives::{State, IntoInner};
+use primitives::IntoInner;
 
 use buffer::{
     Buffer,
@@ -218,7 +218,7 @@ impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
         }
 
         match f(InputBuf::new(&self.buffer)).into_inner() {
-            State::Data(remainder, data) => {
+            (remainder, Ok(data)) => {
                 if remainder.is_incomplete() && self.state.contains(END_OF_INPUT) {
                     // We can't accept this since we might have hit a premature end
                     self.request = self.buffer.len() + 1;
@@ -233,7 +233,7 @@ impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
                     Ok(data)
                 }
             },
-            State::Error(mut remainder, err) => {
+            (mut remainder, Err(err)) => {
                 if remainder.is_incomplete() {
                     // TODO: How to deal with n, no longer present?
                     self.request = self.buffer.len() + 1;

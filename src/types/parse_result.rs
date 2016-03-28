@@ -1,5 +1,5 @@
 use types::Input;
-use primitives::{IntoInner, State};
+use primitives::IntoInner;
 
 /// The basic return type of a parser.
 ///
@@ -33,7 +33,7 @@ use primitives::{IntoInner, State};
 /// ```
 #[must_use]
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct ParseResult<I: Input, T, E>(State<I, T, E>);
+pub struct ParseResult<I: Input, T, E>(I, Result<T, E>);
 
 /// **Primitive:** Creates a new `ParseResult`.
 ///
@@ -44,8 +44,8 @@ pub struct ParseResult<I: Input, T, E>(State<I, T, E>);
 /// # Note
 ///
 /// Prefer to use ``Input::ret``, ``Input::err`` or ``Input::incomplete`` instead of using
-pub fn new<I: Input, T, E>(s: State<I, T, E>) -> ParseResult<I, T, E> {
-    ParseResult(s)
+pub fn new<I: Input, T, E>(i: I, r: Result<T, E>) -> ParseResult<I, T, E> {
+    ParseResult(i, r)
 }
 
 impl<I: Input, T, E> ParseResult<I, T, E> {
@@ -95,9 +95,9 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
     pub fn bind<F, U, V>(self, f: F) -> ParseResult<I, U, V>
       where F: FnOnce(I, T) -> ParseResult<I, U, V>,
             V: From<E> {
-        match self.0 {
-            State::Data(i, t)       => f(i, t).map_err(From::from),
-            State::Error(i, e)      => ParseResult(State::Error(i, From::from(e))),
+        match self.1 {
+            Ok(t)  => f(self.0, t).map_err(From::from),
+            Err(e) => ParseResult(self.0, Err(From::from(e))),
         }
     }
 
@@ -148,9 +148,9 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
     #[inline]
     pub fn map<U, F>(self, f: F) -> ParseResult<I, U, E>
       where F: FnOnce(T) -> U {
-        match self.0 {
-            State::Data(i, t)       => ParseResult(State::Data(i, f(t))),
-            State::Error(i, e)      => ParseResult(State::Error(i, e)),
+        match self {
+            ParseResult(i, Ok(t))  => ParseResult(i, Ok(f(t))),
+            ParseResult(i, Err(e)) => ParseResult(i, Err(e)),
         }
     }
 
@@ -170,9 +170,9 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
     #[inline]
     pub fn map_err<V, F>(self, f: F) -> ParseResult<I, T, V>
       where F: FnOnce(E) -> V {
-        match self.0 {
-            State::Data(i, t)       => ParseResult(State::Data(i, t)),
-            State::Error(i, e)      => ParseResult(State::Error(i, f(e))),
+        match self {
+            ParseResult(i, Ok(t))  => ParseResult(i, Ok(t)),
+            ParseResult(i, Err(e)) => ParseResult(i, Err(f(e))),
         }
     }
 
@@ -193,7 +193,7 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
     #[inline]
     pub fn inspect<F>(self, f: F) -> ParseResult<I, T, E>
       where F: FnOnce(&T) {
-        if let State::Data(_, ref t) = self.0 {
+        if let Ok(ref t) = self.1 {
              f(t)
         }
 
@@ -212,7 +212,7 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
 /// The `ParseResult` type is a semi-linear type, supposed to act like a linear type while used in
 /// a parsing context to carry the state. Normally it should be as restrictive as the `Input` type
 /// in terms of how much it exposes its internals, but the `IntoInner` trait implementation
-/// allows fundamental parsers and combinators to expose the inner `State` of the `ParseResult`
+/// allows fundamental parsers and combinators to expose the inner `Result` of the `ParseResult`
 /// and act on this.
 ///
 /// # Example
@@ -237,11 +237,11 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
 /// assert_eq!(r, Ok(&b"test"[..]));
 /// ```
 impl<I: Input, T, E> IntoInner for ParseResult<I, T, E> {
-    type Inner = State<I, T, E>;
+    type Inner = (I, Result<T, E>);
 
     #[inline(always)]
     fn into_inner(self) -> Self::Inner {
-        self.0
+        (self.0, self.1)
     }
 }
 

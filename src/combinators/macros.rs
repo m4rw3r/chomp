@@ -65,14 +65,14 @@ macro_rules! run_iter {
                 $next_self.mark = i.mark();
 
                 match ($next_self.parser)(i).into_inner() {
-                    State::Data(b, v) => {
+                    (b, Ok(v)) => {
                         $next_self.buf = Some(b);
 
                         $on_next
 
                         Some(v)
                     },
-                    State::Error(b, e) => {
+                    (b, Err(e)) => {
                         $next_self.buf   = Some(b);
                         $next_self.state = Some(e);
 
@@ -172,14 +172,14 @@ macro_rules! run_iter_till {
                 let i = $next_self.buf.take().expect("Iter.buf was None");
 
                 match ($next_self.parser)(i).into_inner() {
-                    State::Data(b, v) => {
+                    (b, Ok(v)) => {
                         $next_self.buf = Some(b);
 
                         $on_next
 
                         Some(v)
                     },
-                    State::Error(b, e) => {
+                    (b, Err(e)) => {
                         $next_self.buf   = Some(b);
                         $next_self.state = EndStateTill::Error(e);
 
@@ -216,14 +216,14 @@ macro_rules! iter_till_end_test {
         let m = i.mark();
 
         match ($the_self.end)(i).into_inner() {
-            State::Data(b, _) => {
+            (b, Ok(_)) => {
                 $the_self.buf   = Some(b);
                 $the_self.state = EndStateTill::EndSuccess;
 
                 return None
             },
             // Failed to end, restore and continue
-            State::Error(b, _)      => $the_self.buf = Some(b.restore(m)),
+            (b, Err(_))      => $the_self.buf = Some(b.restore(m)),
         }
     } }
 }

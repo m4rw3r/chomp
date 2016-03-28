@@ -2,7 +2,6 @@ use types::ParseResult;
 use primitives::{
     IntoInner,
     Primitives,
-    State,
 };
 
 /// Simple error type returned from `parse_only`.
@@ -55,8 +54,8 @@ pub fn parse_only<'a, I, T, E, F>(parser: F, input: &'a [I]) -> Result<T, ParseE
   where I: Copy + PartialEq,
         F: FnOnce(&'a [I]) -> ParseResult<&'a [I], T, E> {
     match parser(input).into_inner() {
-        State::Data(_, t)      => Ok(t),
-        State::Error(mut b, e) => Err(ParseError::Error(b.consume_remaining(), e)),
+        (_, Ok(t))      => Ok(t),
+        (mut b, Err(e)) => Err(ParseError::Error(b.consume_remaining(), e)),
     }
 }
 

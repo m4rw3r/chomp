@@ -5,7 +5,7 @@ use std::str;
 use types::ParseResult;
 use super::parse_result;
 
-use primitives::{Guard, State};
+use primitives::Guard;
 
 pub trait U8Input: Input<Token=u8> {}
 
@@ -71,7 +71,7 @@ pub trait Input: Sized {
     /// ```
     #[inline]
     fn ret<T, E>(self, t: T) -> ParseResult<Self, T, E> {
-        parse_result::new(State::Data(self, t))
+        parse_result::new(self, Ok(t))
     }
 
     /// Returns `e` as an error value in the parsing context.
@@ -92,7 +92,7 @@ pub trait Input: Sized {
     /// ```
     #[inline]
     fn err<T, E>(self, e: E) -> ParseResult<Self, T, E> {
-        parse_result::new(State::Error(self, e))
+        parse_result::new(self, Err(e))
     }
 
     /// Converts a `Result` into a `ParseResult`, preserving parser state.
@@ -117,10 +117,7 @@ pub trait Input: Sized {
     /// ```
     #[inline]
     fn from_result<T, E>(self, r: Result<T, E>) -> ParseResult<Self, T, E> {
-        match r {
-            Ok(t)  => parse_result::new(State::Data(self, t)),
-            Err(e) => parse_result::new(State::Error(self, e)),
-        }
+        parse_result::new(self, r)
     }
 
     // Primitive methods
