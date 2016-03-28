@@ -201,6 +201,9 @@
 //!    The built-in `chomp::parsers::Error` type is zero-sized and carry no error-information. This
 //!    increases performance somewhat.
 
+#[cfg(feature = "tendril")]
+extern crate tendril;
+
 #[macro_use]
 extern crate bitflags;
 extern crate conv;
