@@ -119,9 +119,8 @@ impl<'a, I: Copy + PartialEq> Input for &'a [I] {
 }
 
 // FIXME: Docs
-/// Input buffer type which contains a flag which tells if we might have more data to read.
+/// Input buffer type which contains a flag which tells if we might need to read more data.
 // TODO: Move to buffer module and make public?
-// TODO: Replace mode with boolean
 #[must_use]
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct InputBuf<'a, I: 'a>(
@@ -217,6 +216,8 @@ impl<'a, I: Copy + PartialEq> Input for InputBuf<'a, I> {
 
     #[inline]
     fn _consume_remaining(&mut self, _g: Guard) -> Self::Buffer {
+        self.0 = true;
+
         let b = self.1;
 
         self.1 = &self.1[..0];
@@ -266,11 +267,19 @@ impl<'a> Input for &'a str {
     #[inline]
     fn _consume(&mut self, _g: Guard, n: usize) -> Option<Self::Buffer> {
         match self.char_indices().enumerate().take(n + 1).last() {
-            // n always less than num if self contains more than n characters
-            Some((num, (pos, _))) if n < num => {
+            // num always equal to n if self contains more than n characters
+            Some((num, (pos, _))) if n == num => {
                 let b = &self[..pos];
 
                 *self = &self[pos..];
+
+                Some(b)
+            },
+            // num always equal to n - 1 if self contains exactly n characters
+            Some((num, _)) if n == num + 1 => {
+                let b = &self[..];
+
+                *self = &self[..0];
 
                 Some(b)
             },
@@ -325,99 +334,232 @@ impl<'a> Input for &'a str {
     }
 }
 
-/*
 #[cfg(test)]
 mod test {
     use std::fmt::Debug;
 
-    use super::{new_buf, Input, InputBuf, DEFAULT, END_OF_INPUT};
-    use parse_result::ParseResult;
-    use primitives::{IntoInner, State};
+    use types::{Buffer, Input, InputBuf};
 
     #[test]
-    fn make_ret() {
-        let i1: InputBuf<u8> = new_buf(END_OF_INPUT, b"in1");
-        let i2: InputBuf<u8> = new_buf(DEFAULT,      b"in2");
-
-        let r1: ParseResult<_, u32, ()> = i1.ret::<_, ()>(23u32);
-        let r2: ParseResult<_, i32, ()> = i2.ret::<_, ()>(23i32);
-
-        assert_eq!(r1.into_inner(), State::Data(InputBuf(END_OF_INPUT, b"in1"), 23u32));
-        assert_eq!(r2.into_inner(), State::Data(InputBuf(DEFAULT, b"in2"), 23i32));
+    fn test_slice() {
+        run_primitives_test(&b"abc"[..], |x| x);
     }
 
     #[test]
-    fn make_err() {
-        let i1: InputBuf<u8> = new_buf(END_OF_INPUT, b"in1");
-        let i2: InputBuf<u8> = new_buf(DEFAULT,      b"in2");
-
-        let r1: ParseResult<_, (), u32> = i1.err::<(), _>(23u32);
-        let r2: ParseResult<_, (), i32> = i2.err::<(), _>(23i32);
-
-        assert_eq!(r1.into_inner(), State::Error(new_buf(END_OF_INPUT, b"in1"), 23u32));
-        assert_eq!(r2.into_inner(), State::Error(new_buf(DEFAULT, b"in2"), 23i32));
-    }
-
-    /*
-    #[test]
-    fn primitives_slice() {
-        use primitives::Primitives;
-        run_primitives_test(&b"abc"[..], true);
-
-        let mut s = &b"abc"[..];
-        let m = s.mark();
-        s.discard(2);
-        assert_eq!(s.consume_from(m), &b"ab"[..]);
-        assert_eq!(s, &b"c"[..]);
+    fn test_string() {
+        run_primitives_test(&"abc"[..], |c| c as char);
     }
 
     #[test]
-    fn primitives_input_buf_default() {
-        use primitives::Primitives;
-        run_primitives_test(new_buf(DEFAULT, b"abc"), false);
-
-        let mut s = new_buf(DEFAULT, b"abc");
-        let m = s.mark();
-        s.discard(2);
-        assert_eq!(s.consume_from(m), &b"ab"[..]);
-        assert_eq!(s, new_buf(DEFAULT, b"c"));
-    }
-
-    #[test]
-    fn primitives_input_buf_end() {
-        use primitives::Primitives;
-        run_primitives_test(new_buf(END_OF_INPUT, b"abc"), true);
-
-        let mut s = new_buf(END_OF_INPUT, b"abc");
-        let m = s.mark();
-        s.discard(2);
-        assert_eq!(s.consume_from(m), &b"ab"[..]);
-        assert_eq!(s, new_buf(END_OF_INPUT, b"c"));
-    }
-
-    fn run_primitives_test<B: Debug + for<'a> PartialEq<&'a [u8]>, I: Input<Token=u8, Buffer=B>>(mut s: I, last: bool) {
+    fn test_input_buf() {
         use primitives::Primitives;
 
-        assert_eq!(s.min_remaining(), 3);
+        run_primitives_test(InputBuf::new(b"abc"), |x| x);
+
+        let mut b = InputBuf::new(b"a");
+        assert_eq!(b.is_incomplete(), false);
+        assert_eq!(b.len(), 1);
+        assert_eq!(b.is_empty(), false);
+        b.peek();
+        assert_eq!(b.is_incomplete(), false);
+        assert_eq!(b.len(), 1);
+        assert_eq!(b.is_empty(), false);
+        b.pop();
+        assert_eq!(b.is_incomplete(), false);
+        assert_eq!(b.len(), 0);
+        assert_eq!(b.is_empty(), true);
+        assert_eq!(b.peek(), None);
+        assert_eq!(b.is_incomplete(), true);
+        assert_eq!(b.len(), 0);
+        assert_eq!(b.is_empty(), true);
+        assert_eq!(b.pop(), None);
+        assert_eq!(b.is_incomplete(), true);
+        assert_eq!(b.len(), 0);
+        assert_eq!(b.is_empty(), true);
+
+        let mut b = InputBuf::new(b"ab");
+        assert_eq!(b.is_incomplete(), false);
+        assert_eq!(b.len(), 2);
+        assert_eq!(b.is_empty(), false);
+        b.consume(1);
+        assert_eq!(b.is_incomplete(), false);
+        assert_eq!(b.len(), 1);
+        assert_eq!(b.is_empty(), false);
+        b.consume(1);
+        assert_eq!(b.is_incomplete(), false);
+        assert_eq!(b.len(), 0);
+        assert_eq!(b.is_empty(), true);
+        assert_eq!(b.consume(1), None);
+        assert_eq!(b.is_incomplete(), true);
+        assert_eq!(b.len(), 0);
+        assert_eq!(b.is_empty(), true);
+
+        let mut b = InputBuf::new(b"ab");
+        assert_eq!(b.is_incomplete(), false);
+        assert_eq!(b.len(), 2);
+        assert_eq!(b.is_empty(), false);
+        assert_eq!(b.consume(3), None);
+        assert_eq!(b.is_incomplete(), true);
+        assert_eq!(b.len(), 2);
+        assert_eq!(b.is_empty(), false);
+
+        let mut b = InputBuf::new(b"ab");
+        assert_eq!(b.is_incomplete(), false);
+        assert_eq!(b.len(), 2);
+        assert_eq!(b.is_empty(), false);
+        assert_eq!(b.consume_while(|_| true), &b"ab"[..]);
+        assert_eq!(b.is_incomplete(), true);
+        assert_eq!(b.len(), 0);
+        assert_eq!(b.is_empty(), true);
+
+        let mut b = InputBuf::new(b"ab");
+        assert_eq!(b.consume_while(|c| c == b'a'), &b"a"[..]);
+        assert_eq!(b.is_incomplete(), false);
+        assert_eq!(b.len(), 1);
+        assert_eq!(b.is_empty(), false);
+        assert_eq!(b.consume_while(|c| c == b'b'), &b"b"[..]);
+        assert_eq!(b.is_incomplete(), true);
+        assert_eq!(b.len(), 0);
+        assert_eq!(b.is_empty(), true);
+        assert_eq!(b.consume_while(|c| c == b'b'), &b""[..]);
+        assert_eq!(b.is_incomplete(), true);
+        assert_eq!(b.len(), 0);
+        assert_eq!(b.is_empty(), true);
+
+        let mut b = InputBuf::new(b"abc");
+        let m = b.mark();
+        assert_eq!(b.is_incomplete(), false);
+        assert_eq!(b.len(), 3);
+        assert_eq!(b.is_empty(), false);
+        b.consume(3);
+        assert_eq!(b.is_incomplete(), false);
+        assert_eq!(b.len(), 0);
+        assert_eq!(b.is_empty(), true);
+        assert_eq!(b.consume_from(m), &b"abc"[..]);
+        assert_eq!(b.is_incomplete(), false);
+        assert_eq!(b.len(), 0);
+        assert_eq!(b.is_empty(), true);
+
+        let mut b = InputBuf::new(b"abc");
+        let m = b.mark();
+        assert_eq!(b.is_incomplete(), false);
+        assert_eq!(b.len(), 3);
+        assert_eq!(b.is_empty(), false);
+        b.consume(2);
+        b.consume(2);
+        assert_eq!(b.is_incomplete(), true);
+        assert_eq!(b.len(), 1);
+        assert_eq!(b.is_empty(), false);
+        let mut b = b.restore(m);
+        assert_eq!(b.is_incomplete(), true);
+        assert_eq!(b.len(), 3);
+        assert_eq!(b.is_empty(), false);
+
+        let mut b = InputBuf::new(b"abc");
+        assert_eq!(b.is_incomplete(), false);
+        assert_eq!(b.len(), 3);
+        assert_eq!(b.is_empty(), false);
+        b.consume_remaining();
+        assert_eq!(b.is_incomplete(), true);
+        assert_eq!(b.len(), 0);
+        assert_eq!(b.is_empty(), true);
+    }
+
+    /// Should recieve an Input with the tokens 'a', 'b' and 'c' remaining.
+    pub fn run_primitives_test<I: Input, F: Fn(u8) -> I::Token>(mut s: I, f: F)
+      where I::Token:  Debug,
+            I::Buffer: Clone {
+        use primitives::Primitives;
+
+        fn buffer_eq_slice<B: Buffer + Clone, F: Fn(u8) -> B::Token>(b: B, s: &[u8], f: F)
+          where B::Token: Debug, {
+            assert_eq!(b.len(), s.len());
+            assert_eq!(b.is_empty(), s.is_empty());
+            assert_eq!(b.clone().fold(0, |n, c| {
+                assert_eq!(c, f(s[n]));
+
+                n + 1
+            }), s.iter().count());
+            assert_eq!(b.to_vec(), s.iter().cloned().map(f).collect::<Vec<_>>());
+        }
+
         let m = s.mark();
-        assert_eq!(s.min_remaining(), 3);
-        assert_eq!(s.first(), Some(b'a'));
-        assert_eq!(s.min_remaining(), 3);
-        assert_eq!(s.iter().collect::<Vec<_>>(), vec![b'a', b'b', b'c']);
-        assert_eq!(s.min_remaining(), 3);
-        assert_eq!(s.consume(2), &b"ab"[..]);
-        assert_eq!(s.min_remaining(), 1);
-        assert_eq!(s.iter().collect::<Vec<_>>(), vec![b'c']);
-        assert_eq!(s.consume(1), &b"c"[..]);
-        assert_eq!(s.min_remaining(), 0);
-        assert_eq!(s.iter().collect::<Vec<_>>(), vec![]);
+        assert_eq!(s.peek(), Some(f(b'a')));
+        assert_eq!(s.pop(),  Some(f(b'a')));
+        assert_eq!(s.peek(), Some(f(b'b')));
+        assert_eq!(s.pop(),  Some(f(b'b')));
+        assert_eq!(s.peek(), Some(f(b'c')));
+        assert_eq!(s.pop(),  Some(f(b'c')));
+        assert_eq!(s.peek(), None);
+        assert_eq!(s.pop(),  None);
+        assert_eq!(s.peek(), None);
+        assert_eq!(s.pop(),  None);
+        assert!(s.consume(1).is_none());
+        buffer_eq_slice(s.consume_remaining(), &b""[..], &f);
+
+        {
+            let mut n = 0;
+
+            let b = s.consume_while(|_| { n += 1; true });
+
+            assert_eq!(n, 0);
+            buffer_eq_slice(b, &b""[..], &f);
+        }
+
         let mut s = s.restore(m);
-        assert_eq!(s.min_remaining(), 3);
-        assert_eq!(s.iter().collect::<Vec<_>>(), vec![b'a', b'b', b'c']);
-        s.discard(1);
-        assert_eq!(s.first(), Some(b'b'));
-        assert_eq!(s.min_remaining(), 2);
-        assert_eq!(s.iter().collect::<Vec<_>>(), vec![b'b', b'c']);
+        assert_eq!(s.peek(), Some(f(b'a')));
+        let m = s.mark();
+        buffer_eq_slice(s.consume_remaining(), &b"abc"[..], &f);
+        assert_eq!(s.peek(), None);
+        let mut s = s.restore(m);
+        assert_eq!(s.peek(), Some(f(b'a')));
+        let m = s.mark();
+
+        {
+            let b = s.consume(2);
+
+            assert_eq!(b.is_some(), true);
+            buffer_eq_slice(b.unwrap(), &b"ab"[..], &f);
+        }
+
+        assert_eq!(s.peek(), Some(f(b'c')));
+
+        let mut s = s.restore(m);
+        assert_eq!(s.peek(), Some(f(b'a')));
+        let m = s.mark();
+
+        {
+            let b = s.consume(3);
+
+            assert_eq!(b.is_some(), true);
+            buffer_eq_slice(b.unwrap(), &b"abc"[..], &f);
+        }
+
+        assert_eq!(s.peek(), None);
+        let mut s = s.restore(m);
+        assert_eq!(s.peek(), Some(f(b'a')));
+        let m = s.mark();
+
+        {
+            let mut n = 0;
+
+            let b = s.consume_while(|c| {
+                assert_eq!(c, f(b"abc"[n]));
+
+                n += 1;
+
+                n < 3
+            });
+
+            assert_eq!(n, 3);
+            buffer_eq_slice(b, &b"ab"[..], &f);
+        }
+
+        assert_eq!(s.peek(), Some(f(b'c')));
+        assert_eq!(s.pop(),  Some(f(b'c')));
+        assert_eq!(s.peek(), None);
+        assert_eq!(s.pop(),  None);
+
+        buffer_eq_slice(s.consume_from(m), &b"abc"[..], &f);
     }
-    */
-}*/
+}

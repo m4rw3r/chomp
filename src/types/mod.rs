@@ -198,3 +198,45 @@ pub trait Input: Sized {
     #[inline]
     fn _restore(self, Guard, Self::Marker) -> Self;
 }
+
+#[cfg(test)]
+mod test {
+    use super::{Input, InputBuf, ParseResult};
+    use primitives::IntoInner;
+
+    #[test]
+    fn ret() {
+        let i1: InputBuf<u8> = InputBuf::new(b"in1");
+        let i2: InputBuf<u8> = InputBuf::new(b"in2");
+
+        let r1: ParseResult<_, u32, ()> = i1.ret::<_, ()>(23u32);
+        let r2: ParseResult<_, i32, &str> = i2.ret::<_, &str>(23i32);
+
+        assert_eq!(r1.into_inner(), (InputBuf::new(b"in1"), Ok(23u32)));
+        assert_eq!(r2.into_inner(), (InputBuf::new(b"in2"), Ok(23i32)));
+    }
+
+    #[test]
+    fn err() {
+        let i1: InputBuf<u8> = InputBuf::new(b"in1");
+        let i2: InputBuf<u8> = InputBuf::new(b"in2");
+
+        let r1: ParseResult<_, (), u32>   = i1.err::<(), _>(23u32);
+        let r2: ParseResult<_, &str, i32> = i2.err::<&str, _>(23i32);
+
+        assert_eq!(r1.into_inner(), (InputBuf::new(b"in1"), Err(23u32)));
+        assert_eq!(r2.into_inner(), (InputBuf::new(b"in2"), Err(23i32)));
+    }
+
+    #[test]
+    fn from_result() {
+        let i1: Result<u32, &str> = Ok(23);
+        let i2: Result<&str, &str> = Err("foobar");
+
+        let r1 = InputBuf::new(b"in1").from_result(i1);
+        let r2 = InputBuf::new(b"in2").from_result(i2);
+
+        assert_eq!(r1.into_inner(), (InputBuf::new(b"in1"), Ok(23u32)));
+        assert_eq!(r2.into_inner(), (InputBuf::new(b"in2"), Err("foobar")));
+    }
+}
