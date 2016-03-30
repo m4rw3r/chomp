@@ -1,5 +1,4 @@
 use std::io;
-use std::cmp;
 
 use types::{InputBuf, ParseResult};
 use primitives::IntoInner;
@@ -233,7 +232,6 @@ impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
             (mut remainder, Err(err)) => {
                 if remainder.is_incomplete() {
                     if self.state.contains(END_OF_INPUT) {
-                        // TODO: Remove the 1?
                         Err(StreamError::Incomplete)
                     } else {
                         self.state.insert(INCOMPLETE);

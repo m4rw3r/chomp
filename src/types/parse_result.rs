@@ -65,7 +65,7 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
     /// # Examples
     ///
     /// ```
-    /// use chomp::parse_only;
+    /// use chomp::prelude::{Input, parse_only};
     ///
     /// let r = parse_only(|i| {
     ///         i.ret("data".to_owned())
@@ -81,9 +81,9 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
     /// the type-hint for the error in the function signature:
     ///
     /// ```
-    /// use chomp::{Input, ParseResult, parse_only};
+    /// use chomp::prelude::{Input, ParseResult, parse_only};
     ///
-    /// fn parser(i: Input<u8>, n: i32) -> ParseResult<u8, i32, ()> {
+    /// fn parser<I: Input>(i: I, n: i32) -> ParseResult<I, i32, ()> {
     ///     i.ret(n + 10)
     /// }
     ///
@@ -115,9 +115,9 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
     /// # Example
     ///
     /// ```
-    /// use chomp::{Input, U8Result, parse_only};
+    /// use chomp::prelude::{Input, SimpleResult, parse_only};
     ///
-    /// fn g(i: Input<u8>) -> U8Result<&'static str> {
+    /// fn g<I: Input>(i: I) -> SimpleResult<I, &'static str> {
     ///     i.ret("testing!")
     /// }
     ///
@@ -139,7 +139,7 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
     /// # Example
     ///
     /// ```
-    /// use chomp::{parse_only, any};
+    /// use chomp::prelude::{parse_only, any};
     ///
     /// let r = parse_only(|i| any(i).map(|c| c + 12), b"abc");
     ///
@@ -159,13 +159,13 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
     /// # Example
     ///
     /// ```
-    /// use chomp::{ParseError, parse_only};
+    /// use chomp::prelude::{Input, parse_only};
     ///
     /// let r = parse_only(|i| i.err::<(), _>("this is")
     ///          .map_err(|e| e.to_owned() + " an error"),
     ///          b"foo");
     ///
-    /// assert_eq!(r, Err(ParseError::Error(b"foo", "this is an error".to_owned())));
+    /// assert_eq!(r, Err((&b"foo"[..], "this is an error".to_owned())));
     /// ```
     #[inline]
     pub fn map_err<V, F>(self, f: F) -> ParseResult<I, T, V>
@@ -182,7 +182,7 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
     /// # Example
     ///
     /// ```
-    /// use chomp::{parse_only, take_while};
+    /// use chomp::prelude::{parse_only, take_while};
     ///
     /// let r = parse_only(|i| take_while(i, |c| c != b' ').inspect(|b| {
     ///     println!("{:?}", b); // Prints "test"
@@ -214,28 +214,6 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
 /// in terms of how much it exposes its internals, but the `IntoInner` trait implementation
 /// allows fundamental parsers and combinators to expose the inner `Result` of the `ParseResult`
 /// and act on this.
-///
-/// # Example
-///
-/// ```
-/// use chomp::{Input, ParseResult, parse_only, take};
-/// use chomp::primitives::{InputClone, IntoInner, State};
-///
-/// // Version of option() which also catches incomplete
-/// fn my_combinator<'a, I, T, E, F>(i: Input<'a, I>, f: F, default: T) -> ParseResult<'a, I, T, E>
-///   where F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E> {
-///     match f(i.clone()).into_inner() {
-///         // Data, preserve the buffer and return
-///         State::Data(b, d) => b.ret(d),
-///         // Not data, use original buffer and return default
-///         _                 => i.ret(default),
-///     }
-/// }
-///
-/// let r = parse_only(|i| my_combinator(i, |i| take(i, 10), &b"test"[..]), b"foo");
-///
-/// assert_eq!(r, Ok(&b"test"[..]));
-/// ```
 impl<I: Input, T, E> IntoInner for ParseResult<I, T, E> {
     type Inner = (I, Result<T, E>);
 

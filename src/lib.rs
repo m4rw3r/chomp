@@ -16,16 +16,15 @@
 //! ```
 //! # #[macro_use] extern crate chomp;
 //! # fn main() {
-//! use chomp::{Input, U8Result, parse_only};
-//! use chomp::{take_while1, token};
+//! use chomp::prelude::*;
 //!
 //! #[derive(Debug, Eq, PartialEq)]
-//! struct Name<'a> {
-//!     first: &'a [u8],
-//!     last:  &'a [u8],
+//! struct Name<B: Buffer> {
+//!     first: B,
+//!     last:  B,
 //! }
 //!
-//! fn name(i: Input<u8>) -> U8Result<Name> {
+//! fn name<I: U8Input>(i: I) -> SimpleResult<I, Name<I::Buffer>> {
 //!     parse!{i;
 //!         let first = take_while1(|c| c != b' ');
 //!                     token(b' ');  // skipping this char
@@ -39,7 +38,7 @@
 //! }
 //!
 //! assert_eq!(parse_only(name, "Martin Wernstål\n".as_bytes()), Ok(Name{
-//!     first: b"Martin",
+//!     first: &b"Martin"[..],
 //!     last: "Wernstål".as_bytes()
 //! }));
 //! # }
@@ -93,7 +92,7 @@
 //! ```
 //! # #[macro_use] extern crate chomp;
 //! # fn main() {
-//! # use chomp::{satisfy, parse_only};
+//! # use chomp::prelude::*;
 //! # let r = parse_only(parser!{
 //! satisfy(|c| {
 //!     match c {
@@ -144,8 +143,8 @@
 //!
 //! ```
 //! # #[macro_use] extern crate chomp;
-//! # use chomp::{Input, parse_only, satisfy, string, U8Result};
-//! fn f(i: Input<u8>) -> U8Result<(u8, u8, u8)> {
+//! # use chomp::prelude::*;
+//! fn f<I: U8Input>(i: I) -> SimpleResult<I, (u8, u8, u8)> {
 //!     parse!{i;
 //!         let a = digit();
 //!         let b = digit();
@@ -154,7 +153,7 @@
 //!     }
 //! }
 //!
-//! fn digit(i: Input<u8>) -> U8Result<u8> {
+//! fn digit<I: U8Input>(i: I) -> SimpleResult<I, u8> {
 //!     satisfy(i, |c| b'0' <= c && c <= b'9').map(|c| c - b'0')
 //! }
 //! # fn main() {
@@ -258,6 +257,7 @@ pub mod prelude {
         matched_by,
     };
     pub use types::{
+        Buffer,
         Input,
         U8Input,
         ParseResult,

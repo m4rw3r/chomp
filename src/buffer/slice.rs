@@ -8,7 +8,7 @@ use buffer::{IntoStream, StreamError, Stream};
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use chomp::{token, take};
+/// use chomp::parsers::{token, take};
 /// use chomp::buffer::{IntoStream, Stream};
 ///
 /// let i = b"foo";
@@ -25,7 +25,7 @@ use buffer::{IntoStream, StreamError, Stream};
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use chomp::{token, many, take};
+/// use chomp::prelude::{token, many, take};
 /// use chomp::buffer::{IntoStream, Stream};
 ///
 /// let i = b"foofoo";
@@ -100,7 +100,6 @@ impl<'a, 'i, I: 'i + Copy + PartialEq> Stream<'a, 'i> for SliceStream<'i, I> {
             },
             (mut remainder, Err(err)) => {
                 if remainder.is_incomplete() {
-                    // TODO: 1 is not correct, n is expected len but we can't obtain that right now
                     Err(StreamError::Incomplete)
                 } else {
                     // TODO: Do something neater with the remainder

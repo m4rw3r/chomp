@@ -74,7 +74,7 @@ pub trait Input: Sized {
     /// # Example
     ///
     /// ```
-    /// use chomp::parse_only;
+    /// use chomp::prelude::{Input, parse_only};
     ///
     /// let r = parse_only(|i|
     ///     // Annotate the error type
@@ -95,14 +95,14 @@ pub trait Input: Sized {
     /// # Example
     ///
     /// ```
-    /// use chomp::{ParseError, parse_only};
+    /// use chomp::prelude::{Input, parse_only};
     ///
     /// let r = parse_only(|i|
     ///     // Annotate the value type
     ///     i.err::<(), _>("Something went wrong"),
     ///     b"some input");
     ///
-    /// assert_eq!(r, Err(ParseError::Error(b"some input", "Something went wrong")));
+    /// assert_eq!(r, Err((&b"some input"[..], "Something went wrong")));
     /// ```
     #[inline]
     fn err<T, E>(self, e: E) -> ParseResult<Self, T, E> {
@@ -119,7 +119,7 @@ pub trait Input: Sized {
     /// # Examples
     ///
     /// ```
-    /// use chomp::{ParseError, parse_only};
+    /// use chomp::prelude::{Input, parse_only};
     ///
     /// let r = parse_only(|i| i.from_result::<_, ()>(Ok("foo")), b"test");
     ///
@@ -127,7 +127,7 @@ pub trait Input: Sized {
     ///
     /// let r = parse_only(|i| i.from_result::<(), _>(Err("error message")), b"test");
     ///
-    /// assert_eq!(r, Err(ParseError::Error(&b"test"[..], "error message")));
+    /// assert_eq!(r, Err((&b"test"[..], "error message")));
     /// ```
     #[inline]
     fn from_result<T, E>(self, r: Result<T, E>) -> ParseResult<Self, T, E> {

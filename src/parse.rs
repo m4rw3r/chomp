@@ -7,15 +7,14 @@ use primitives::{
 /// Runs the given parser on the supplied finite input.
 ///
 /// ```
-/// use chomp::{ParseError, Error};
-/// use chomp::parse_only;
+/// use chomp::prelude::{parse_only, Error};
 /// use chomp::ascii::decimal;
 ///
 /// assert_eq!(parse_only(decimal, b"123foobar"), Ok(123u32));
 ///
 /// // Annotation because `decimal` is generic over number types
 /// let r: Result<u32, _> = parse_only(decimal, b"foobar");
-/// assert_eq!(r, Err(ParseError::Error(&b"foobar"[..], Error::new())));
+/// assert_eq!(r, Err((&b"foobar"[..], Error::new())));
 /// ```
 ///
 /// This will not force the parser to consume all available input, any remainder will be
@@ -24,10 +23,9 @@ use primitives::{
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use chomp::{Input, ParseError, Error, U8Result};
-/// use chomp::{parse_only, string, eof};
+/// use chomp::prelude::{U8Input, Error, SimpleResult, parse_only, string, eof};
 ///
-/// fn my_parser(i: Input<u8>) -> U8Result<&[u8]> {
+/// fn my_parser<I: U8Input>(i: I) -> SimpleResult<I, I::Buffer> {
 ///     parse!{i;
 ///         let r = string(b"pattern");
 ///                 eof();
@@ -38,7 +36,7 @@ use primitives::{
 ///
 /// assert_eq!(parse_only(my_parser, b"pattern"), Ok(&b"pattern"[..]));
 /// assert_eq!(parse_only(my_parser, b"pattern and more"),
-///            Err(ParseError::Error(&b" and more"[..], Error::new())));
+///            Err((&b" and more"[..], Error::new())));
 /// # }
 /// ```
 pub fn parse_only<'a, I, T, E, F>(parser: F, input: &'a [I]) -> Result<T, (&'a [I], E)>

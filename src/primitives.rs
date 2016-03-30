@@ -73,32 +73,6 @@ pub trait Primitives: Input {
     }
 
     /// Marks the current position to be able to backtrack to it using `restore`.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use chomp::{take, Input};
-    /// use chomp::primitives::Primitives;
-    /// use chomp::primitives::{InputBuffer, IntoInner, State};
-    ///
-    /// let i = &b"Testing";
-    ///
-    /// assert_eq!(i.buffer(), b"Testing");
-    /// assert_eq!(i.is_end(), true);
-    ///
-    /// // mark and eat one token
-    /// let m = i.mark();
-    /// let i = i.consume(1);
-    ///
-    /// assert_eq!(i.buffer(), b"esting");
-    ///
-    /// // restore and continue parsing
-    /// let j = i.restore(m);
-    ///
-    /// let r = take(j, 4);
-    ///
-    /// assert_eq!(r.into_inner(), State::Data(input::new(input::END_OF_INPUT, b""), &b"Test"[..]));
-    /// ```
     #[inline(always)]
     fn mark(&self) -> Self::Marker {
         self._mark(Guard(()))

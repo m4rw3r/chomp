@@ -7,7 +7,8 @@
 //!
 //! ```
 //! use chomp::combinators::bounded::many;
-//! use chomp::{parse_only, any};
+//! use chomp::parse_only;
+//! use chomp::parsers::any;
 //!
 //! // Read any character 2 or 3 times
 //! let r: Result<Vec<_>, _> = parse_only(|i| many(i, 2..4, any), b"abcd");
@@ -239,7 +240,7 @@ impl BoundedRange for Range<usize> {
                 (s, (0, _), EndStateTill::EndSuccess)    => s.ret(result),
                 // Did not reach minimum or a failure, propagate
                 (s, (_, _), EndStateTill::Error(e))   => s.err(e),
-                (s, (_, _), EndStateTill::Incomplete) => unreachable!(),
+                (_, (_, _), EndStateTill::Incomplete) => unreachable!(),
                 // We cannot reach this since we only run the end test once we have reached the
                 // minimum number of matches
                 (_, (_, _), EndStateTill::EndSuccess)    => unreachable!()
@@ -343,7 +344,7 @@ impl BoundedRange for RangeFrom<usize> {
                 (s, 0, EndStateTill::EndSuccess)    => s.ret(result),
                 // Did not reach minimum or a failure, propagate
                 (s, _, EndStateTill::Error(e))   => s.err(e),
-                (s, _, EndStateTill::Incomplete) => unreachable!(),
+                (_, _, EndStateTill::Incomplete) => unreachable!(),
                 // We cannot reach this since we only run the end test once we have reached the
                 // minimum number of matches
                 (_, _, EndStateTill::EndSuccess)    => unreachable!()
@@ -425,7 +426,7 @@ impl BoundedRange for RangeFull {
                 (s, (), EndStateTill::EndSuccess)    => s.ret(result),
                 (s, (), EndStateTill::Error(e))      => s.err(e),
                 // Nested parser incomplete, propagate if not at end
-                (s, (), EndStateTill::Incomplete) => unreachable!()
+                (_, (), EndStateTill::Incomplete) => unreachable!()
             }
         }
     }
@@ -551,7 +552,7 @@ impl BoundedRange for RangeTo<usize> {
                 (s, _, EndStateTill::EndSuccess)    => s.ret(result),
                 // Did not reach minimum or a failure, propagate
                 (s, _, EndStateTill::Error(e))   => s.err(e),
-                (s, _, EndStateTill::Incomplete) => unreachable!(),
+                (_, _, EndStateTill::Incomplete) => unreachable!(),
             }
         }
     }
@@ -661,7 +662,7 @@ impl BoundedRange for usize {
                 (s, 0, EndStateTill::EndSuccess)    => s.ret(result),
                 // Did not reach minimum or a failure, propagate
                 (s, _, EndStateTill::Error(e))      => s.err(e),
-                (s, _, EndStateTill::Incomplete) => unreachable!(),
+                (_, _, EndStateTill::Incomplete) => unreachable!(),
                 // We cannot reach this since we only run the end test once we have reached the
                 // minimum number of matches
                 (_, _, EndStateTill::EndSuccess)    => unreachable!()

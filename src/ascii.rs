@@ -150,7 +150,7 @@ pub fn signed<I: Input<Token=u8>, T, F>(i: I, f: F) -> SimpleResult<I, T>
 /// use chomp::parse_only;
 /// use chomp::ascii::decimal;
 ///
-/// let r = parse_only(decimal::<u8>, b"123");
+/// let r = parse_only(decimal::<_, u8>, b"123");
 ///
 /// assert_eq!(r, Ok(123u8));
 /// ```

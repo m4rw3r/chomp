@@ -20,13 +20,13 @@ use primitives::{
 /// Applies the parser ``p`` exactly ``num`` times collecting all items into `T: FromIterator`.
 ///
 /// ```
-/// use chomp::{U8Result, ParseError, Error, Input, parse_only, count, token, take_remainder};
+/// use chomp::prelude::*;
 ///
-/// fn parse(i: Input<u8>) -> U8Result<Vec<u8>> {
+/// fn parse<I: U8Input>(i: I) -> SimpleResult<I, Vec<u8>> {
 ///     count(i, 2, |i| token(i, b'a'))
 /// }
 ///
-/// assert_eq!(parse_only(parse, b"a  "), Err(ParseError::Error(b"  ", Error::expected(b'a'))));
+/// assert_eq!(parse_only(parse, b"a  "), Err((&b"  "[..], Error::expected(b'a'))));
 /// assert_eq!(parse_only(parse, b"aa "), Ok(vec![b'a', b'a']));
 ///
 /// let with_remainder = |i| parse(i).bind(|i, d| take_remainder(i).map(|r| (r, d)));
@@ -46,9 +46,9 @@ pub fn count<I: Input, T, E, F, U>(i: I, num: usize, p: F) -> ParseResult<I, T, 
 /// Incomplete state is propagated. Backtracks on error.
 ///
 /// ```
-/// use chomp::{Input, U8Result, parse_only, option, token};
+/// use chomp::prelude::{U8Input, SimpleResult, parse_only, option, token};
 ///
-/// fn f(i: Input<u8>) -> U8Result<u8> {
+/// fn f<I: U8Input>(i: I) -> SimpleResult<I, u8> {
 ///     option(i, |i| token(i, b'a'), b'd')
 /// }
 ///
@@ -75,7 +75,7 @@ pub fn option<I: Input, T, E, F>(i: I, f: F, default: T) -> ParseResult<I, T, E>
 /// and its alternation operator (`<|>`).
 ///
 /// ```
-/// use chomp::{ParseError, Error, parse_only, or, token};
+/// use chomp::prelude::{Error, parse_only, or, token};
 ///
 /// let p = |i| or(i,
 ///             |i| token(i, b'a'),
@@ -83,7 +83,7 @@ pub fn option<I: Input, T, E, F>(i: I, f: F, default: T) -> ParseResult<I, T, E>
 ///
 /// assert_eq!(parse_only(&p, b"abc"), Ok(b'a'));
 /// assert_eq!(parse_only(&p, b"bbc"), Ok(b'b'));
-/// assert_eq!(parse_only(&p, b"cbc"), Err(ParseError::Error(b"cbc", Error::expected(b'b'))));
+/// assert_eq!(parse_only(&p, b"cbc"), Err((&b"cbc"[..], Error::expected(b'b'))));
 /// ```
 #[inline]
 pub fn or<I: Input, T, E, F, G>(i: I, f: F, g: G) -> ParseResult<I, T, E>
@@ -106,7 +106,7 @@ pub fn or<I: Input, T, E, F, G>(i: I, f: F, g: G) -> ParseResult<I, T, E>
 /// Note: Allocates data.
 ///
 /// ```
-/// use chomp::{parse_only, token, many, take_while1};
+/// use chomp::prelude::{parse_only, token, many, take_while1};
 ///
 /// let r: Result<Vec<_>, _> = parse_only(|i| many(i,
 ///     |i| take_while1(i, |c| c != b',' && c != b' ')
@@ -132,13 +132,13 @@ pub fn many<I: Input, T, E, F, U>(i: I, f: F) -> ParseResult<I, T, E>
 /// Note: Allocates data.
 ///
 /// ```
-/// use chomp::{ParseError, Error, parse_only, token, many1, take_while1};
+/// use chomp::prelude::{Error, parse_only, token, many1, take_while1};
 ///
 /// let p = |i| many1(i, |i| take_while1(i, |c| c != b',' && c != b' ')
 ///             .bind(|i, c| token(i, b',')
 ///                          .map(|_| c)));
 ///
-/// assert_eq!(parse_only(&p, b"a "), Err(ParseError::Error(b" ", Error::expected(b','))));
+/// assert_eq!(parse_only(&p, b"a "), Err((&b" "[..], Error::expected(b','))));
 /// assert_eq!(parse_only(&p, b"a, "), Ok(vec![&b"a"[..]]));
 /// ```
 #[inline]
@@ -157,7 +157,7 @@ pub fn many1<I: Input, T, E, F, U>(i: I, f: F) -> ParseResult<I, T, E>
 /// Incomplete will be propagated from `R` if end of input has not been read.
 ///
 /// ```
-/// use chomp::{parse_only, sep_by, token};
+/// use chomp::prelude::{parse_only, sep_by, token};
 /// use chomp::ascii::decimal;
 ///
 /// let r: Result<Vec<u8>, _> = parse_only(|i| sep_by(i, decimal, |i| token(i, b';')), b"91;03;20");
@@ -183,7 +183,7 @@ pub fn sep_by<I: Input, T, E, R, F, U, N, V>(i: I, p: R, sep: F) -> ParseResult<
 /// Incomplete will be propagated from `R` if end of input has not been read.
 ///
 /// ```
-/// use chomp::{parse_only, sep_by1, token};
+/// use chomp::prelude::{parse_only, sep_by1, token};
 /// use chomp::ascii::decimal;
 ///
 /// let r: Result<Vec<u8>, _> = parse_only(|i| sep_by1(i, decimal, |i| token(i, b';')), b"91;03;20");
@@ -207,7 +207,7 @@ pub fn sep_by1<I: Input, T, E, R, F, U, N, V>(i: I, p: R, sep: F) -> ParseResult
 /// Errors from `R` are propagated.
 ///
 /// ```
-/// use chomp::{parse_only, many_till, any, token};
+/// use chomp::prelude::{parse_only, many_till, any, token};
 ///
 /// let r: Result<Vec<u8>, _> = parse_only(|i| many_till(i, any, |i| token(i, b';')), b"abc;def");
 ///
@@ -230,7 +230,7 @@ pub fn many_till<I: Input, T, E, R, F, U, N, V>(i: I, p: R, end: F) -> ParseResu
 /// ``many`` allocates a separate data structure to contain the data before proceeding.
 ///
 /// ```
-/// use chomp::{parse_only, skip_many, token};
+/// use chomp::prelude::{parse_only, skip_many, token};
 ///
 /// let r = parse_only(|i| skip_many(i, |i| token(i, b'a')).then(|i| token(i, b'b')), b"aaaabc");
 ///
@@ -251,14 +251,14 @@ pub fn skip_many<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, (), E>
 /// ``many1`` allocates a separate data structure to contain the data before proceeding.
 ///
 /// ```
-/// use chomp::{ParseError, Error, parse_only, skip_many1, token};
+/// use chomp::prelude::{Error, parse_only, skip_many1, token};
 ///
 /// let p = |i| skip_many1(i, |i| token(i, b'a')).bind(|i, _| token(i, b'b'));
 ///
 /// assert_eq!(parse_only(&p, b"aaaabc"), Ok(b'b'));
 /// assert_eq!(parse_only(&p, b"abc"), Ok(b'b'));
 ///
-/// assert_eq!(parse_only(&p, b"bc"), Err(ParseError::Error(b"bc", Error::expected(b'a'))));
+/// assert_eq!(parse_only(&p, b"bc"), Err((&b"bc"[..], Error::expected(b'a'))));
 /// ```
 #[inline]
 pub fn skip_many1<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, (), E>
@@ -269,7 +269,7 @@ pub fn skip_many1<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, (), E>
 /// Returns the result of the given parser as well as the slice which matched it.
 ///
 /// ```
-/// use chomp::{parse_only, matched_by};
+/// use chomp::prelude::{parse_only, matched_by};
 /// use chomp::ascii::decimal;
 ///
 /// assert_eq!(parse_only(|i| matched_by(i, decimal), b"123"), Ok((&b"123"[..], 123u32)));
@@ -292,7 +292,7 @@ pub fn matched_by<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, (I::Buffer, T
 /// Applies the parser `F` without consuming any input.
 ///
 /// ```
-/// use chomp::{parse_only, take};
+/// use chomp::prelude::{parse_only, take};
 /// use chomp::combinators::look_ahead;
 ///
 /// let p = |i| look_ahead(i, |i| take(i, 4)).bind(|i, t| take(i, 7).map(|u| (t, u)));
@@ -310,6 +310,7 @@ pub fn look_ahead<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, T, E>
     }
 }
 
+// FIXME:
 /*
 #[cfg(test)]
 mod test {
