@@ -35,7 +35,8 @@ pub mod data_source;
 
 use std::io;
 
-use types::{ParseResult, Input, InputBuf};
+use types::{ParseResult, InputBuf};
+use types::Buffer as InputBuffer;
 use parse::ParseError;
 
 pub use self::slice::SliceStream;
@@ -49,10 +50,9 @@ pub use self::buffer::{
 
 /// Error type for parsing using the `Stream` trait.
 #[derive(Debug)]
-pub enum StreamError<'a, I, E>
-  where I: 'a {
+pub enum StreamError<B: InputBuffer, E> {
     /// An error occurred in the parser, the given slice indicates the part which failed.
-    ParseError(&'a [I], E),
+    ParseError(B, E),
     /// Parser failed to complete with the available data.
     Incomplete(usize),
     /// An IO-error occurred while attempting to fill the buffer.
@@ -65,10 +65,9 @@ pub enum StreamError<'a, I, E>
     Retry,
 }
 
-impl<'a, I, E> PartialEq for StreamError<'a, I, E>
-  where E: PartialEq, I: PartialEq {
+impl<B: InputBuffer, E: PartialEq<E>> PartialEq for StreamError<B, E> {
     #[inline]
-    fn eq(&self, other: &StreamError<'a, I, E>) -> bool {
+    fn eq(&self, other: &StreamError<B, E>) -> bool {
         match (self, other) {
             (&StreamError::ParseError(ref b1, ref e1), &StreamError::ParseError(ref b2, ref e2)) => b1 == b2 && e1 == e2,
             (&StreamError::Incomplete(n1), &StreamError::Incomplete(n2)) => n1 == n2,
@@ -79,17 +78,19 @@ impl<'a, I, E> PartialEq for StreamError<'a, I, E>
     }
 }
 
-impl<'a, T: Copy + PartialEq, I: Input<Token=T, Buffer=&'a [T]>, E> From<ParseError<I, E>> for StreamError<'a, T, E>
-  where I: 'a {
+// FIXME:
+/*
+impl<I: Input, E> From<ParseError<I, E>> for StreamError<I, E> {
     fn from(e: ParseError<I, E>) -> Self {
         use primitives::Primitives;
 
         match e {
-            ParseError::Error(mut b, e) => StreamError::ParseError(b.consume_remaining(), e),
-            ParseError::Incomplete(n)   => StreamError::Incomplete(n),
+            ParseError::Error(b, e)   => StreamError::ParseError(b, e),
+            ParseError::Incomplete(n) => StreamError::Incomplete(n),
         }
     }
 }
+*/
 
 /// Trait wrapping the state management in reading from a data source while parsing.
 pub trait Stream<'a, 'i> {
@@ -102,7 +103,7 @@ pub trait Stream<'a, 'i> {
     /// If a `StreamError::Retry` is returned the consuming code it should just retry the action
     /// (the implementation might require a separate call to refill the stream).
     #[inline]
-    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, StreamError<'i, Self::Item, E>>
+    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, StreamError<&'i [Self::Item], E>>
       where F: FnOnce(InputBuf<'i, Self::Item>) -> ParseResult<InputBuf<'i, Self::Item>, T, E>,
             T: 'i,
             E: 'i;

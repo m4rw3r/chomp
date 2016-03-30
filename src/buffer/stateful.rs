@@ -203,7 +203,7 @@ impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
     type Item = S::Item;
 
     #[inline]
-    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, StreamError<'a, Self::Item, E>>
+    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, StreamError<&'a [Self::Item], E>>
       where F: FnOnce(InputBuf<'a, Self::Item>) -> ParseResult<InputBuf<'a, Self::Item>, T, E>,
             T: 'a,
             E: 'a {

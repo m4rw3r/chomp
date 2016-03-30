@@ -1,5 +1,3 @@
-use std::iter;
-use std::slice;
 use std::str;
 
 use types::ParseResult;
@@ -15,15 +13,46 @@ impl<T> U8Input for T
 
 // FIXME: Docs
 // TODO: More methods?
-pub trait Buffer {
+pub trait Buffer: PartialEq<Self> {
+    /// The token type of this buffer.
     type Token: Copy + PartialEq;
-    type Iter: Iterator<Item=Self::Token>;
 
-    fn iter(&self) -> Self::Iter;
+    fn fold<B, F>(self, B, F) -> B
+      where F: FnMut(B, Self::Token) -> B;
+
     fn len(&self) -> usize;
+    //fn to_vec(self) -> Vec<Self::Token>;
 
     fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+}
+
+impl<'a, I: Copy + PartialEq> Buffer for &'a [I] {
+    type Token = I;
+
+    fn fold<B, F>(self, init: B, f: F) -> B
+      where F: FnMut(B, Self::Token) -> B {
+        (&self[..]).iter().cloned().fold(init, f)
+    }
+
+    fn len(&self) -> usize {
+        // Slice to reach inherent method to prevent infinite recursion
+        (&self[..]).len()
+    }
+}
+
+impl<'a> Buffer for &'a str {
+    type Token = char;
+
+    fn fold<B, F>(self, init: B, f: F) -> B
+      where F: FnMut(B, Self::Token) -> B {
+        self.chars().fold(init, f)
+    }
+
+    fn len(&self) -> usize {
+        // Slice to reach inherent method to prevent infinite recursion
+        (&self[..]).len()
     }
 }
 
@@ -41,16 +70,19 @@ pub trait Buffer {
 /// something like `u8`), `...` additional parameters to the parser, `T` the carried type and `E`
 /// the potential error type.
 pub trait Input: Sized {
-    /// The token type of the input
+    /// The token type of the input.
     // TODO: Maybe remove the copy bound at some point?
     type Token: Copy + PartialEq;
-    /// A marker type which is used to backtrack using `_mark` and `_restore`. It should also be
-    /// possible to use this type to consume the data from the marked position to the current
-    /// position.
+
+    /// A marker type which is used to backtrack using `_mark` and `_restore`.
+    ///
+    /// It should also be possible to use this type to consume the data from the marked position to
+    /// the current position.
     type Marker;
 
-    // TODO: Bounds for common usage (eg. to iterator?)
-    // FIXME: Docs
+    /// The buffer type yielded by this input when multiple tokens are consumed in sequence.
+    ///
+    /// Can eg. provide zero-copy parsing if the input type is built to support it.
     type Buffer: Buffer<Token=Self::Token>;
 
     /// Returns `t` as a success value in the parsing context.
@@ -183,20 +215,6 @@ pub trait Input: Sized {
     /// Resumes from a previously marked state.
     #[inline]
     fn _restore(self, Guard, Self::Marker) -> Self;
-}
-
-impl<'a, I: Copy + PartialEq> Buffer for &'a [I] {
-    type Token = I;
-    type Iter  = iter::Cloned<slice::Iter<'a, Self::Token>>;
-
-    fn iter(&self) -> Self::Iter {
-        (&self[..]).iter().cloned()
-    }
-
-    fn len(&self) -> usize {
-        // Slice to reach inherent method to prevent infinite recursion
-        (&self[..]).len()
-    }
 }
 
 impl<'a, I: Copy + PartialEq> Input for &'a [I] {
@@ -395,20 +413,6 @@ impl<'a, I: Copy + PartialEq> Input for InputBuf<'a, I> {
         self.1 = m;
 
         self
-    }
-}
-
-impl<'a> Buffer for &'a str {
-    type Token = char;
-    type Iter  = str::Chars<'a>;
-
-    fn iter(&self) -> Self::Iter {
-        self.chars()
-    }
-
-    fn len(&self) -> usize {
-        // Slice to reach inherent method to prevent infinite recursion
-        (&self[..]).len()
     }
 }
 

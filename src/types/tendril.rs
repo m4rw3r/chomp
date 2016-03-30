@@ -83,6 +83,13 @@ impl Input for ByteTendril {
 }
 
 impl Buffer for ByteTendril {
+    type Token = u8;
+
+    fn fold<B, F>(self, init: B, f: F) -> B
+      where F: FnMut(B, Self::Token) -> B {
+        (&self[..]).iter().cloned().fold(init, f)
+    }
+
     fn len(&self) -> usize {
         self.len32() as usize
     }
@@ -91,11 +98,16 @@ impl Buffer for ByteTendril {
 // FIXME: Tests
 #[cfg(test)]
 mod test {
-    fn basic() {
-        use prelude::*;
-        use ascii::decimal;
-        use primitives::{IntoInner, State};
+    use tendril::Tendril;
 
-        assert_eq!(decimal(Tendril::from_slice(b"123")).into_inner(), State::Data(Tendril::from_slice(b""), 123i32));
+    fn basic() {
+        use ascii::decimal;
+        use primitives::IntoInner;
+
+        assert_eq!(decimal(Tendril::from_slice(b"123")).into_inner(), (Tendril::from_slice(b""), Ok(123i32)));
+    }
+
+    fn primitives() {
+        ::types::input::test::run_primitives_test(Tendril::from_slice(b"123"), |x| x);
     }
 }

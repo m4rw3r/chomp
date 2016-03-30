@@ -81,7 +81,7 @@ impl<'a, 'i, I: 'i + Copy + PartialEq> Stream<'a, 'i> for SliceStream<'i, I> {
     type Item = I;
 
     #[inline]
-    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, StreamError<'i, Self::Item, E>>
+    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, StreamError<&'i [Self::Item], E>>
       where F: FnOnce(InputBuf<'i, Self::Item>) -> ParseResult<InputBuf<'i, Self::Item>, T, E>,
             T: 'i,
             E: 'i {

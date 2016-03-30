@@ -1,7 +1,7 @@
 mod input;
 mod parse_result;
 #[cfg(feature = "tendril")]
-mod tendril;
+pub mod tendril;
 
 pub use self::parse_result::{
     ParseResult
