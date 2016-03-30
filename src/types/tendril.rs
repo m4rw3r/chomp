@@ -93,6 +93,10 @@ impl Buffer for ByteTendril {
     fn len(&self) -> usize {
         self.len32() as usize
     }
+
+    fn to_vec(self) -> Vec<Self::Token> {
+        (&self[..]).iter().cloned().collect()
+    }
 }
 
 // FIXME: Tests
