@@ -28,7 +28,6 @@ pub trait Buffer<I: Copy + PartialEq>: ops::Deref<Target=[I]> {
     #[inline]
     fn fill<S: DataSource<Item=I>>(&mut self, &mut S) -> io::Result<usize>;
 
-
     /// Buffer attempts to clear space for additional items.
     #[inline]
     fn request_space(&mut self, usize);

@@ -37,7 +37,6 @@ use std::io;
 
 use types::{ParseResult, InputBuf};
 use types::Buffer as InputBuffer;
-use parse::ParseError;
 
 pub use self::slice::SliceStream;
 pub use self::data_source::DataSource;
@@ -54,7 +53,7 @@ pub enum StreamError<B: InputBuffer, E> {
     /// An error occurred in the parser, the given slice indicates the part which failed.
     ParseError(B, E),
     /// Parser failed to complete with the available data.
-    Incomplete(usize),
+    Incomplete,
     /// An IO-error occurred while attempting to fill the buffer.
     IoError(io::Error),
     /// The last parser completed successfully and there is no more input to parse.
@@ -70,27 +69,13 @@ impl<B: InputBuffer, E: PartialEq<E>> PartialEq for StreamError<B, E> {
     fn eq(&self, other: &StreamError<B, E>) -> bool {
         match (self, other) {
             (&StreamError::ParseError(ref b1, ref e1), &StreamError::ParseError(ref b2, ref e2)) => b1 == b2 && e1 == e2,
-            (&StreamError::Incomplete(n1), &StreamError::Incomplete(n2)) => n1 == n2,
+            (&StreamError::Incomplete, &StreamError::Incomplete) => true,
             (&StreamError::EndOfInput, &StreamError::EndOfInput) => true,
             (&StreamError::Retry, &StreamError::Retry) => true,
             _ => false,
         }
     }
 }
-
-// FIXME:
-/*
-impl<I: Input, E> From<ParseError<I, E>> for StreamError<I, E> {
-    fn from(e: ParseError<I, E>) -> Self {
-        use primitives::Primitives;
-
-        match e {
-            ParseError::Error(b, e)   => StreamError::ParseError(b, e),
-            ParseError::Incomplete(n) => StreamError::Incomplete(n),
-        }
-    }
-}
-*/
 
 /// Trait wrapping the state management in reading from a data source while parsing.
 pub trait Stream<'a, 'i> {

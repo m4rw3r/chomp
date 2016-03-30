@@ -4,15 +4,6 @@ use primitives::{
     Primitives,
 };
 
-/// Simple error type returned from `parse_only`.
-#[derive(Debug, Eq, PartialEq)]
-pub enum ParseError<I, E> {
-    /// A parse error occurred.
-    Error(I, E),
-    /// The parser attempted to read more data than available.
-    Incomplete(usize),
-}
-
 /// Runs the given parser on the supplied finite input.
 ///
 /// ```
@@ -50,12 +41,12 @@ pub enum ParseError<I, E> {
 ///            Err(ParseError::Error(&b" and more"[..], Error::new())));
 /// # }
 /// ```
-pub fn parse_only<'a, I, T, E, F>(parser: F, input: &'a [I]) -> Result<T, ParseError<&'a [I], E>>
+pub fn parse_only<'a, I, T, E, F>(parser: F, input: &'a [I]) -> Result<T, (&'a [I], E)>
   where I: Copy + PartialEq,
         F: FnOnce(&'a [I]) -> ParseResult<&'a [I], T, E> {
     match parser(input).into_inner() {
         (_, Ok(t))      => Ok(t),
-        (mut b, Err(e)) => Err(ParseError::Error(b.consume_remaining(), e)),
+        (mut b, Err(e)) => Err((b.consume_remaining(), e)),
     }
 }
 
@@ -64,27 +55,21 @@ mod test {
     use types::Input;
     use primitives::Primitives;
     use super::{
-        ParseError,
         parse_only,
     };
 
-    /*
     #[test]
     fn inspect_input() {
-        let mut state = None;
         let mut input = None;
 
         assert_eq!(parse_only(|i| {
-            state = Some(i.is_end());
             input = Some(i.iter().cloned().collect());
 
             i.ret::<_, ()>("the result")
         }, b"the input"), Ok("the result"));
 
         assert_eq!(input, Some(b"the input".to_vec()));
-        assert_eq!(state, Some(true));
     }
-    */
 
     #[test]
     fn err() {
@@ -92,9 +77,10 @@ mod test {
             i.consume(4);
 
             i.err::<(), _>("my error")
-        }, b"the input"), Err(ParseError::Error(&b"input"[..], "my error")));
+        }, b"the input"), Err((&b"input"[..], "my error")));
     }
 
+    // FIXME:
     /*
     #[test]
     fn incomplete() {

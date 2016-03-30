@@ -262,13 +262,7 @@ pub mod prelude {
         U8Input,
         ParseResult,
     };
-    pub use parse::{
-        ParseError,
-        parse_only,
-    };
+    pub use parse::parse_only;
 }
 
-pub use parse::{
-    ParseError,
-    parse_only,
-};
+pub use parse::parse_only;

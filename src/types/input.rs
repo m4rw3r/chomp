@@ -450,7 +450,7 @@ mod test {
         assert_eq!(b.is_incomplete(), true);
         assert_eq!(b.len(), 1);
         assert_eq!(b.is_empty(), false);
-        let mut b = b.restore(m);
+        let b = b.restore(m);
         assert_eq!(b.is_incomplete(), true);
         assert_eq!(b.len(), 3);
         assert_eq!(b.is_empty(), false);

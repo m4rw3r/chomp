@@ -103,13 +103,12 @@ impl<S: DataSource, B: Buffer<S::Item>> Source<S, B> {
     /// Attempts to fill the buffer to satisfy the last call to `parse()`.
     #[inline]
     pub fn fill(&mut self) -> io::Result<usize> {
-        // Make sure we actually try to read something in case the buffer is empty
-        let req = cmp::max(1, self.request);
+        let req = self.buffer.len() + 1;
 
         self.fill_requested(req).map(|n| {
             self.state.remove(INCOMPLETE);
 
-            if self.buffer.len() >= req {
+            if n > 0 {
                 self.state.remove(END_OF_INPUT);
             } else {
                 self.state.insert(END_OF_INPUT);
@@ -221,8 +220,6 @@ impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
             (remainder, Ok(data)) => {
                 if remainder.is_incomplete() && self.state.contains(END_OF_INPUT) {
                     // We can't accept this since we might have hit a premature end
-                    self.request = self.buffer.len() + 1;
-
                     self.state.insert(INCOMPLETE);
 
                     Err(StreamError::Retry)
@@ -235,11 +232,9 @@ impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
             },
             (mut remainder, Err(err)) => {
                 if remainder.is_incomplete() {
-                    // TODO: How to deal with n, no longer present?
-                    self.request = self.buffer.len() + 1;
-
                     if self.state.contains(END_OF_INPUT) {
-                        Err(StreamError::Incomplete(self.request))
+                        // TODO: Remove the 1?
+                        Err(StreamError::Incomplete)
                     } else {
                         self.state.insert(INCOMPLETE);
 
@@ -416,11 +411,14 @@ mod test {
         assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Err(StreamError::Retry));
         assert_eq!(n, 2);
         assert_eq!(m, 1);
-        assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Err(StreamError::Incomplete(2)));
+        assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Err(StreamError::Retry));
         assert_eq!(n, 3);
         assert_eq!(m, 1);
-        assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Err(StreamError::Incomplete(2)));
+        assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Err(StreamError::Incomplete));
         assert_eq!(n, 4);
+        assert_eq!(m, 1);
+        assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Err(StreamError::Incomplete));
+        assert_eq!(n, 5);
         assert_eq!(m, 1);
     }
 

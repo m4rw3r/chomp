@@ -101,7 +101,7 @@ impl<'a, 'i, I: 'i + Copy + PartialEq> Stream<'a, 'i> for SliceStream<'i, I> {
             (mut remainder, Err(err)) => {
                 if remainder.is_incomplete() {
                     // TODO: 1 is not correct, n is expected len but we can't obtain that right now
-                    Err(StreamError::Incomplete(self.len() + 1))
+                    Err(StreamError::Incomplete)
                 } else {
                     // TODO: Do something neater with the remainder
                     // TODO: Detail this behaviour, maybe make it configurable
