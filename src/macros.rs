@@ -40,12 +40,6 @@
 ///     last:  B,
 /// }
 ///
-/// let r = |i| take_while1(i, |c| c != b' ').bind(|i, first|
-///     token(i, b' ').then(|i|
-///         take_while1(i, |c| c != b'\n').bind(|i, last|
-///         i.ret::<_, Error<_>>(Name { first: first, last: last }))));
-///
-///         /*
 /// let r = |i| parse!{i;
 ///     let first = take_while1(|c| c != b' ');
 ///                 token(b' ');
@@ -56,7 +50,6 @@
 ///         last:  last,
 ///     }
 /// };
-/// */
 ///
 /// assert_eq!(parse_only(r, "Martin Wernstål\n".as_bytes()), Ok(Name{
 ///     first: &b"Martin"[..],
@@ -71,7 +64,7 @@
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use chomp::prelude::{U8Input, SimpleResult, parse_only, string, token};
+/// use chomp::prelude::{U8Input, Input, SimpleResult, parse_only, string, token};
 /// use chomp::ascii::decimal;
 ///
 /// fn parse_ip<I: U8Input>(i: I) -> SimpleResult<I, (u8, u8, u8, u8)> {
@@ -161,7 +154,7 @@
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
 /// # use chomp::ascii::decimal;
-/// # use chomp::prelude::{parse_only, U8Input, token, SimpleResult};
+/// # use chomp::prelude::{parse_only, U8Input, Input, token, SimpleResult};
 /// # fn my_parser<I: U8Input>(i: I) -> SimpleResult<I, u32> {
 /// parse!{i;
 ///     token(b':');
@@ -271,7 +264,7 @@
 /// let p = parser!{
 ///     state -> match condition {
 ///         true  => other_parser(state),
-///         false => state.err("failure"),
+///         false => Input::err(state, "failure"),
 ///     }
 /// };
 ///
@@ -344,7 +337,7 @@
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
 /// # use chomp::prelude::{Input, parse_only};
-/// let p = parser!{ (i -> i.err("foo")) <|> (i -> i.ret("bar")) };
+/// let p = parser!{ (i -> Input::err(i, "foo")) <|> (i -> Input::ret(i, "bar")) };
 ///
 /// assert_eq!(parse_only(p, b"a;"), Ok("bar"));
 /// # }
@@ -478,13 +471,13 @@ macro_rules! __parse_internal {
     //        | Inline
     //        | Named
     // Ret ::= "ret" Typed
-    ( @TERM($input:expr) ret @ $t_ty:ty , $e_ty:ty : $e:expr )   => { $input.ret::<$t_ty, $e_ty>($e) };
+    ( @TERM($input:expr) ret @ $t_ty:ty , $e_ty:ty : $e:expr )   => { Input::ret::<$t_ty, $e_ty>($input, $e) };
     //       | "ret" $expr
-    ( @TERM($input:expr) ret $e:expr )                           => { $input.ret($e) };
+    ( @TERM($input:expr) ret $e:expr )                           => { Input::ret($input, $e) };
     // Err ::= "err" Typed
-    ( @TERM($input:expr) err @ $t_ty:ty , $e_ty:ty : $e:expr )   => { $input.err::<$t_ty, $e_ty>($e) };
+    ( @TERM($input:expr) err @ $t_ty:ty , $e_ty:ty : $e:expr )   => { Input::err::<$t_ty, $e_ty>($input, $e) };
     //       | "err" $expr
-    ( @TERM($input:expr) err $e:expr )                           => { $input.err($e) };
+    ( @TERM($input:expr) err $e:expr )                           => { Input::err($input, $e) };
     // '(' Expr ')'
     ( @TERM($input:expr) ( $($inner:tt)* ) )                     => { __parse_internal!{@EXPR($input;) $($inner)*} };
     // Inline ::= $ident "->" $expr

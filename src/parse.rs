@@ -23,7 +23,7 @@ use primitives::{
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use chomp::prelude::{U8Input, Error, SimpleResult, parse_only, string, eof};
+/// use chomp::prelude::{U8Input, Input, Error, SimpleResult, parse_only, string, eof};
 ///
 /// fn my_parser<I: U8Input>(i: I) -> SimpleResult<I, I::Buffer> {
 ///     parse!{i;
