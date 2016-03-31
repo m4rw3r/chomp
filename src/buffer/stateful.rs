@@ -217,7 +217,7 @@ impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
 
         match f(InputBuf::new(&self.buffer)).into_inner() {
             (remainder, Ok(data)) => {
-                if remainder.is_incomplete() && self.state.contains(END_OF_INPUT) {
+                if remainder.is_incomplete() && !self.state.contains(END_OF_INPUT) {
                     // We can't accept this since we might have hit a premature end
                     self.state.insert(INCOMPLETE);
 
@@ -230,20 +230,20 @@ impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
                 }
             },
             (mut remainder, Err(err)) => {
-                if remainder.is_incomplete() {
-                    if self.state.contains(END_OF_INPUT) {
-                        Err(StreamError::Incomplete)
-                    } else {
+                match (remainder.is_incomplete(), self.state.contains(END_OF_INPUT)) {
+                    (true, true)  => Err(StreamError::Incomplete),
+                    (true, false) => {
                         self.state.insert(INCOMPLETE);
 
                         Err(StreamError::Retry)
-                    }
-                } else {
-                    // TODO: Do something neater with the remainder
-                    // TODO: Detail this behaviour, maybe make it configurable
-                    self.buffer.consume(self.buffer.len() - remainder.len());
+                    },
+                    _             => {
+                        // TODO: Do something neater with the remainder
+                        // TODO: Detail this behaviour, maybe make it configurable
+                        self.buffer.consume(self.buffer.len() - remainder.len());
 
-                    Err(StreamError::ParseError(remainder.consume_remaining(), err))
+                        Err(StreamError::ParseError(remainder.consume_remaining(), err))
+                    }
                 }
             },
         }
@@ -259,6 +259,7 @@ mod test {
         Error,
         any,
         take,
+        take_while,
     };
     use buffer::{
         FixedSizeBuffer,
@@ -418,6 +419,38 @@ mod test {
         assert_eq!(b.parse(|i| { n += 1; take(i, 2).inspect(|_| m += 1) }), Err(StreamError::Incomplete));
         assert_eq!(n, 5);
         assert_eq!(m, 1);
+    }
+
+    #[test]
+    fn incomplete2() {
+        let mut o = 0;
+        let mut n = 0; // Times it has entered the parsing function
+        let mut m = 0; // Times it has managed to get past the request for data
+        let mut b = buf(&b"tes"[..], 2);
+
+        assert_eq!(b.parse(|i| { n += 1; take_while(i, |_| { o += 1; o < 2 }).inspect(|_| m += 1) }), Ok(&b"t"[..]));
+        assert_eq!(n, 1);
+        assert_eq!(m, 1);
+        o = 0;
+        assert_eq!(b.parse(|i| { n += 1; take_while(i, |_| { o += 1; o < 2 }).inspect(|_| m += 1) }), Err(StreamError::Retry));
+        assert_eq!(n, 2);
+        assert_eq!(m, 2);
+        o = 0;
+        assert_eq!(b.parse(|i| { n += 1; take_while(i, |_| { o += 1; o < 2 }).inspect(|_| m += 1) }), Ok(&b"e"[..]));
+        assert_eq!(n, 3);
+        assert_eq!(m, 3);
+        o = 0;
+        assert_eq!(b.parse(|i| { n += 1; take_while(i, |_| { o += 1; o < 2 }).inspect(|_| m += 1) }), Err(StreamError::Retry));
+        assert_eq!(n, 4);
+        assert_eq!(m, 4);
+        o = 0;
+        assert_eq!(b.parse(|i| { n += 1; take_while(i, |_| { o += 1; o < 2 }).inspect(|_| m += 1) }), Ok(&b"s"[..]));
+        assert_eq!(n, 5);
+        assert_eq!(m, 5);
+        o = 0;
+        assert_eq!(b.parse(|i| { n += 1; take_while(i, |_| { o += 1; o < 2 }).inspect(|_| m += 1) }), Err(StreamError::EndOfInput));
+        assert_eq!(n, 5);
+        assert_eq!(m, 5);
     }
 
     #[test]
