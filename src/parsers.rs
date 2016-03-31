@@ -199,7 +199,7 @@ pub fn take<I: Input>(mut i: I, num: usize) -> SimpleResult<I, I::Buffer> {
 /// ```
 #[inline]
 pub fn take_while<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Buffer>
-  where F: Fn(I::Token) -> bool {
+  where F: FnMut(I::Token) -> bool {
     let b = i.consume_while(f);
 
     i.ret(b)
@@ -220,7 +220,7 @@ pub fn take_while<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Buffer>
 /// ```
 #[inline]
 pub fn take_while1<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Buffer>
-  where F: Fn(I::Token) -> bool {
+  where F: FnMut(I::Token) -> bool {
     let b = i.consume_while(f);
 
     if b.is_empty() {
@@ -244,8 +244,8 @@ pub fn take_while1<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Buffer>
 /// assert_eq!(r, Ok(&b"abc"[..]));
 /// ```
 #[inline]
-pub fn take_till<I: Input<Token=u8>, F>(mut i: I, f: F) -> SimpleResult<I, I::Buffer>
-  where F: Fn(I::Token) -> bool,
+pub fn take_till<I: Input<Token=u8>, F>(mut i: I, mut f: F) -> SimpleResult<I, I::Buffer>
+  where F: FnMut(I::Token) -> bool,
         I::Token: Clone {
     // TODO: How to check the last token? to make sure f succeeded on it?
     let mut ok = false;
