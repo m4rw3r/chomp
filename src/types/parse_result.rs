@@ -3,7 +3,7 @@ use primitives::IntoInner;
 
 /// The basic return type of a parser.
 ///
-/// This type satisfies a variant of the ``Monad`` typeclass. Due to the limitations of Rust's
+/// This type satisfies a variant of the `Monad` typeclass. Due to the limitations of Rust's
 /// return types closures cannot be returned without boxing which has an unacceptable performance
 /// impact.
 ///
@@ -11,11 +11,11 @@ use primitives::IntoInner;
 /// violate the monad laws or the assumptions taken by the parser type) an `Input` wrapper is
 /// provided which ensures that the parser state is carried properly through every call to `bind`.
 /// This is also known as a Linear Type (emulated through hiding destructors and using the
-/// annotation ``#[must_use]``).
+/// annotation `#[must_use]`).
 ///
-/// Do-notation is provided by the macro ``parse!``.
+/// Do-notation is provided by the macro `parse!`.
 ///
-/// # Equivalence with Haskell's ``Monad`` typeclass:
+/// # Equivalence with Haskell's `Monad` typeclass:
 ///
 /// ```text
 /// f >>= g   ≡  f(m).bind(g)
@@ -43,23 +43,23 @@ pub struct ParseResult<I: Input, T, E>(I, Result<T, E>);
 ///
 /// # Note
 ///
-/// Prefer to use ``Input::ret``, ``Input::err`` or ``Input::incomplete`` instead of using
+/// Prefer to use `Input::ret`, `Input::err` or `Input::from_result` instead of using
 pub fn new<I: Input, T, E>(i: I, r: Result<T, E>) -> ParseResult<I, T, E> {
     ParseResult(i, r)
 }
 
 impl<I: Input, T, E> ParseResult<I, T, E> {
-    /// Sequentially composes the result with a parse action ``f``, passing any produced value as
+    /// Sequentially composes the result with a parse action `f`, passing any produced value as
     /// the second parameter.
     ///
-    /// The first parameter to the supplied function ``f`` is the parser state (``Input``). This
+    /// The first parameter to the supplied function `f` is the parser state (`Input`). This
     /// state is then passed on to other parsers or used to return a value or an error.
     ///
-    /// # Automatic conversion of ``E``
+    /// # Automatic conversion of `E`
     ///
-    /// The error value ``E`` will automatically be converted using the ``From`` trait to the
+    /// The error value `E` will automatically be converted using the `From` trait to the
     /// desired type. The downside with this using the current stable version of Rust (1.4) is that
-    /// the type inferrence will currently not use the default value for the generic ``V`` and will
+    /// the type inferrence will currently not use the default value for the generic `V` and will
     /// therefore require extra type hint for the error.
     ///
     /// # Examples
@@ -101,12 +101,12 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
         }
     }
 
-    /// Sequentially composes the result with a parse action ``f``, discarding any produced value.
+    /// Sequentially composes the result with a parse action `f`, discarding any produced value.
     ///
-    /// The first parameter to the supplied function ``f`` is the parser state (``Input``). This
+    /// The first parameter to the supplied function `f` is the parser state (`Input`). This
     /// state is then passed on to other parsers or used to return a value or an error.
     ///
-    /// # Relation to ``bind``
+    /// # Relation to `bind`
     ///
     /// ```text
     /// ParseResult::then(g)  ≡  ParseResult::bind(|i, _| g(i))

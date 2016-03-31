@@ -154,9 +154,8 @@ pub fn signed<I: Input<Token=u8>, T, F>(i: I, f: F) -> SimpleResult<I, T>
 ///
 /// assert_eq!(r, Ok(123u8));
 /// ```
-// TODO: Use methods on `Buffer` to implement `to_decimal`
 #[inline]
-pub fn decimal<'a, I: Input<Token=u8>, T: Copy + ValueFrom<u8, Err=NoError> + Add<Output=T> + Mul<Output=T>>(i: I) -> SimpleResult<I, T> {
+pub fn decimal<I: Input<Token=u8>, T: Copy + ValueFrom<u8, Err=NoError> + Add<Output=T> + Mul<Output=T>>(i: I) -> SimpleResult<I, T> {
     take_while1(i, is_digit).map(to_decimal)
 }
 

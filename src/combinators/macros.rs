@@ -83,13 +83,13 @@ macro_rules! run_iter {
         }
 
         // TODO: Not always used
-        let m = $input.mark();
+        let mark = $input.mark();
 
         let mut iter = Iter {
             state:  None,
             parser: $parser,
             buf:    Some($input),
-            mark:   m,
+            mark:   mark,
             data:   $data,
             _t:     PhantomData,
         };
@@ -127,7 +127,7 @@ macro_rules! run_iter_till {
             EndSuccess,
         }
 
-        /// Iterator used by ``many_till`` and ``many1``.
+        /// Iterator used by `many_till` and `many1`.
         struct IterTill<I: Input, T, U, E, F, P, N>
           where E: From<N>,
                 P: FnMut(I) -> ParseResult<I, T, E>,

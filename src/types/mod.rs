@@ -22,17 +22,28 @@ pub trait Buffer: PartialEq<Self> {
     /// The token type of this buffer.
     type Token: Copy + PartialEq;
 
+    /// Applies a function in order on all tokens present in the buffer carrying an accumulator
+    /// value `B` between invocations. The buffer is consumed as part of the folding and the last
+    /// value of the accumulator is returned.
+    // Would be prefereable if there was a &self -> Iterator method, but that does not work for
+    // owned or maybe owned since the lifetimes will be wrong for one or the other. Higher Ranked
+    // Trait Bounds (HRTB) does not seem to work either since it is not possible to later
+    // instantiate the type in a function signature with a concrete lifetime without running into
+    // an "expected bound lifetime but found concrete lifetime" error. Instantiation for HRTBs seem
+    // to only take place in the actual code, not when a type is used in eg. a where clause.
     fn fold<B, F>(self, B, F) -> B
       where F: FnMut(B, Self::Token) -> B;
 
-    /// The number of tokens present in this
+    /// The number of tokens present in this buffer.
     fn len(&self) -> usize;
 
     /// Consumes self to create an owned vector of tokens.
     ///
-    /// Will allocate if the implementation borrows storage or does not use a `Vec` internally.
+    /// Will allocate if the implementation borrows storage or does not use an owned type
+    /// compatible with `Vec` internally.
     fn to_vec(self) -> Vec<Self::Token>;
 
+    /// Returns true if this buffer is empty.
     fn is_empty(&self) -> bool {
         self.len() == 0
     }

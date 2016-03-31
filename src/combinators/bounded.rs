@@ -684,8 +684,6 @@ impl BoundedRange for usize {
 ///
 /// * Will allocate depending on the `FromIterator` implementation.
 /// * Will never yield more items than the upper bound of the range.
-/// * If the last parser succeeds on the last input item then this parser is still considered
-///   incomplete if the input flag END_OF_INPUT is not set as there might be more data to fill.
 #[inline]
 pub fn many<I: Input, T, E, F, U, R>(i: I, r: R, f: F) -> ParseResult<I, T, E>
   where R: BoundedRange,
@@ -706,8 +704,6 @@ pub fn many<I: Input, T, E, F, U, R>(i: I, r: R, f: F) -> ParseResult<I, T, E>
 /// # Notes
 ///
 /// * Will never yield more items than the upper bound of the range.
-/// * If the last parser succeeds on the last input item then this parser is still considered
-///   incomplete if the input flag END_OF_INPUT is not set as there might be more data to fill.
 #[inline]
 pub fn skip_many<I: Input, T, E, F, R>(i: I, r: R, f: F) -> ParseResult<I, (), E>
   where R: BoundedRange,
@@ -728,8 +724,6 @@ pub fn skip_many<I: Input, T, E, F, R>(i: I, r: R, f: F) -> ParseResult<I, (), E
 ///
 /// * Will allocate depending on the `FromIterator` implementation.
 /// * Will never yield more items than the upper bound of the range.
-/// * If the last parser succeeds on the last input item then this combinator is still considered
-///   incomplete unless the parser `F` matches or the lower bound has not been met.
 #[inline]
 pub fn many_till<I: Input, T, E, R, F, U, N, P, V>(i: I, r: R, p: P, end: F) -> ParseResult<I, T, E>
   where R: BoundedRange,
@@ -753,8 +747,6 @@ pub fn many_till<I: Input, T, E, R, F, U, N, P, V>(i: I, r: R, p: P, end: F) -> 
 ///
 /// * Will allocate depending on the `FromIterator` implementation.
 /// * Will never yield more items than the upper bound of the range.
-/// * If the last parser succeeds on the last input item then this combinator is still considered
-///   incomplete unless the parser `F` matches or the lower bound has not been met.
 #[inline]
 pub fn sep_by<I: Input, T, E, R, F, U, N, P, V>(i: I, r: R, mut p: P, mut sep: F) -> ParseResult<I, T, E>
   where T: FromIterator<U>,

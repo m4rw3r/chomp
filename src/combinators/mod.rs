@@ -17,7 +17,7 @@ use primitives::{
     Primitives,
 };
 
-/// Applies the parser ``p`` exactly ``num`` times collecting all items into `T: FromIterator`.
+/// Applies the parser `p` exactly `num` times collecting all items into `T: FromIterator`.
 ///
 /// ```
 /// use chomp::prelude::*;
@@ -40,7 +40,7 @@ pub fn count<I: Input, T, E, F, U>(i: I, num: usize, p: F) -> ParseResult<I, T, 
     bounded::many(i, num, p)
 }
 
-/// Tries the parser ``f``, on success it yields the parsed value, on failure ``default`` will be
+/// Tries the parser `f`, on success it yields the parsed value, on failure `default` will be
 /// yielded instead.
 ///
 /// Incomplete state is propagated. Backtracks on error.
@@ -66,7 +66,7 @@ pub fn option<I: Input, T, E, F>(i: I, f: F, default: T) -> ParseResult<I, T, E>
     }
 }
 
-/// Tries to match the parser ``f``, if ``f`` fails it tries ``g``. Returns the success value of
+/// Tries to match the parser `f`, if `f` fails it tries `g`. Returns the success value of
 /// the first match, otherwise the error of the last one if both fail.
 ///
 /// Incomplete state is propagated from the first one to report incomplete.
@@ -97,11 +97,8 @@ pub fn or<I: Input, T, E, F, G>(i: I, f: F, g: G) -> ParseResult<I, T, E>
     }
 }
 
-/// Parses many instances of ``f`` until it does no longer match, collecting all matches into the
+/// Parses many instances of `f` until it does no longer match, collecting all matches into the
 /// type `T: FromIterator`.
-///
-/// Note: If the last parser succeeds on the last input item then this parser is still considered
-/// incomplete if the input flag END_OF_INPUT is not set as there might be more data to fill.
 ///
 /// Note: Allocates data.
 ///
@@ -123,7 +120,7 @@ pub fn many<I: Input, T, E, F, U>(i: I, f: F) -> ParseResult<I, T, E>
     bounded::many(i, .., f)
 }
 
-/// Parses at least one instance of ``f`` and continues until it does no longer match, collecting
+/// Parses at least one instance of `f` and continues until it does no longer match, collecting
 /// all matches into the type `T: FromIterator`.
 ///
 /// Note: If the last parser succeeds on the last input item then this parser is still considered
@@ -226,8 +223,8 @@ pub fn many_till<I: Input, T, E, R, F, U, N, V>(i: I, p: R, end: F) -> ParseResu
 ///
 /// Incomplete state will be propagated.
 ///
-/// This is more efficient compared to using ``many`` and then just discarding the result as
-/// ``many`` allocates a separate data structure to contain the data before proceeding.
+/// This is more efficient compared to using `many` and then just discarding the result as
+/// `many` allocates a separate data structure to contain the data before proceeding.
 ///
 /// ```
 /// use chomp::prelude::{parse_only, skip_many, token};
@@ -247,8 +244,8 @@ pub fn skip_many<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, (), E>
 /// Incomplete state will be propagated. Will propagate the error if it occurs during the first
 /// attempt.
 ///
-/// This is more efficient compared to using ``many1`` and then just discarding the result as
-/// ``many1`` allocates a separate data structure to contain the data before proceeding.
+/// This is more efficient compared to using `many1` and then just discarding the result as
+/// `many1` allocates a separate data structure to contain the data before proceeding.
 ///
 /// ```
 /// use chomp::prelude::{Error, parse_only, skip_many1, token};

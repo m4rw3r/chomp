@@ -251,12 +251,12 @@ pub fn take_till<I: Input<Token=u8>, F>(mut i: I, mut f: F) -> SimpleResult<I, I
     let mut ok = false;
 
     let b = i.consume_while(|c| {
-        if !f(c) {
-            true
-        } else {
+        if f(c) {
             ok = true;
 
             false
+        } else {
+            true
         }
     });
 
@@ -287,7 +287,7 @@ pub fn scan<I: Input, S, F>(mut i: I, s: S, mut f: F) -> SimpleResult<I, I::Buff
   where F: FnMut(S, I::Token) -> Option<S> {
     let mut state = Some(s);
 
-    let b = i.consume_while(|c| { state = f(mem::replace(&mut state, None).unwrap(), c); state.is_some() });
+    let b = i.consume_while(|c| { state = f(mem::replace(&mut state, None).expect("scan: Failed to obtain state, consume_while most likely called closure after end"), c); state.is_some() });
 
     i.ret(b)
 }
@@ -347,7 +347,7 @@ pub fn take_remainder<I: Input>(mut i: I) -> SimpleResult<I, I::Buffer> {
 /// ```
 // TODO: Does not actually work with &str yet
 #[inline]
-pub fn string<'b, T: Copy + PartialEq, I: Input<Token=T>>(mut i: I, s: &'b [T])
+pub fn string<T: Copy + PartialEq, I: Input<Token=T>>(mut i: I, s: &[T])
     -> SimpleResult<I, I::Buffer> {
     let mut n  = 0;
     let len    = s.len();
@@ -521,8 +521,9 @@ mod error {
         ///
         /// Should be used when a specific token was expected.
         #[inline(always)]
-        pub fn expected(_i: I) -> Self {
-            create_error!(Some(_i))
+        #[allow(unused_variables)]
+        pub fn expected(i: I) -> Self {
+            create_error!(Some(i))
         }
 
         /// Returns `Some(&I)` if a specific token was expected, `None` otherwise.

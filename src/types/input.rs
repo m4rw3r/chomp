@@ -75,21 +75,18 @@ impl<'a, I: Copy + PartialEq> Input for &'a [I] {
     #[inline]
     fn _consume_while<F>(&mut self, _g: Guard, mut f: F) -> Self::Buffer
       where F: FnMut(Self::Token) -> bool {
-        match self.iter().position(|c| !f(*c)) {
-            Some(n) => {
-                let b = &self[..n];
+        if let Some(n) = self.iter().position(|c| !f(*c)) {
+            let b = &self[..n];
 
-                *self = &self[n..];
+            *self = &self[n..];
 
-                b
-            },
-            None => {
-                let b = &self[..];
+            b
+        }  else {
+            let b = &self[..];
 
-                *self = &self[..0];
+            *self = &self[..0];
 
-                b
-            }
+            b
         }
     }
 
@@ -160,13 +157,12 @@ impl<'a, I: Copy + PartialEq> Input for InputBuf<'a, I> {
 
     #[inline]
     fn _peek(&mut self, _g: Guard) -> Option<Self::Token> {
-        match self.1.first() {
-            Some(c) => Some(*c),
-            None    => {
-                self.0 = true;
+        if let Some(c) = self.1.first() {
+            Some(*c)
+        } else {
+            self.0 = true;
 
-                None
-            },
+            None
         }
     }
 
@@ -197,15 +193,14 @@ impl<'a, I: Copy + PartialEq> Input for InputBuf<'a, I> {
     #[inline]
     fn _consume_while<F>(&mut self, g: Guard, mut f: F) -> Self::Buffer
       where F: FnMut(Self::Token) -> bool {
-        match self.1.iter().position(|c| !f(*c)) {
-            Some(n) => {
-                let b = &self.1[..n];
+        if let Some(n) = self.1.iter().position(|c| !f(*c)) {
+            let b = &self.1[..n];
 
-                self.1 = &self.1[n..];
+            self.1 = &self.1[n..];
 
-                b
-            },
-            None    => self._consume_remaining(g),
+            b
+        } else {
+            self._consume_remaining(g)
         }
     }
 
@@ -291,21 +286,18 @@ impl<'a> Input for &'a str {
     fn _consume_while<F>(&mut self, _g: Guard, mut f: F) -> Self::Buffer
       where F: FnMut(Self::Token) -> bool {
         // We need to find the character following the one which did not match
-        match self.char_indices().skip_while(|&(_, c)| f(c)).next() {
-            Some((pos, _)) => {
-                let b = &self[..pos];
+        if let Some((pos, _)) = self.char_indices().skip_while(|&(_, c)| f(c)).next() {
+            let b = &self[..pos];
 
-                *self = &self[pos..];
+            *self = &self[pos..];
 
-                b
-            },
-            None => {
-                let b = &self[..];
+            b
+        } else {
+            let b = &self[..];
 
-                *self = &self[..0];
+            *self = &self[..0];
 
-                b
-            }
+            b
         }
     }
 
