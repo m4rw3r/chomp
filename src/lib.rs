@@ -200,6 +200,19 @@
 //!    The built-in `chomp::parsers::Error` type is zero-sized and carry no error-information. This
 //!    increases performance somewhat.
 
+#![cfg_attr(feature="clippy", feature(plugin))]
+#![cfg_attr(feature="clippy", plugin(clippy))]
+#![cfg_attr(feature="clippy", warn(
+    nonminimal_bool,
+    option_unwrap_used,
+    print_stdout,
+    result_unwrap_used,
+    shadow_reuse,
+    shadow_same,
+    shadow_unrelated,
+    single_match_else))]
+#![cfg_attr(feature="clippy", allow(inline_always))]
+
 #[cfg(feature = "tendril")]
 extern crate tendril;
 
