@@ -31,6 +31,13 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 - `ParseResult::unwrap`
 - `ParseResult::unwrap_err`
 
+## [0.2.6] - 2016-07-07
+
+### Bugfixes
+
+- Macro expansion is now again compatible with nightly.
+- Now uses `std` feature of conv dependency, fixing build breakage on rustc 1.2.0.
+
 ## [0.2.5] - 2016-03-08
 
 ### Added
