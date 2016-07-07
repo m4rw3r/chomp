@@ -8,6 +8,7 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ### Bugfixes
 
 - Macro expansion is now again compatible with nightly.
+- Now uses `std` feature of conv dependency, fixing build breakage on rustc 1.2.0.
 
 ## [0.2.5] - 2016-03-08
 
