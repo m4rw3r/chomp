@@ -32,7 +32,7 @@
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use chomp::prelude::{Buffer, Error, Input, parse_only, take_while1, token};
+/// use chomp::prelude::{Buffer, Error, Input, ParseResult, parse_only, take_while1, token};
 ///
 /// #[derive(Debug, Eq, PartialEq)]
 /// struct Name<B: Buffer> {
@@ -40,18 +40,20 @@
 ///     last:  B,
 /// }
 ///
-/// let r = |i| parse!{i;
-///     let first = take_while1(|c| c != b' ');
-///                 token(b' ');
-///     let last  = take_while1(|c| c != b'\n');
+/// fn parser<I: Input<Token=u8>>(i: I) -> ParseResult<I, Name<I::Buffer>, Error<I::Token>> {
+///     parse!{i;
+///         let first = take_while1(|c| c != b' ');
+///                     token(b' ');
+///         let last  = take_while1(|c| c != b'\n');
 ///
-///     ret @ _, Error<_>: Name{
-///         first: first,
-///         last:  last,
+///         ret @ _, Error<u8>: Name{
+///             first: first,
+///             last:  last,
+///         }
 ///     }
-/// };
+/// }
 ///
-/// assert_eq!(parse_only(r, "Martin Wernstål\n".as_bytes()), Ok(Name{
+/// assert_eq!(parse_only(parser, "Martin Wernstål\n".as_bytes()), Ok(Name{
 ///     first: &b"Martin"[..],
 ///     last: "Wernstål".as_bytes()
 /// }));
@@ -471,13 +473,13 @@ macro_rules! __parse_internal {
     //        | Inline
     //        | Named
     // Ret ::= "ret" Typed
-    ( @TERM($input:expr) ret @ $t_ty:ty , $e_ty:ty : $e:expr )   => { Input::ret::<$t_ty, $e_ty>($input, $e) };
+    ( @TERM($input:expr) ret @ $t_ty:ty , $e_ty:ty : $e:expr )   => { $input.ret::<$t_ty, $e_ty>($e) };
     //       | "ret" $expr
-    ( @TERM($input:expr) ret $e:expr )                           => { Input::ret($input, $e) };
+    ( @TERM($input:expr) ret $e:expr )                           => { $input.ret($e) };
     // Err ::= "err" Typed
-    ( @TERM($input:expr) err @ $t_ty:ty , $e_ty:ty : $e:expr )   => { Input::err::<$t_ty, $e_ty>($input, $e) };
+    ( @TERM($input:expr) err @ $t_ty:ty , $e_ty:ty : $e:expr )   => { $input.err::<$t_ty, $e_ty>($e) };
     //       | "err" $expr
-    ( @TERM($input:expr) err $e:expr )                           => { Input::err($input, $e) };
+    ( @TERM($input:expr) err $e:expr )                           => { $input.err($e) };
     // '(' Expr ')'
     ( @TERM($input:expr) ( $($inner:tt)* ) )                     => { __parse_internal!{@EXPR($input;) $($inner)*} };
     // Inline ::= $ident "->" $expr
