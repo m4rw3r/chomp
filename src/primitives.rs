@@ -1,8 +1,8 @@
 //! Module used to construct fundamental parsers and combinators.
 //!
-//! # Primitive
-//!
-//! Only used by fundamental parsers and combinators.
+//! The `Primitives` trait allows access to the primitive methods of the `Input` trait. These
+//! methods are hidden in the documentation to make it easier to read the documentation since the
+//! methods are not useful when using the library or writing primitive parsers.
 
 use types::Input;
 
@@ -31,12 +31,7 @@ pub trait IntoInner {
 /// It cannot be instantiated outside of the `Primitives` trait blanket implementation.
 pub struct Guard(());
 
-/// **Primitive:** Trait enabling primitive actions on an `Input` type.
-///
-/// # Primitive
-///
-/// Only used by fundamental parsers and combinators.
-///
+/// Trait enabling primitive actions on an `Input` type.
 // FIXME: Rename and documentation
 pub trait Primitives: Input {
     #[inline(always)]
