@@ -90,7 +90,6 @@ impl<'a> Buffer for &'a str {
     }
 }
 
-// FIXME: Update, do not refer to type or linear type
 /// Linear type containing the parser state, this type is threaded though `bind` and is also the
 /// initial type passed to a parser.
 ///

@@ -307,7 +307,6 @@ pub fn look_ahead<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, T, E>
     }
 }
 
-// FIXME:
 #[cfg(test)]
 mod test {
     use types::{Input, ParseResult};
@@ -466,7 +465,6 @@ mod test {
         let r: ParseResult<_, Vec<_>, _> = sep_by(&b"a--c-"[..], any, |i| string(i, b"--"));
         assert_eq!(r.into_inner(), (&b"-"[..], Ok(vec![b'a', b'c'])));
 
-        // FIXME: Indefinite execution on line below
         let r: ParseResult<_, Vec<_>, _> = sep_by(&b"aaa--a"[..], |i| string(i, b"aaa"), |i| string(i, b"--"));
         assert_eq!(r.into_inner(), (&b"--a"[..], Ok(vec![&b"aaa"[..]])));
     }

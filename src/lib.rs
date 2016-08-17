@@ -200,6 +200,12 @@
 //!    The built-in `chomp::parsers::Error` type is zero-sized and carry no error-information. This
 //!    increases performance somewhat.
 
+#![warn(missing_docs,
+        trivial_casts,
+        trivial_numeric_casts,
+        unused_import_braces,
+        unused_qualifications)]
+
 #![cfg_attr(feature="clippy", feature(plugin))]
 #![cfg_attr(feature="clippy", plugin(clippy))]
 #![cfg_attr(feature="clippy", warn(
@@ -235,6 +241,7 @@ pub mod types;
 pub use parse::parse_only;
 pub use parse::parse_only_str;
 
+/// Basic prelude.
 pub mod prelude {
     pub use parsers::{
         any,

@@ -544,7 +544,6 @@ mod error {
     }
 }
 
-// FIXME: Uncomment and fix
 #[cfg(test)]
 mod test {
     use primitives::IntoInner;

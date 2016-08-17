@@ -99,7 +99,6 @@ impl Buffer for ByteTendril {
     }
 }
 
-// FIXME: Tests
 #[cfg(test)]
 mod test {
     use tendril::Tendril;

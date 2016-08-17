@@ -95,7 +95,6 @@ pub trait Stream<'a, 'i> {
             E: 'i;
 }
 
-// FIXME: Docs
 /// Input buffer type which contains a flag which tells if we might need to read more data.
 #[must_use]
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -106,23 +105,28 @@ pub struct InputBuf<'a, I: 'a>(
     &'a [I],
 );
 
-// FIXME: Docs
 impl<'a, I: 'a> InputBuf<'a, I> {
+    /// Creates a new input buffer with incomplete set to false.
     #[inline]
     pub fn new(buf: &'a [I]) -> Self {
         InputBuf(false, buf)
     }
 
+    /// Returns true if parsers want to obtain more data.
+    ///
+    /// The result of the parsing is only accurate if this is false after completed parsing.
     #[inline]
     pub fn is_incomplete(&self) -> bool {
         self.0
     }
 
+    /// Returns the length of the contained buffer, may be an incomplete buffer.
     #[inline]
     pub fn len(&self) -> usize {
         self.1.len()
     }
 
+    /// Returns true if the contained buffer is empty, may return true even when incomplete.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
