@@ -8,7 +8,7 @@ use test::Bencher;
 use std::iter;
 
 use chomp::prelude::*;
-use chomp::types::InputBuf;
+use chomp::buffer::InputBuf;
 
 #[bench]
 fn count_vec_1k(b: &mut Bencher) {

@@ -5,6 +5,7 @@ extern crate chomp;
 
 use test::Bencher;
 use chomp::prelude::*;
+use chomp::buffer::InputBuf;
 
 #[derive(Debug)]
 struct Request<B> {
@@ -51,22 +52,18 @@ fn is_not_space(c: u8)        -> bool { c != b' ' }
 fn is_end_of_line(c: u8)      -> bool { c == b'\r' || c == b'\n' }
 fn is_http_version(c: u8)     -> bool { c >= b'0' && c <= b'9' || c == b'.' }
 
-fn end_of_line<I: Input<Token=u8>>(i: I) -> SimpleResult<I, u8> {
-    or(i, |i| parse!{i;
-               token(b'\r');
-               token(b'\n');
-               ret b'\r'},
-          |i| token(i, b'\n'))
+fn end_of_line<I: U8Input>(i: I) -> SimpleResult<I, u8> {
+    parse!{i; (token(b'\r') <|> ret b'\0') >> token(b'\n')}
 }
 
-fn http_version<I: Input<Token=u8>>(i: I) -> SimpleResult<I, I::Buffer> {
+fn http_version<I: U8Input>(i: I) -> SimpleResult<I, I::Buffer> {
     parse!{i;
         string(b"HTTP/");
         take_while1(is_http_version)
     }
 }
 
-fn request_line<I: Input<Token=u8>>(i: I) -> SimpleResult<I, Request<I::Buffer>> {
+fn request_line<I: U8Input>(i: I) -> SimpleResult<I, Request<I::Buffer>> {
     parse!{i;
         let method  = take_while1(is_token);
                       take_while1(is_space);
@@ -82,7 +79,7 @@ fn request_line<I: Input<Token=u8>>(i: I) -> SimpleResult<I, Request<I::Buffer>>
     }
 }
 
-fn message_header_line<I: Input<Token=u8>>(i: I) -> SimpleResult<I, I::Buffer> {
+fn message_header_line<I: U8Input>(i: I) -> SimpleResult<I, I::Buffer> {
     parse!{i;
                    take_while1(is_horizontal_space);
         let line = take_till(is_end_of_line);
@@ -92,7 +89,7 @@ fn message_header_line<I: Input<Token=u8>>(i: I) -> SimpleResult<I, I::Buffer> {
     }
 }
 
-fn message_header<I: Input<Token=u8>>(i: I) -> SimpleResult<I, Header<I::Buffer>> {
+fn message_header<I: U8Input>(i: I) -> SimpleResult<I, Header<I::Buffer>> {
     parse!{i;
         let name  = take_while1(is_token);
                     token(b':');
@@ -105,7 +102,8 @@ fn message_header<I: Input<Token=u8>>(i: I) -> SimpleResult<I, Header<I::Buffer>
     }
 }
 
-fn request<I: Input<Token=u8>>(i: I) -> SimpleResult<I, (Request<I::Buffer>, Vec<Header<I::Buffer>>)> {
+#[inline(never)]
+fn request<I: U8Input>(i: I) -> SimpleResult<I, (Request<I::Buffer>, Vec<Header<I::Buffer>>)> {
     parse!{i;
         let r = request_line();
                 end_of_line();
