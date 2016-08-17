@@ -48,13 +48,20 @@ pub fn parse_only<'a, I, T, E, F>(parser: F, input: &'a [I]) -> Result<T, (&'a [
     }
 }
 
+/// Runs the given parser on the supplied string.
+pub fn parse_only_str<'a, T, E, F>(parser: F, input: &'a str) -> Result<T, (&'a str, E)>
+  where F: FnOnce(&'a str) -> ParseResult<&'a str, T, E> {
+    match parser(input).into_inner() {
+        (_, Ok(t))      => Ok(t),
+        (mut b, Err(e)) => Err((b.consume_remaining(), e)),
+    }
+}
+
 #[cfg(test)]
 mod test {
     use types::Input;
     use primitives::Primitives;
-    use super::{
-        parse_only,
-    };
+    use super::*;
 
     #[test]
     fn inspect_input() {
@@ -78,11 +85,25 @@ mod test {
         }, b"the input"), Err((&b"input"[..], "my error")));
     }
 
-    // FIXME:
-    /*
     #[test]
-    fn incomplete() {
-        assert_eq!(parse_only(|i| i.incomplete::<(), ()>(23), b"the input"), Err(ParseError::Incomplete(23)));
+    fn inspect_input_str() {
+        let mut input = None;
+
+        assert_eq!(parse_only_str(|i| {
+            input = Some(i.to_owned());
+
+            i.ret::<_, ()>("the result")
+        }, "the input"), Ok("the result"));
+
+        assert_eq!(input, Some("the input".to_owned()));
     }
-    */
+
+    #[test]
+    fn err_str() {
+        assert_eq!(parse_only_str(|mut i| {
+            i.consume(4);
+
+            i.err::<(), _>("my error")
+        }, "the input"), Err(("input", "my error")));
+    }
 }

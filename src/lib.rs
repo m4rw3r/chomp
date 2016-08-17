@@ -232,6 +232,9 @@ pub mod parsers;
 pub mod primitives;
 pub mod types;
 
+pub use parse::parse_only;
+pub use parse::parse_only_str;
+
 pub mod prelude {
     pub use parsers::{
         any,
@@ -275,7 +278,6 @@ pub mod prelude {
         U8Input,
         ParseResult,
     };
-    pub use parse::parse_only;
+    pub use parse_only;
+    pub use parse_only_str;
 }
-
-pub use parse::parse_only;
