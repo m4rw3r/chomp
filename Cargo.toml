@@ -28,7 +28,7 @@ debugtrace = { version = "0.1.0" }
 
 # Technically a dev-dependency, but dev-dependencies are not allowed to be optional,
 # compiletest_rs fails to compile on stable and beta
-compiletest_rs = { version = "0.1.1", optional = true }
+compiletest_rs = { version = "0.2.1", optional = true }
 
 [features]
 # Feature for running extra (compiletime fail) tests on nightly

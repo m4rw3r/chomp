@@ -1,4 +1,4 @@
-// error-pattern:error: type mismatch resolving `<u32 as conv::ValueFrom<i8>>::Err == conv::errors::NoError`
+// error-pattern:error[E0271]: type mismatch resolving `<u32 as conv::ValueFrom<i8>>::Err == conv::errors::NoError`
 
 extern crate chomp;
 
