@@ -33,11 +33,14 @@ pub trait Buffer: PartialEq<Self> {
     /// The number of tokens present in this buffer.
     fn len(&self) -> usize;
 
+    /// Copies all the tokens in this buffer to a new `Vec`.
+    fn to_vec(&self) -> Vec<Self::Token>;
+
     /// Consumes self to create an owned vector of tokens.
     ///
     /// Will allocate if the implementation borrows storage or does not use an owned type
     /// compatible with `Vec` internally.
-    fn to_vec(self) -> Vec<Self::Token>;
+    fn into_vec(self) -> Vec<Self::Token>;
 
     /// Returns true if this buffer is empty.
     fn is_empty(&self) -> bool {

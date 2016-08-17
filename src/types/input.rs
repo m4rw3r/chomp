@@ -14,8 +14,12 @@ impl<'a, I: Copy + PartialEq> Buffer for &'a [I] {
         (&self[..]).len()
     }
 
-    fn to_vec(self) -> Vec<Self::Token> {
-        (&self[..]).iter().cloned().collect()
+    fn to_vec(&self) -> Vec<Self::Token> {
+        (&self[..]).to_vec()
+    }
+
+    fn into_vec(self) -> Vec<Self::Token> {
+        (&self[..]).to_vec()
     }
 }
 
@@ -35,7 +39,11 @@ impl<'a> Buffer for &'a str {
         (&self[..]).is_empty()
     }
 
-    fn to_vec(self) -> Vec<Self::Token> {
+    fn to_vec(&self) -> Vec<Self::Token> {
+        (&self[..]).chars().collect()
+    }
+
+    fn into_vec(self) -> Vec<Self::Token> {
         (&self[..]).chars().collect()
     }
 }
