@@ -1,19 +1,14 @@
-mod input;
+//! Types which facillitates the chaining of parsers and their results.
+
 #[cfg(feature = "tendril")]
 pub mod tendril;
 
 use primitives::{Guard, IntoInner};
 
-pub use types::input::InputBuf;
-
-pub trait U8Input: Input<Token=u8> {}
-
-// TODO: More restrictions? Buffer=&[u8]?
-impl<T> U8Input for T
-  where T: Input<Token=u8> {}
-
-// FIXME: Docs
-// TODO: More methods?
+/// The buffers yielded parsers consuming a sequence of the input.
+///
+/// This could either be an owned type or a slice reference depending on the `Input`
+/// implementation.
 pub trait Buffer: PartialEq<Self> {
     /// The token type of this buffer.
     type Token: Copy + PartialEq;
@@ -45,6 +40,53 @@ pub trait Buffer: PartialEq<Self> {
     /// Returns true if this buffer is empty.
     fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+}
+
+impl<'a, I: Copy + PartialEq> Buffer for &'a [I] {
+    type Token = I;
+
+    fn fold<B, F>(self, init: B, f: F) -> B
+      where F: FnMut(B, Self::Token) -> B {
+        (&self[..]).iter().cloned().fold(init, f)
+    }
+
+    fn len(&self) -> usize {
+        // Slice to reach inherent method to prevent infinite recursion
+        (&self[..]).len()
+    }
+
+    fn to_vec(&self) -> Vec<Self::Token> {
+        (&self[..]).to_vec()
+    }
+
+    fn into_vec(self) -> Vec<Self::Token> {
+        (&self[..]).to_vec()
+    }
+}
+
+impl<'a> Buffer for &'a str {
+    type Token = char;
+
+    fn fold<B, F>(self, init: B, f: F) -> B
+      where F: FnMut(B, Self::Token) -> B {
+        self.chars().fold(init, f)
+    }
+
+    fn len(&self) -> usize {
+        self.chars().count()
+    }
+
+    fn is_empty(&self) -> bool {
+        (&self[..]).is_empty()
+    }
+
+    fn to_vec(&self) -> Vec<Self::Token> {
+        (&self[..]).chars().collect()
+    }
+
+    fn into_vec(self) -> Vec<Self::Token> {
+        (&self[..]).chars().collect()
     }
 }
 
@@ -210,6 +252,178 @@ pub trait Input: Sized {
     #[inline]
     fn _restore(self, Guard, Self::Marker) -> Self;
 }
+
+impl<'a, I: Copy + PartialEq> Input for &'a [I] {
+    type Token  = I;
+    type Marker = &'a [I];
+    type Buffer = &'a [I];
+
+    #[inline]
+    fn _peek(&mut self, _g: Guard) -> Option<Self::Token> {
+        self.first().cloned()
+    }
+
+    #[inline]
+    fn _pop(&mut self, _g: Guard) -> Option<Self::Token> {
+        self.first().cloned().map(|c| {
+            *self = &self[1..];
+
+            c
+        })
+    }
+
+    #[inline]
+    fn _consume(&mut self, _g: Guard, n: usize) -> Option<Self::Buffer> {
+        if n > self.len() {
+            None
+        } else {
+            let b = &self[..n];
+
+            *self = &self[n..];
+
+            Some(b)
+        }
+    }
+
+    #[inline]
+    fn _consume_while<F>(&mut self, _g: Guard, mut f: F) -> Self::Buffer
+      where F: FnMut(Self::Token) -> bool {
+        if let Some(n) = self.iter().position(|c| !f(*c)) {
+            let b = &self[..n];
+
+            *self = &self[n..];
+
+            b
+        }  else {
+            let b = &self[..];
+
+            *self = &self[..0];
+
+            b
+        }
+    }
+
+    #[inline]
+    fn _consume_from(&mut self, _g: Guard, m: Self::Marker) -> Self::Buffer {
+        &m[..m.len() - self.len()]
+    }
+
+    #[inline]
+    fn _consume_remaining(&mut self, _g: Guard) -> Self::Buffer {
+        let b = &self[..];
+
+        *self = &self[..0];
+
+        b
+    }
+
+    #[inline]
+    fn _mark(&self, _g: Guard) -> Self::Marker {
+        &self
+    }
+
+    #[inline]
+    fn _restore(self, _g: Guard, m: Self::Marker) -> Self {
+        m
+    }
+}
+
+impl<'a> Input for &'a str {
+    type Token  = char;
+    type Marker = &'a str;
+    type Buffer = &'a str;
+
+    #[inline]
+    fn _peek(&mut self, _g: Guard) -> Option<Self::Token> {
+        self.chars().next()
+    }
+
+    #[inline]
+    fn _pop(&mut self, _g: Guard) -> Option<Self::Token> {
+        let mut iter = self.char_indices();
+
+        iter.next().map(|(_, c)| {
+            match iter.next().map(|(p, _)| p) {
+                Some(n) => *self = &self[n..],
+                None    => *self = &self[..0],
+            }
+
+            c
+        })
+    }
+
+    #[inline]
+    fn _consume(&mut self, _g: Guard, n: usize) -> Option<Self::Buffer> {
+        match self.char_indices().enumerate().take(n + 1).last() {
+            // num always equal to n if self contains more than n characters
+            Some((num, (pos, _))) if n == num => {
+                let b = &self[..pos];
+
+                *self = &self[pos..];
+
+                Some(b)
+            },
+            // num always equal to n - 1 if self contains exactly n characters
+            Some((num, _)) if n == num + 1 => {
+                let b = &self[..];
+
+                *self = &self[..0];
+
+                Some(b)
+            },
+            _ => None,
+        }
+    }
+
+    #[inline]
+    fn _consume_while<F>(&mut self, _g: Guard, mut f: F) -> Self::Buffer
+      where F: FnMut(Self::Token) -> bool {
+        // We need to find the character following the one which did not match
+        if let Some((pos, _)) = self.char_indices().skip_while(|&(_, c)| f(c)).next() {
+            let b = &self[..pos];
+
+            *self = &self[pos..];
+
+            b
+        } else {
+            let b = &self[..];
+
+            *self = &self[..0];
+
+            b
+        }
+    }
+
+    #[inline]
+    fn _consume_from(&mut self, _g: Guard, m: Self::Marker) -> Self::Buffer {
+        &m[..m.len() - self.len()]
+    }
+
+    #[inline]
+    fn _consume_remaining(&mut self, _g: Guard) -> Self::Buffer {
+        let b = &self[..];
+
+        *self = &self[..0];
+
+        b
+    }
+
+    #[inline]
+    fn _mark(&self, _g: Guard) -> Self::Marker {
+        &self
+    }
+
+    #[inline]
+    fn _restore(self, _g: Guard, m: Self::Marker) -> Self {
+        m
+    }
+}
+
+/// A type alias for an `Input` with a token type of `u8`.
+pub trait U8Input: Input<Token=u8> {}
+
+impl<T> U8Input for T
+  where T: Input<Token=u8> {}
 
 /// The basic return type of a parser.
 ///
@@ -421,32 +635,27 @@ impl<I: Input, T, E> IntoInner for ParseResult<I, T, E> {
 }
 
 #[cfg(test)]
-mod test {
-    use super::{Input, InputBuf, ParseResult};
+pub mod test {
+    use super::{Buffer, Input, ParseResult};
     use primitives::IntoInner;
+    use std::fmt::Debug;
 
     #[test]
     fn ret() {
-        let i1: InputBuf<u8> = InputBuf::new(b"in1");
-        let i2: InputBuf<u8> = InputBuf::new(b"in2");
+        let r1: ParseResult<_, u32, ()>   = b"in1".ret::<_, ()>(23u32);
+        let r2: ParseResult<_, i32, &str> = b"in2".ret::<_, &str>(23i32);
 
-        let r1: ParseResult<_, u32, ()> = i1.ret::<_, ()>(23u32);
-        let r2: ParseResult<_, i32, &str> = i2.ret::<_, &str>(23i32);
-
-        assert_eq!(r1.into_inner(), (InputBuf::new(b"in1"), Ok(23u32)));
-        assert_eq!(r2.into_inner(), (InputBuf::new(b"in2"), Ok(23i32)));
+        assert_eq!(r1.into_inner(), (&b"in1"[..], Ok(23u32)));
+        assert_eq!(r2.into_inner(), (&b"in2"[..], Ok(23i32)));
     }
 
     #[test]
     fn err() {
-        let i1: InputBuf<u8> = InputBuf::new(b"in1");
-        let i2: InputBuf<u8> = InputBuf::new(b"in2");
+        let r1: ParseResult<_, (), u32>   = b"in1".err::<(), _>(23u32);
+        let r2: ParseResult<_, &str, i32> = b"in2".err::<&str, _>(23i32);
 
-        let r1: ParseResult<_, (), u32>   = i1.err::<(), _>(23u32);
-        let r2: ParseResult<_, &str, i32> = i2.err::<&str, _>(23i32);
-
-        assert_eq!(r1.into_inner(), (InputBuf::new(b"in1"), Err(23u32)));
-        assert_eq!(r2.into_inner(), (InputBuf::new(b"in2"), Err(23i32)));
+        assert_eq!(r1.into_inner(), (&b"in1"[..], Err(23u32)));
+        assert_eq!(r2.into_inner(), (&b"in2"[..], Err(23i32)));
     }
 
     #[test]
@@ -454,11 +663,11 @@ mod test {
         let i1: Result<u32, &str> = Ok(23);
         let i2: Result<&str, &str> = Err("foobar");
 
-        let r1 = InputBuf::new(b"in1").from_result(i1);
-        let r2 = InputBuf::new(b"in2").from_result(i2);
+        let r1 = b"in1".from_result(i1);
+        let r2 = b"in2".from_result(i2);
 
-        assert_eq!(r1.into_inner(), (InputBuf::new(b"in1"), Ok(23u32)));
-        assert_eq!(r2.into_inner(), (InputBuf::new(b"in2"), Err("foobar")));
+        assert_eq!(r1.into_inner(), (&b"in1"[..], Ok(23u32)));
+        assert_eq!(r2.into_inner(), (&b"in2"[..], Err("foobar")));
     }
 
     #[test]
@@ -467,30 +676,27 @@ mod test {
             i.ret(n + 1)
         }
 
-        let m1 = InputBuf::new(b"test");
-        let m2 = InputBuf::new(b"test");
-
         let a = 123;
         // return a >>= f
-        let lhs = m1.ret(a).bind(f);
+        let lhs = b"test".ret(a).bind(f);
         // f a
-        let rhs = f(m2, a);
+        let rhs = f(&b"test"[..], a);
 
-        assert_eq!((lhs.0, lhs.1), (InputBuf::new(b"test"), Ok(124)));
-        assert_eq!((rhs.0, rhs.1), (InputBuf::new(b"test"), Ok(124)));
+        assert_eq!((lhs.0, lhs.1), (&b"test"[..], Ok(124)));
+        assert_eq!((rhs.0, rhs.1), (&b"test"[..], Ok(124)));
     }
 
     #[test]
     fn monad_right_identity() {
-        let m1 = InputBuf::new(b"test").ret::<_, ()>(1);
-        let m2 = InputBuf::new(b"test").ret::<_, ()>(1);
+        let m1 = b"test".ret::<_, ()>(1);
+        let m2 = b"test".ret::<_, ()>(1);
 
         // m1 >>= ret === m2
         let lhs = m1.bind::<_, _, ()>(Input::ret);
         let rhs = m2;
 
-        assert_eq!((lhs.0, rhs.1), (InputBuf::new(b"test"), Ok(1)));
-        assert_eq!((rhs.0, lhs.1), (InputBuf::new(b"test"), Ok(1)));
+        assert_eq!((lhs.0, rhs.1), (&b"test"[..], Ok(1)));
+        assert_eq!((rhs.0, lhs.1), (&b"test"[..], Ok(1)));
     }
 
     #[test]
@@ -503,16 +709,16 @@ mod test {
             i.ret(num * 2)
         }
 
-        let lhs_m = InputBuf::new(b"test").ret::<_, ()>(2);
-        let rhs_m = InputBuf::new(b"test").ret::<_, ()>(2);
+        let lhs_m = b"test".ret::<_, ()>(2);
+        let rhs_m = b"test".ret::<_, ()>(2);
 
         // (m >>= f) >>= g
         let lhs = lhs_m.bind(f).bind(g);
         // m >>= (\x -> f x >>= g)
         let rhs = rhs_m.bind(|i, x| f(i, x).bind(g));
 
-        assert_eq!((lhs.0, lhs.1), (InputBuf::new(b"test"), Ok(6)));
-        assert_eq!((rhs.0, rhs.1), (InputBuf::new(b"test"), Ok(6)));
+        assert_eq!((lhs.0, lhs.1), (&b"test"[..], Ok(6)));
+        assert_eq!((rhs.0, rhs.1), (&b"test"[..], Ok(6)));
     }
 
     #[test]
@@ -521,8 +727,8 @@ mod test {
 
         let mut n1 = 0;
         let mut n2 = 0;
-        let i1     = InputBuf::new(b"test ").ret::<u32, ()>(23);
-        let i2     = InputBuf::new(b"test ").ret::<u32, ()>(23);
+        let i1     = b"test ".ret::<u32, ()>(23);
+        let i2     = b"test ".ret::<u32, ()>(23);
 
         let r1 = i1.inspect(|d: &u32| {
             assert_eq!(d, &23);
@@ -535,9 +741,9 @@ mod test {
             n2 += 1;
         });
 
-        assert_eq!(r1.into_inner(), (InputBuf::new(b"test "), Ok(23)));
+        assert_eq!(r1.into_inner(), (&b"test "[..], Ok(23)));
         assert_eq!(n1, 1);
-        assert_eq!(r2.into_inner(), (InputBuf::new(b"test "), Ok(23)));
+        assert_eq!(r2.into_inner(), (&b"test "[..], Ok(23)));
         assert_eq!(n2, 1);
     }
 
@@ -545,14 +751,14 @@ mod test {
     fn input_propagation() {
         let mut n_calls = 0;
 
-        let i = InputBuf::new(b"test1").ret::<_, ()>(23);
+        let i = b"test1".ret::<_, ()>(23);
 
-        assert_eq!(i.0, InputBuf::new(b"test1"));
+        assert_eq!(i.0, b"test1");
         assert_eq!(i.1, Ok(23));
 
         let r: ParseResult<_, _, ()> = i.bind(|i, t| { n_calls += 1; i.ret(t) });
 
-        assert_eq!((r.0, r.1), (InputBuf::new(b"test1"), Ok(23)));
+        assert_eq!((r.0, r.1), (&b"test1"[..], Ok(23)));
         assert_eq!(n_calls, 1);
     }
 
@@ -560,14 +766,14 @@ mod test {
     fn error_propagation() {
         let mut n_calls = 0;
 
-        let i = InputBuf::new(b"test1").err::<(), _>(23);
+        let i = b"test1".err::<(), _>(23);
 
-        assert_eq!(i.0, InputBuf::new(b"test1"));
+        assert_eq!(i.0, b"test1");
         assert_eq!(i.1, Err(23));
 
         let r = i.bind(|i, t| { n_calls += 1; i.ret(t) });
 
-        assert_eq!((r.0, r.1), (InputBuf::new(b"test1"), Err(23)));
+        assert_eq!((r.0, r.1), (&b"test1"[..], Err(23)));
         assert_eq!(n_calls, 0);
     }
 
@@ -580,5 +786,113 @@ mod test {
 
         assert_eq!((lhs.0, lhs.1), (&b"test"[..], Ok(124)));
         assert_eq!((rhs.0, rhs.1), (&b"test"[..], Ok(124)));
+    }
+
+    #[test]
+    fn test_slice() {
+        run_primitives_test(&b"abc"[..], |x| x);
+    }
+
+    #[test]
+    fn test_string() {
+        run_primitives_test(&"abc"[..], |c| c as char);
+    }
+
+    /// Should recieve an Input with the tokens 'a', 'b' and 'c' remaining.
+    pub fn run_primitives_test<I: Input, F: Fn(u8) -> I::Token>(mut s: I, f: F)
+      where I::Token:  Debug,
+            I::Buffer: Clone {
+        use primitives::Primitives;
+
+        fn buffer_eq_slice<B: Buffer + Clone, F: Fn(u8) -> B::Token>(b: B, s: &[u8], f: F)
+          where B::Token: Debug, {
+            assert_eq!(b.len(), s.len());
+            assert_eq!(b.is_empty(), s.is_empty());
+            assert_eq!(b.clone().fold(0, |n, c| {
+                assert_eq!(c, f(s[n]));
+
+                n + 1
+            }), s.iter().count());
+            assert_eq!(b.to_vec(), s.iter().cloned().map(f).collect::<Vec<_>>());
+        }
+
+        let m = s.mark();
+        assert_eq!(s.peek(), Some(f(b'a')));
+        assert_eq!(s.pop(),  Some(f(b'a')));
+        assert_eq!(s.peek(), Some(f(b'b')));
+        assert_eq!(s.pop(),  Some(f(b'b')));
+        assert_eq!(s.peek(), Some(f(b'c')));
+        assert_eq!(s.pop(),  Some(f(b'c')));
+        assert_eq!(s.peek(), None);
+        assert_eq!(s.pop(),  None);
+        assert_eq!(s.peek(), None);
+        assert_eq!(s.pop(),  None);
+        assert!(s.consume(1).is_none());
+        buffer_eq_slice(s.consume_remaining(), &b""[..], &f);
+
+        {
+            let mut n = 0;
+
+            let b = s.consume_while(|_| { n += 1; true });
+
+            assert_eq!(n, 0);
+            buffer_eq_slice(b, &b""[..], &f);
+        }
+
+        let mut s = s.restore(m);
+        assert_eq!(s.peek(), Some(f(b'a')));
+        let m = s.mark();
+        buffer_eq_slice(s.consume_remaining(), &b"abc"[..], &f);
+        assert_eq!(s.peek(), None);
+        let mut s = s.restore(m);
+        assert_eq!(s.peek(), Some(f(b'a')));
+        let m = s.mark();
+
+        {
+            let b = s.consume(2);
+
+            assert_eq!(b.is_some(), true);
+            buffer_eq_slice(b.unwrap(), &b"ab"[..], &f);
+        }
+
+        assert_eq!(s.peek(), Some(f(b'c')));
+
+        let mut s = s.restore(m);
+        assert_eq!(s.peek(), Some(f(b'a')));
+        let m = s.mark();
+
+        {
+            let b = s.consume(3);
+
+            assert_eq!(b.is_some(), true);
+            buffer_eq_slice(b.unwrap(), &b"abc"[..], &f);
+        }
+
+        assert_eq!(s.peek(), None);
+        let mut s = s.restore(m);
+        assert_eq!(s.peek(), Some(f(b'a')));
+        let m = s.mark();
+
+        {
+            let mut n = 0;
+
+            let b = s.consume_while(|c| {
+                assert_eq!(c, f(b"abc"[n]));
+
+                n += 1;
+
+                n < 3
+            });
+
+            assert_eq!(n, 3);
+            buffer_eq_slice(b, &b"ab"[..], &f);
+        }
+
+        assert_eq!(s.peek(), Some(f(b'c')));
+        assert_eq!(s.pop(),  Some(f(b'c')));
+        assert_eq!(s.peek(), None);
+        assert_eq!(s.pop(),  None);
+
+        buffer_eq_slice(s.consume_from(m), &b"abc"[..], &f);
     }
 }

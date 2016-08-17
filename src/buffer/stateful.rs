@@ -1,14 +1,15 @@
 use std::io;
 
-use types::{InputBuf, ParseResult};
+use types::ParseResult;
 use primitives::IntoInner;
 
 use buffer::{
     Buffer,
     DataSource,
     FixedSizeBuffer,
-    StreamError,
+    InputBuf,
     Stream,
+    StreamError,
 };
 use buffer::data_source::{IteratorDataSource, ReadDataSource};
 

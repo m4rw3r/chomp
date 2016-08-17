@@ -1,7 +1,7 @@
 use primitives::IntoInner;
 
-use types::{InputBuf, ParseResult};
-use buffer::{IntoStream, StreamError, Stream};
+use types::ParseResult;
+use buffer::{InputBuf, IntoStream, StreamError, Stream};
 
 /// Stream implementation for immutable slices.
 ///
