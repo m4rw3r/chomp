@@ -244,10 +244,8 @@ pub fn take_while1<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Buffer>
 /// assert_eq!(r, Ok(&b"abc"[..]));
 /// ```
 #[inline]
-pub fn take_till<I: Input<Token=u8>, F>(mut i: I, mut f: F) -> SimpleResult<I, I::Buffer>
-  where F: FnMut(I::Token) -> bool,
-        I::Token: Clone {
-    // TODO: How to check the last token? to make sure f succeeded on it?
+pub fn take_till<I: Input, F>(mut i: I, mut f: F) -> SimpleResult<I, I::Buffer>
+  where F: FnMut(I::Token) -> bool {
     let mut ok = false;
 
     let b = i.consume_while(|c| {
@@ -263,7 +261,6 @@ pub fn take_till<I: Input<Token=u8>, F>(mut i: I, mut f: F) -> SimpleResult<I, I
     if ok {
         i.ret(b)
     } else {
-        // TODO: Error could not find
         i.err(Error::unexpected())
     }
 }
