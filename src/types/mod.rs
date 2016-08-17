@@ -245,19 +245,6 @@ pub trait Input: Sized {
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct ParseResult<I: Input, T, E>(I, Result<T, E>);
 
-/// **Primitive:** Creates a new `ParseResult`.
-///
-/// # Primitive
-///
-/// Only used by fundamental parsers and combinators.
-///
-/// # Note
-///
-/// Prefer to use `Input::ret`, `Input::err` or `Input::from_result` instead of using
-pub fn new<I: Input, T, E>(i: I, r: Result<T, E>) -> ParseResult<I, T, E> {
-    ParseResult(i, r)
-}
-
 impl<I: Input, T, E> ParseResult<I, T, E> {
     /// Sequentially composes the result with a parse action `f`, passing any produced value as
     /// the second parameter.
