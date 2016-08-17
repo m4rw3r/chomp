@@ -1,7 +1,7 @@
 use primitives::IntoInner;
 
-use types::ParseResult;
-use buffer::{InputBuf, IntoStream, StreamError, Stream};
+use types::{Input, ParseResult};
+use buffer::{InputBuf, StreamError, Stream};
 
 /// Stream implementation for immutable slices.
 ///
@@ -9,11 +9,9 @@ use buffer::{InputBuf, IntoStream, StreamError, Stream};
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
 /// use chomp::parsers::{token, take};
-/// use chomp::buffer::{IntoStream, Stream};
+/// use chomp::buffer::{SliceStream, Stream};
 ///
-/// let i = b"foo";
-///
-/// let r = i.into_stream().parse(parser!{
+/// let r = SliceStream::new(b"foo").parse(parser!{
 ///     token(b'f');
 ///     take(2)
 /// });
@@ -26,11 +24,9 @@ use buffer::{InputBuf, IntoStream, StreamError, Stream};
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
 /// use chomp::prelude::{token, many, take};
-/// use chomp::buffer::{IntoStream, Stream};
+/// use chomp::buffer::{SliceStream, Stream};
 ///
-/// let i = b"foofoo";
-///
-/// let r = i.into_stream().parse(parser!{many(parser!{
+/// let r = SliceStream::new(b"foofoo").parse(parser!{many(parser!{
 ///     token(b'f');
 ///     take(2)
 /// })});
@@ -67,22 +63,12 @@ impl<'i, I: 'i> SliceStream<'i, I> {
     }
 }
 
-impl<'a, 'i, I: 'i + Copy + PartialEq> IntoStream<'a, 'i> for &'i [I] {
-    type Item = I;
-    type Into = SliceStream<'i, I>;
-
-    #[inline]
-    fn into_stream(self) -> SliceStream<'i, I> {
-        SliceStream::new(self)
-    }
-}
-
 impl<'a, 'i, I: 'i + Copy + PartialEq> Stream<'a, 'i> for SliceStream<'i, I> {
-    type Item = I;
+    type Input = InputBuf<'i, I>;
 
     #[inline]
-    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, StreamError<&'i [Self::Item], E>>
-      where F: FnOnce(InputBuf<'i, Self::Item>) -> ParseResult<InputBuf<'i, Self::Item>, T, E>,
+    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, StreamError<<Self::Input as Input>::Buffer, E>>
+      where F: FnOnce(Self::Input) -> ParseResult<Self::Input, T, E>,
             T: 'i,
             E: 'i {
         use primitives::Primitives;

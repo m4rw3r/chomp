@@ -1,6 +1,6 @@
 use std::io;
 
-use types::ParseResult;
+use types::{Input, ParseResult};
 use primitives::IntoInner;
 
 use buffer::{
@@ -199,11 +199,11 @@ impl<S: DataSource<Item=u8>, B: Buffer<u8>> io::BufRead for Source<S, B> {
 
 impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
   where S::Item: 'a {
-    type Item = S::Item;
+    type Input = InputBuf<'a, S::Item>;
 
     #[inline]
-    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, StreamError<&'a [Self::Item], E>>
-      where F: FnOnce(InputBuf<'a, Self::Item>) -> ParseResult<InputBuf<'a, Self::Item>, T, E>,
+    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, StreamError<<Self::Input as Input>::Buffer, E>>
+      where F: FnOnce(Self::Input) -> ParseResult<Self::Input, T, E>,
             T: 'a,
             E: 'a {
         use primitives::Primitives;

@@ -81,7 +81,7 @@ impl<B: InputBuffer, E: PartialEq<E>> PartialEq for StreamError<B, E> {
 /// Trait wrapping the state management in reading from a data source while parsing.
 pub trait Stream<'a, 'i> {
     /// The input item type, usually depending on which `DataSource` is used.
-    type Item: 'i + Copy + PartialEq;
+    type Input: Input + 'i;
 
     /// Attempts to run the supplied parser `F` once on the currently populated data in this
     /// stream, providing a borrow of the inner data storage.
@@ -89,22 +89,10 @@ pub trait Stream<'a, 'i> {
     /// If a `StreamError::Retry` is returned the consuming code it should just retry the action
     /// (the implementation might require a separate call to refill the stream).
     #[inline]
-    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, StreamError<&'i [Self::Item], E>>
-      where F: FnOnce(InputBuf<'i, Self::Item>) -> ParseResult<InputBuf<'i, Self::Item>, T, E>,
+    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, StreamError<<Self::Input as Input>::Buffer, E>>
+      where F: FnOnce(Self::Input) -> ParseResult<Self::Input, T, E>,
             T: 'i,
             E: 'i;
-}
-
-/// Trait for conversion into a `Stream`.
-pub trait IntoStream<'a, 'i> {
-    /// The input item type provided by the stream.
-    type Item: 'i + Copy + PartialEq;
-    /// The `Stream` instance type.
-    type Into: Stream<'a, 'i, Item=Self::Item>;
-
-    /// Convert self into a `Stream`.
-    #[inline]
-    fn into_stream(self) -> Self::Into;
 }
 
 // FIXME: Docs
@@ -113,9 +101,9 @@ pub trait IntoStream<'a, 'i> {
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct InputBuf<'a, I: 'a>(
     /// If this is set to true a parser has tried to read past the end of this buffer.
-    pub bool,
+    bool,
     /// Current buffer slice
-    pub &'a [I],
+    &'a [I],
 );
 
 // FIXME: Docs
