@@ -47,14 +47,14 @@ fn f() -> (u8, u8, u8) {
 A Chomp parser with a similar structure looks like this:
 
 ```rust
-fn f(i: Input<u8>) -> U8Result<(u8, u8, u8)> {
+fn f<I: U8Input>(i: I) -> SimpleResult<I, (u8, u8, u8)> {
     parse!{i;
-        let a = read_digit();
-        let b = read_digit();
-        string(b"missiles");
-        ret (a, b, a + b);
+        let a = digit();
+        let b = digit();
+                string(b"missiles");
+        ret (a, b, a + b)
     }
-} 
+}
 ```
 
 And to implement `read_digit` we can utilize the `map` function to manipulate any success value while preserving any error or incomplete state:
@@ -68,7 +68,7 @@ fn read_digit() -> u8 {
 }
 
 // Chomp, error handling built in, and we make sure we only get a number:
-fn read_digit(i: Input<u8>) -> U8Result<u8> {
+fn read_digit<I: U8Input>(i: I) -> SimpleResult<I, u8> {
     satisfy(i, |c| b'0' <= c && c <= b'9').map(|c| c - b'0')
 }
 ```

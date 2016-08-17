@@ -60,7 +60,7 @@
 //! `token` parser, which matches a particular input.
 //!
 //! ```ignore
-//! fn token<I: Copy + Eq>(i: Input<I>, t: I) -> SimpleResult<I, I> {...}
+//! fn token<I: Input>(i: I, t: I::Token) -> ParseResult<I, I::Token, Error<I::Token>> { ... }
 //! ```
 //!
 //! Notice that the first argument is an `Input<I>`, and the second argument is some `I`.
@@ -81,8 +81,8 @@
 //! A very useful parser is the `satisfy` parser:
 //!
 //! ```ignore
-//! fn satisfy<I: Copy, F>(i: Input<I>, f: F) -> SimpleResult<I, I>
-//!    where F: FnOnce(I) -> bool { ... }
+//! fn satisfy<I: Input, F>(mut i: I, f: F) -> ParseResult<I, I::Token, Error<I::Token>>
+//!   where F: FnOnce(I::Token) -> bool { ... }
 //! ```
 //!
 //! Besides the input state, satisfy's only parameter is a predicate function and will succeed only
@@ -111,10 +111,8 @@
 //! times on its input.
 //!
 //! ```ignore
-//! pub fn count<'a, I, T, E, F, U>(i: Input<'a, I>, num: usize, p: F) -> ParseResult<'a, I, T, E>
-//!   where I: Copy,
-//!         U: 'a,
-//!         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
+//! pub fn count<I: Input, T, E, F, U>(i: I, num: usize, p: F) -> ParseResult<I, T, E>
+//!   where F: FnMut(I) -> ParseResult<I, U, E>,
 //!         T: FromIterator<U> { ... }
 //! ```
 //!
