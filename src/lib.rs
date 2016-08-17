@@ -9,7 +9,7 @@
 //! For its current capabilities, you will find that Chomp performs consistently as well, if not
 //! better, than optimized C parsers, while being vastly more expressive. For an example that
 //! builds a performant HTTP parser out of smaller parsers, see
-//! [http_parser.rs](examples/http_parser.rs).
+//! [`http_parser.rs`](examples/http_parser.rs).
 //!
 //! # Example
 //!
@@ -217,7 +217,7 @@
     shadow_same,
     shadow_unrelated,
     single_match_else))]
-#![cfg_attr(feature="clippy", allow(inline_always))]
+#![cfg_attr(feature="clippy", allow(inline_always, many_single_char_names))]
 
 #[cfg(feature = "tendril")]
 extern crate tendril;

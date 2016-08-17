@@ -351,15 +351,13 @@ pub fn string<T: Copy + PartialEq, I: Input<Token=T>>(mut i: I, s: &[T])
 
     // TODO: There has to be some more efficient way here
     let b = i.consume_while(|c| {
-        if n >= len {
+        if n >= len || c != s[n] {
             false
         }
-        else if c == s[n] {
+        else {
             n += 1;
 
             true
-        } else {
-            false
         }
     });
 
@@ -460,8 +458,8 @@ mod error {
       where I: fmt::Debug {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             match self.0.as_ref() {
-                Some(ref c) => write!(f, "expected {:?}", *c),
-                None        => write!(f, "unexpected"),
+                Some(c) => write!(f, "expected {:?}", *c),
+                None    => write!(f, "unexpected"),
             }
         }
     }

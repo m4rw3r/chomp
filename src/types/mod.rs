@@ -295,7 +295,7 @@ impl<'a, I: Copy + PartialEq> Input for &'a [I] {
 
     #[inline]
     fn _mark(&self, _g: Guard) -> Self::Marker {
-        &self
+        self
     }
 
     #[inline]
@@ -386,7 +386,7 @@ impl<'a> Input for &'a str {
 
     #[inline]
     fn _mark(&self, _g: Guard) -> Self::Marker {
-        &self
+        self
     }
 
     #[inline]

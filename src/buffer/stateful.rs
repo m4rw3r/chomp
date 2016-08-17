@@ -92,7 +92,7 @@ impl<S: DataSource, B: Buffer<S::Item>> Source<S, B> {
             while buffer.len() < request {
                 match try!(buffer.fill(source)) {
                     0 => break,
-                    n => read = read + n,
+                    n => read += n,
                 }
             }
         }
