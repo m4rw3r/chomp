@@ -97,21 +97,21 @@ impl<'a> Buffer for &'a str {
 /// Coupled with the `ParseResult` type it forms the parser monad:
 ///
 /// ```ignore
-/// Fn*(Input<I>, ...) -> ParseResult<I, T, E>;
+/// Fn*<I: Input>(I, ...) -> ParseResult<I, T, E>;
 /// ```
 ///
-/// where ``Fn*`` is the appropriate closure/function trait, `I` the input token type (usually
-/// something like `u8`), `...` additional parameters to the parser, `T` the carried type and `E`
+/// where ``Fn*`` is the appropriate closure/function trait, `I` the input type (can be something
+/// like `[u8]`), `...` additional parameters to the parser, `T` the carried success type and `E`
 /// the potential error type.
 pub trait Input: Sized {
     /// The token type of the input.
-    // TODO: Maybe remove the copy bound at some point?
     type Token: Copy + PartialEq;
 
     /// A marker type which is used to backtrack using `_mark` and `_restore`.
     ///
     /// It should also be possible to use this type to consume the data from the marked position to
     /// the current position.
+    #[doc(hidden)]
     type Marker;
 
     /// The buffer type yielded by this input when multiple tokens are consumed in sequence.
@@ -189,67 +189,44 @@ pub trait Input: Sized {
     // Primitive methods
 
     /// **Primitive:** See `Primitives::peek` for documentation.
-    ///
-    /// Peeks at the next token in the input without consuming it. `None` if no more input is
-    /// available.
-    ///
-    /// Note: Will refill automatically.
     #[inline]
+    #[doc(hidden)]
     fn _peek(&mut self, Guard) -> Option<Self::Token>;
 
     /// **Primitive:** See `Primitives::pop` for documentation.
-    ///
-    /// Pops a token off the start of the input. `None` if no more input is available.
-    ///
-    /// Note: Will refill automatically.
     #[inline]
+    #[doc(hidden)]
     fn _pop(&mut self, Guard) -> Option<Self::Token>;
 
     /// **Primitive:** See `Primitives::consume` for documentation.
-    ///
-    /// Attempt to consume `n` tokens, if it fails do not advance the position but return `None`.
     #[inline]
+    #[doc(hidden)]
     fn _consume(&mut self, Guard, usize) -> Option<Self::Buffer>;
 
     /// **Primitive:** See `Primitives::consume_while` for documentation.
-    ///
-    /// Runs the closure `F` on the tokens *in order* until it returns false, all tokens up to that
-    /// token will be returned as a buffer and discarded from the current input. MUST never run the
-    /// closure more than once on the exact same token.
-    ///
-    /// If the end of the input is reached, the whole input is returned.
-    ///
-    /// Note: Will refill automatically.
     #[inline]
+    #[doc(hidden)]
     fn _consume_while<F>(&mut self, Guard, F) -> Self::Buffer
       where F: FnMut(Self::Token) -> bool;
 
     /// **Primitive:** See `Primitives::consume_from for documentation.
-    ///
-    /// Returns the buffer from the marker to the current position, discarding the
-    /// backtracking position carried by the marker.
     #[inline]
+    #[doc(hidden)]
     fn _consume_from(&mut self, Guard, Self::Marker) -> Self::Buffer;
 
     /// **Primitive:** See `Primitives::consume_remaining` for documentation.
-    ///
-    /// Returns the remainder of the input in a buffer.
-    ///
-    /// Note: Will refill the intenal buffer until no more data is available if the underlying
-    /// implementation supports it.
     #[inline]
+    #[doc(hidden)]
     fn _consume_remaining(&mut self, Guard) -> Self::Buffer;
 
     /// **Primitive:** See `Primitives::mark` for documentation.
-    ///
-    /// Marks a position for backtracking along with relevant state.
     #[inline]
+    #[doc(hidden)]
     fn _mark(&self, Guard) -> Self::Marker;
 
     /// **Primitive:** See `Primitives::restore` for documentation.
-    ///
-    /// Resumes from a previously marked state.
     #[inline]
+    #[doc(hidden)]
     fn _restore(self, Guard, Self::Marker) -> Self;
 }
 

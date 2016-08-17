@@ -6,7 +6,7 @@
 
 use types::Input;
 
-/// **Primitive:** Consumes self and reveals the inner state.
+/// Consumes self and reveals the inner state.
 ///
 /// # Primitive
 ///
@@ -32,36 +32,63 @@ pub trait IntoInner {
 pub struct Guard(());
 
 /// Trait enabling primitive actions on an `Input` type.
-// FIXME: Rename and documentation
+///
+/// This trait is automatically implemented for all types implementing `Input` and acts as a
+/// gatekeeper to the state-modifying methods of `Input`.
 pub trait Primitives: Input {
+    /// Peeks at the next token in the input without consuming it. `None` if no more input is
+    /// available.
+    ///
+    /// Note: Is allowed to refill automatically or any other appropriate action if the input does
+    /// not contain any more data.
     #[inline(always)]
     fn peek(&mut self) -> Option<Self::Token> {
         self._peek(Guard(()))
     }
 
+    /// Pops a token off the start of the input. `None` if no more input is available.
+    ///
+    /// Note: Is allowed to refill automatically or any other appropriate action if the input does
+    /// not contain any more data.
     #[inline(always)]
     fn pop(&mut self) -> Option<Self::Token> {
         self._pop(Guard(()))
     }
 
+    /// Attempt to consume `n` tokens, if it fails do not advance the position but return `None`.
+    ///
+    /// Note: Is allowed to refill automatically or any other appropriate action if the input does
+    /// not contain any more data.
     #[inline(always)]
     fn consume(&mut self, n: usize) -> Option<Self::Buffer> {
         self._consume(Guard(()), n)
     }
 
+    /// Runs the closure `F` on the tokens *in order* until it returns false, all tokens up to that
+    /// token will be returned as a buffer and discarded from the current input. MUST never run the
+    /// closure more than once on the exact same token.
+    ///
+    /// If the end of the input is reached, the whole input is returned.
+    ///
+    /// Note: Is allowed to refill automatically or any other appropriate action if the input does
+    /// not contain any more data.
     #[inline(always)]
     fn consume_while<F>(&mut self, f: F) -> Self::Buffer
       where F: FnMut(Self::Token) -> bool {
         self._consume_while(Guard(()), f)
     }
 
-    /// Returns the buffer from the marker `m` to the current position, discarding the
-    /// backtracking position carried by `m`.
+    /// Returns the buffer from the marker to the current position, discarding the
+    /// backtracking position carried by the marker.
     #[inline(always)]
     fn consume_from(&mut self, m: Self::Marker) -> Self::Buffer {
         self._consume_from(Guard(()), m)
     }
 
+    /// Returns the remainder of the input in a buffer.
+    ///
+    /// Note: Will refill the intenal buffer until no more data is available if the underlying
+    /// implementation supports it.
     #[inline(always)]
     fn consume_remaining(&mut self) -> Self::Buffer {
         self._consume_remaining(Guard(()))
@@ -73,6 +100,7 @@ pub trait Primitives: Input {
         self._mark(Guard(()))
     }
 
+    /// Resumes from a previously marked state.
     #[inline(always)]
     fn restore(self, m: Self::Marker) -> Self {
         self._restore(Guard(()), m)
