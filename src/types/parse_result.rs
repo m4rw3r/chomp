@@ -223,12 +223,9 @@ impl<I: Input, T, E> IntoInner for ParseResult<I, T, E> {
     }
 }
 
-/*
 #[cfg(test)]
 mod test {
-    use input;
-    use input::{Input, DEFAULT, END_OF_INPUT};
-    use primitives::State;
+    use types::{Input, InputBuf};
 
     use super::ParseResult;
 
@@ -238,8 +235,8 @@ mod test {
             i.ret(n + 1)
         }
 
-        let m1 = input::new_buf(END_OF_INPUT, b"test");
-        let m2 = input::new_buf(END_OF_INPUT, b"test");
+        let m1 = InputBuf::new(b"test");
+        let m2 = InputBuf::new(b"test");
 
         let a = 123;
         // return a >>= f
@@ -247,21 +244,21 @@ mod test {
         // f a
         let rhs = f(m2, a);
 
-        assert_eq!(lhs.0, State::Data(input::new_buf(END_OF_INPUT, b"test"), 124));
-        assert_eq!(rhs.0, State::Data(input::new_buf(END_OF_INPUT, b"test"), 124));
+        assert_eq!((lhs.0, lhs.1), (InputBuf::new(b"test"), Ok(124)));
+        assert_eq!((rhs.0, rhs.1), (InputBuf::new(b"test"), Ok(124)));
     }
 
     #[test]
     fn monad_right_identity() {
-        let m1 = input::new_buf(END_OF_INPUT, b"test").ret::<_, ()>(1);
-        let m2 = input::new_buf(END_OF_INPUT, b"test").ret::<_, ()>(1);
+        let m1 = InputBuf::new(b"test").ret::<_, ()>(1);
+        let m2 = InputBuf::new(b"test").ret::<_, ()>(1);
 
         // m1 >>= ret === m2
         let lhs = m1.bind::<_, _, ()>(Input::ret);
         let rhs = m2;
 
-        assert_eq!(lhs.0, State::Data(input::new_buf(END_OF_INPUT, b"test"), 1));
-        assert_eq!(rhs.0, State::Data(input::new_buf(END_OF_INPUT, b"test"), 1));
+        assert_eq!((lhs.0, rhs.1), (InputBuf::new(b"test"), Ok(1)));
+        assert_eq!((rhs.0, lhs.1), (InputBuf::new(b"test"), Ok(1)));
     }
 
     #[test]
@@ -274,16 +271,16 @@ mod test {
             i.ret(num * 2)
         }
 
-        let lhs_m = input::new_buf(END_OF_INPUT, b"test").ret::<_, ()>(2);
-        let rhs_m = input::new_buf(END_OF_INPUT, b"test").ret::<_, ()>(2);
+        let lhs_m = InputBuf::new(b"test").ret::<_, ()>(2);
+        let rhs_m = InputBuf::new(b"test").ret::<_, ()>(2);
 
         // (m >>= f) >>= g
         let lhs = lhs_m.bind(f).bind(g);
         // m >>= (\x -> f x >>= g)
         let rhs = rhs_m.bind(|i, x| f(i, x).bind(g));
 
-        assert_eq!(lhs.0, State::Data(input::new_buf(END_OF_INPUT, b"test"), 6));
-        assert_eq!(rhs.0, State::Data(input::new_buf(END_OF_INPUT, b"test"), 6));
+        assert_eq!((lhs.0, lhs.1), (InputBuf::new(b"test"), Ok(6)));
+        assert_eq!((rhs.0, rhs.1), (InputBuf::new(b"test"), Ok(6)));
     }
 
     #[test]
@@ -292,8 +289,8 @@ mod test {
 
         let mut n1 = 0;
         let mut n2 = 0;
-        let i1     = input::new_buf(DEFAULT, b"test ").ret::<u32, ()>(23);
-        let i2     = input::new_buf(END_OF_INPUT, b"test ").ret::<u32, ()>(23);
+        let i1     = InputBuf::new(b"test ").ret::<u32, ()>(23);
+        let i2     = InputBuf::new(b"test ").ret::<u32, ()>(23);
 
         let r1 = i1.inspect(|d: &u32| {
             assert_eq!(d, &23);
@@ -306,44 +303,40 @@ mod test {
             n2 += 1;
         });
 
-        assert_eq!(r1.into_inner(), State::Data(input::new_buf(DEFAULT, b"test "), 23));
+        assert_eq!(r1.into_inner(), (InputBuf::new(b"test "), Ok(23)));
         assert_eq!(n1, 1);
-        assert_eq!(r2.into_inner(), State::Data(input::new_buf(END_OF_INPUT, b"test "), 23));
+        assert_eq!(r2.into_inner(), (InputBuf::new(b"test "), Ok(23)));
         assert_eq!(n2, 1);
     }
 
     #[test]
     fn input_propagation() {
-        let mut n1_calls = 0;
-        let mut n2_calls = 0;
+        let mut n_calls = 0;
 
-        let i1 = input::new_buf(DEFAULT, b"test1").ret::<_, ()>(23);
-        let i2 = input::new_buf(END_OF_INPUT, b"test2").ret::<_, ()>(24);
+        let i = InputBuf::new(b"test1").ret::<_, ()>(23);
 
-        let r1: ParseResult<_, _, ()> = i1.bind(|i, t| { n1_calls += 1; i.ret(t) });
-        let r2: ParseResult<_, _, ()> = i2.bind(|i, t| { n2_calls += 1; i.ret(t) });
+        assert_eq!(i.0, InputBuf::new(b"test1"));
+        assert_eq!(i.1, Ok(23));
 
-        assert_eq!(r1.0, State::Data(input::new_buf(DEFAULT, b"test1"), 23));
-        assert_eq!(r2.0, State::Data(input::new_buf(END_OF_INPUT, b"test2"), 24));
-        assert_eq!(n1_calls, 1);
-        assert_eq!(n2_calls, 1);
+        let r: ParseResult<_, _, ()> = i.bind(|i, t| { n_calls += 1; i.ret(t) });
+
+        assert_eq!((r.0, r.1), (InputBuf::new(b"test1"), Ok(23)));
+        assert_eq!(n_calls, 1);
     }
 
     #[test]
     fn error_propagation() {
-        let mut n1_calls = 0;
-        let mut n2_calls = 0;
+        let mut n_calls = 0;
 
-        let i1 = input::new_buf(DEFAULT, b"test1").err::<(), _>(23);
-        let i2 = input::new_buf(END_OF_INPUT, b"test2").err::<(), _>(24);
+        let i = InputBuf::new(b"test1").err::<(), _>(23);
 
-        let r1 = i1.bind(|i, t| { n1_calls += 1; i.ret(t) });
-        let r2 = i2.bind(|i, t| { n2_calls += 1; i.ret(t) });
+        assert_eq!(i.0, InputBuf::new(b"test1"));
+        assert_eq!(i.1, Err(23));
 
-        assert_eq!(r1.0, State::Error(input::new_buf(DEFAULT, b"test1"), 23));
-        assert_eq!(r2.0, State::Error(input::new_buf(END_OF_INPUT, b"test2"), 24));
-        assert_eq!(n1_calls, 0);
-        assert_eq!(n2_calls, 0);
+        let r = i.bind(|i, t| { n_calls += 1; i.ret(t) });
+
+        assert_eq!((r.0, r.1), (InputBuf::new(b"test1"), Err(23)));
+        assert_eq!(n_calls, 0);
     }
 
     #[test]
@@ -353,8 +346,7 @@ mod test {
         let lhs = (&b"test"[..]).ret(123).bind(f);
         let rhs = f(&b"test"[..], 123);
 
-        assert_eq!(lhs.0, State::Data(&b"test"[..], 124));
-        assert_eq!(rhs.0, State::Data(&b"test"[..], 124));
+        assert_eq!((lhs.0, lhs.1), (&b"test"[..], Ok(124)));
+        assert_eq!((rhs.0, rhs.1), (&b"test"[..], Ok(124)));
     }
 }
-*/
