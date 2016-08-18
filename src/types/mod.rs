@@ -1,5 +1,6 @@
 //! Types which facillitates the chaining of parsers and their results.
 
+pub mod numbering;
 #[cfg(feature = "tendril")]
 pub mod tendril;
 
@@ -24,6 +25,12 @@ pub trait Buffer: PartialEq<Self> {
     // to only take place in the actual code, not when a type is used in eg. a where clause.
     fn fold<B, F>(self, B, F) -> B
       where F: FnMut(B, Self::Token) -> B;
+
+    /// Runs the supplied function on a borrow of each token present in the buffer. Invoked in
+    /// order and once per token.
+    // Same reason for above for not returning an iterator.
+    fn iterate<F>(&self, F)
+      where F: FnMut(Self::Token);
 
     /// The number of tokens present in this buffer.
     fn len(&self) -> usize;
@@ -51,6 +58,13 @@ impl<'a, I: Copy + PartialEq> Buffer for &'a [I] {
         (&self[..]).iter().cloned().fold(init, f)
     }
 
+    fn iterate<F>(&self, mut f: F)
+      where F: FnMut(Self::Token) {
+        for c in (&self[..]).iter().cloned() {
+            f(c)
+        }
+    }
+
     fn len(&self) -> usize {
         // Slice to reach inherent method to prevent infinite recursion
         (&self[..]).len()
@@ -71,6 +85,13 @@ impl<'a> Buffer for &'a str {
     fn fold<B, F>(self, init: B, f: F) -> B
       where F: FnMut(B, Self::Token) -> B {
         self.chars().fold(init, f)
+    }
+
+    fn iterate<F>(&self, mut f: F)
+      where F: FnMut(Self::Token) {
+        for c in self.chars() {
+            f(c)
+        }
     }
 
     fn len(&self) -> usize {
