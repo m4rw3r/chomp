@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 
+- `prelude` module containing basic types, parsers and combinators.
+
+  This is supposed to be the equivalent of Attoparsec's main package.
+
+- `run_parser` which executes a parser on any given `Input` type.
+
 - `buffer::InputBuf` which contains a slice and an incomplete flag, much as the old `Input` struct.
 
 - `Input<Token=T, Buffer=&[T]>` implementation for `&[T]` where `T: Copy + PartialEq`.
@@ -64,14 +70,14 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Removed
 
-- `Input::new`
 - `Input::incomplete`
-- `buffer::IntoStream`
-- `primitives::State`
-- `primitives::InputClone`
+- `Input::new`
 - `ParseResult::expect`
-- `ParseResult::unwrap`
 - `ParseResult::unwrap_err`
+- `ParseResult::unwrap`
+- `buffer::IntoStream`
+- `primitives::InputClone`
+- `primitives::State`
 
 ## [0.2.6] - 2016-07-07
 

@@ -1,3 +1,6 @@
+//! Support for the tendril type, this is probably a bad idea since it is actually not a rope and
+//! will probably cause excessive reallocations while parsing.
+
 use std::mem;
 
 use tendril::ByteTendril;
