@@ -1,8 +1,15 @@
-use types::ParseResult;
+use types::{Input, ParseResult};
 use primitives::{
     IntoInner,
     Primitives,
 };
+
+/// Runs the supplied parser over the input.
+pub fn run_parser<I, F, T, E>(input: I, parser: F) -> (I, Result<T, E>)
+  where I: Input,
+        F: FnOnce(I) -> ParseResult<I, T, E> {
+    parser(input).into_inner()
+}
 
 /// Runs the given parser on the supplied finite input.
 ///

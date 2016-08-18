@@ -2,16 +2,12 @@
 //!
 //! ```
 //! # #[macro_use] extern crate chomp;
-//! use chomp::types::{Input, ParseResult};
-//! # fn run_parser<I: Input, F, T, E>(i: I, f: F) -> Result<T, E>
-//! #   where F: FnOnce(I) -> ParseResult<I, T, E> {
-//! #     use chomp::primitives::IntoInner;
-//! #     f(i).into_inner().1
-//! # }
 //! # fn main() {
+//! use chomp::types::{Input, ParseResult};
 //! use chomp::types::numbering::{InputPosition, LineNumber, Numbering};
 //! use chomp::combinators::many;
 //! use chomp::parsers::{Error, any, take_while1, string};
+//! use chomp::run_parser;
 //!
 //! // Let's count some lines
 //! let i = InputPosition::new(&b"test a\ntest b\n\ntest c\n"[..], LineNumber::new());
@@ -35,7 +31,7 @@
 //!     }
 //! }
 //!
-//! let r = run_parser(i, |i| many(i, parser));
+//! let r = run_parser(i, |i| many(i, parser)).1;
 //!
 //! assert_eq!(r, Ok(vec![('a', LineNumber(0)),
 //!                       ('b', LineNumber(1)),

@@ -238,6 +238,7 @@ pub mod types;
 
 pub use parse::parse_only;
 pub use parse::parse_only_str;
+pub use parse::run_parser;
 
 /// Basic prelude.
 pub mod prelude {
