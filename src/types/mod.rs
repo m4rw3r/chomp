@@ -4,8 +4,6 @@ pub mod numbering;
 #[cfg(feature = "tendril")]
 pub mod tendril;
 
-use primitives::{Guard, IntoInner};
-
 /// The buffers yielded parsers consuming a sequence of the input.
 ///
 /// This could either be an owned type or a slice reference depending on the `Input`
@@ -139,123 +137,76 @@ pub trait Input: Sized {
     /// Can eg. provide zero-copy parsing if the input type is built to support it.
     type Buffer: Buffer<Token=Self::Token>;
 
-    /// Returns `t` as a success value in the parsing context.
-    ///
-    /// Equivalent to Haskell's `return` function in the `Monad` typeclass.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use chomp::prelude::{Input, parse_only};
-    ///
-    /// let r = parse_only(|i|
-    ///     // Annotate the error type
-    ///     i.ret::<_, ()>("Wohoo, success!"),
-    ///     b"some input");
-    ///
-    /// assert_eq!(r, Ok("Wohoo, success!"));
-    /// ```
-    #[inline]
-    fn ret<T, E>(self, t: T) -> ParseResult<Self, T, E> {
-        ParseResult(self, Ok(t))
-    }
-
-    /// Returns `e` as an error value in the parsing context.
-    ///
-    /// A more general version of Haskell's `fail` function in the `Monad` typeclass.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use chomp::prelude::{Input, parse_only};
-    ///
-    /// let r = parse_only(|i|
-    ///     // Annotate the value type
-    ///     i.err::<(), _>("Something went wrong"),
-    ///     b"some input");
-    ///
-    /// assert_eq!(r, Err((&b"some input"[..], "Something went wrong")));
-    /// ```
-    #[inline]
-    fn err<T, E>(self, e: E) -> ParseResult<Self, T, E> {
-        ParseResult(self, Err(e))
-    }
-
-    /// Converts a `Result` into a `ParseResult`, preserving parser state.
-    ///
-    /// To convert an `Option` into a `ParseResult` it is recommended to use
-    /// [`Option::ok_or`](https://doc.rust-lang.org/std/option/enum.Option.html#method.ok_or)
-    /// or [`Option::ok_or_else`](https://doc.rust-lang.org/std/option/enum.Option.html#method.ok_or_else)
-    /// in combination with this method.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use chomp::prelude::{Input, parse_only};
-    ///
-    /// let r = parse_only(|i| i.from_result::<_, ()>(Ok("foo")), b"test");
-    ///
-    /// assert_eq!(r, Ok("foo"));
-    ///
-    /// let r = parse_only(|i| i.from_result::<(), _>(Err("error message")), b"test");
-    ///
-    /// assert_eq!(r, Err((&b"test"[..], "error message")));
-    /// ```
-    #[inline]
-    fn from_result<T, E>(self, r: Result<T, E>) -> ParseResult<Self, T, E> {
-        ParseResult(self, r)
-    }
-
     // Primitive methods
 
-    /// **Primitive:** See `Primitives::peek` for documentation.
+    /// Peeks at the next token in the input without consuming it. `None` if no more input is
+    /// available.
+    ///
+    /// Note: Is allowed to refill automatically or any other appropriate action if the input does
+    /// not contain any more data.
     #[inline]
-    #[doc(hidden)]
-    fn _peek(&mut self, Guard) -> Option<Self::Token>;
+    fn peek(&mut self) -> Option<Self::Token>;
 
-    /// **Primitive:** See `Primitives::pop` for documentation.
+    /// Pops a token off the start of the input. `None` if no more input is available.
+    ///
+    /// Note: Is allowed to refill automatically or any other appropriate action if the input does
+    /// not contain any more data.
     #[inline]
-    #[doc(hidden)]
-    fn _pop(&mut self, Guard) -> Option<Self::Token>;
+    fn pop(&mut self) -> Option<Self::Token>;
 
-    /// **Primitive:** See `Primitives::consume` for documentation.
+    /// Attempt to consume `n` tokens, if it fails do not advance the position but return `None`.
+    ///
+    /// Note: Is allowed to refill automatically or any other appropriate action if the input does
+    /// not contain any more data.
     #[inline]
-    #[doc(hidden)]
-    fn _consume(&mut self, Guard, usize) -> Option<Self::Buffer>;
+    fn consume(&mut self, n: usize) -> Option<Self::Buffer>;
 
-    /// **Primitive:** See `Primitives::consume_while` for documentation.
+    /// Runs the closure `F` on the tokens *in order* until it returns false, all tokens up to that
+    /// token will be returned as a buffer and discarded from the current input. MUST never run the
+    /// closure more than once on the exact same token.
+    ///
+    /// If the end of the input is reached, the whole input is returned.
+    ///
+    /// Note: Is allowed to refill automatically or any other appropriate action if the input does
+    /// not contain any more data.
     #[inline]
-    #[doc(hidden)]
-    fn _consume_while<F>(&mut self, Guard, F) -> Self::Buffer
+    fn consume_while<F>(&mut self, f: F) -> Self::Buffer
       where F: FnMut(Self::Token) -> bool;
 
-    /// **Primitive:** See `Primitives::consume_from for documentation.
+    /// Returns the buffer from the marker to the current position, discarding the
+    /// backtracking position carried by the marker.
     #[inline]
-    #[doc(hidden)]
-    fn _consume_from(&mut self, Guard, Self::Marker) -> Self::Buffer;
+    fn consume_from(&mut self, m: Self::Marker) -> Self::Buffer;
 
-    /// **Primitive:** See `Primitives::consume_remaining` for documentation.
+    /// Returns the remainder of the input in a buffer.
+    ///
+    /// Note: Will refill the intenal buffer until no more data is available if the underlying
+    /// implementation supports it.
     #[inline]
-    #[doc(hidden)]
-    fn _consume_remaining(&mut self, Guard) -> Self::Buffer;
+    fn consume_remaining(&mut self) -> Self::Buffer;
 
-    /// **Primitive:** See `Primitives::skip_while` for documentation.
+    /// Runs the closure `F` on the tokens *in order* until it returns false, all tokens up to that
+    /// token will be discarded from the current input.
+    ///
+    /// MUST never run the closure more than once on the exact same token.
+    ///
+    /// If the end of the input is reached, the whole input is discarded.
+    ///
+    /// Note: Default implementation uses `consume_while` and makes the assumption that it will
+    /// optimize away the resulting `Self::Buffer`.
     #[inline]
-    #[doc(hidden)]
-    fn _skip_while<F>(&mut self, g: Guard, f: F)
+    fn skip_while<F>(&mut self, f: F)
       where F: FnMut(Self::Token) -> bool {
-        self._consume_while(g, f);
+        self.consume_while(f);
     }
 
-    /// **Primitive:** See `Primitives::mark` for documentation.
+    /// Marks the current position to be able to backtrack to it using `restore`.
     #[inline]
-    #[doc(hidden)]
-    fn _mark(&self, Guard) -> Self::Marker;
+    fn mark(&self) -> Self::Marker;
 
-    /// **Primitive:** See `Primitives::restore` for documentation.
-    #[inline]
-    #[doc(hidden)]
-    fn _restore(self, Guard, Self::Marker) -> Self;
+    /// Resumes from a previously marked state.
+    #[inline(always)]
+    fn restore(self, m: Self::Marker) -> Self;
 }
 
 impl<'a, I: Copy + PartialEq> Input for &'a [I] {
@@ -264,12 +215,12 @@ impl<'a, I: Copy + PartialEq> Input for &'a [I] {
     type Buffer = &'a [I];
 
     #[inline]
-    fn _peek(&mut self, _g: Guard) -> Option<Self::Token> {
+    fn peek(&mut self) -> Option<Self::Token> {
         self.first().cloned()
     }
 
     #[inline]
-    fn _pop(&mut self, _g: Guard) -> Option<Self::Token> {
+    fn pop(&mut self) -> Option<Self::Token> {
         self.first().cloned().map(|c| {
             *self = &self[1..];
 
@@ -278,7 +229,7 @@ impl<'a, I: Copy + PartialEq> Input for &'a [I] {
     }
 
     #[inline]
-    fn _consume(&mut self, _g: Guard, n: usize) -> Option<Self::Buffer> {
+    fn consume(&mut self, n: usize) -> Option<Self::Buffer> {
         if n > self.len() {
             None
         } else {
@@ -291,7 +242,7 @@ impl<'a, I: Copy + PartialEq> Input for &'a [I] {
     }
 
     #[inline]
-    fn _consume_while<F>(&mut self, _g: Guard, mut f: F) -> Self::Buffer
+    fn consume_while<F>(&mut self, mut f: F) -> Self::Buffer
       where F: FnMut(Self::Token) -> bool {
         if let Some(n) = self.iter().position(|c| !f(*c)) {
             let b = &self[..n];
@@ -309,12 +260,12 @@ impl<'a, I: Copy + PartialEq> Input for &'a [I] {
     }
 
     #[inline]
-    fn _consume_from(&mut self, _g: Guard, m: Self::Marker) -> Self::Buffer {
+    fn consume_from(&mut self, m: Self::Marker) -> Self::Buffer {
         &m[..m.len() - self.len()]
     }
 
     #[inline]
-    fn _consume_remaining(&mut self, _g: Guard) -> Self::Buffer {
+    fn consume_remaining(&mut self) -> Self::Buffer {
         let b = &self[..];
 
         *self = &self[..0];
@@ -323,12 +274,12 @@ impl<'a, I: Copy + PartialEq> Input for &'a [I] {
     }
 
     #[inline]
-    fn _mark(&self, _g: Guard) -> Self::Marker {
+    fn mark(&self) -> Self::Marker {
         self
     }
 
     #[inline]
-    fn _restore(self, _g: Guard, m: Self::Marker) -> Self {
+    fn restore(self, m: Self::Marker) -> Self {
         m
     }
 }
@@ -339,12 +290,12 @@ impl<'a> Input for &'a str {
     type Buffer = &'a str;
 
     #[inline]
-    fn _peek(&mut self, _g: Guard) -> Option<Self::Token> {
+    fn peek(&mut self) -> Option<Self::Token> {
         self.chars().next()
     }
 
     #[inline]
-    fn _pop(&mut self, _g: Guard) -> Option<Self::Token> {
+    fn pop(&mut self) -> Option<Self::Token> {
         let mut iter = self.char_indices();
 
         iter.next().map(|(_, c)| {
@@ -358,7 +309,7 @@ impl<'a> Input for &'a str {
     }
 
     #[inline]
-    fn _consume(&mut self, _g: Guard, n: usize) -> Option<Self::Buffer> {
+    fn consume(&mut self, n: usize) -> Option<Self::Buffer> {
         match self.char_indices().enumerate().take(n + 1).last() {
             // num always equal to n if self contains more than n characters
             Some((num, (pos, _))) if n == num => {
@@ -381,7 +332,7 @@ impl<'a> Input for &'a str {
     }
 
     #[inline]
-    fn _consume_while<F>(&mut self, _g: Guard, mut f: F) -> Self::Buffer
+    fn consume_while<F>(&mut self, mut f: F) -> Self::Buffer
       where F: FnMut(Self::Token) -> bool {
         // We need to find the character following the one which did not match
         if let Some((pos, _)) = self.char_indices().skip_while(|&(_, c)| f(c)).next() {
@@ -400,12 +351,12 @@ impl<'a> Input for &'a str {
     }
 
     #[inline]
-    fn _consume_from(&mut self, _g: Guard, m: Self::Marker) -> Self::Buffer {
+    fn consume_from(&mut self, m: Self::Marker) -> Self::Buffer {
         &m[..m.len() - self.len()]
     }
 
     #[inline]
-    fn _consume_remaining(&mut self, _g: Guard) -> Self::Buffer {
+    fn consume_remaining(&mut self) -> Self::Buffer {
         let b = &self[..];
 
         *self = &self[..0];
@@ -414,12 +365,12 @@ impl<'a> Input for &'a str {
     }
 
     #[inline]
-    fn _mark(&self, _g: Guard) -> Self::Marker {
+    fn mark(&self) -> Self::Marker {
         self
     }
 
     #[inline]
-    fn _restore(self, _g: Guard, m: Self::Marker) -> Self {
+    fn restore(self, m: Self::Marker) -> Self {
         m
     }
 }
@@ -430,6 +381,97 @@ pub trait U8Input: Input<Token=u8> {}
 impl<T> U8Input for T
   where T: Input<Token=u8> {}
 
+// TODO: More docs
+/// A parser.
+pub trait Parser<I: Input> {
+    /// Output type created by the parser, may refer to data owned by `I`.
+    type Output;
+    /// Error type created by the parser, may refer to data owned by `I`.
+    type Error;
+
+    /// Apply the parser to an input `I`.
+    fn parse(self, I) -> (I, Result<Self::Output, Self::Error>);
+}
+
+impl<I, T, E, F> Parser<I> for F
+  where I: Input,
+        F: FnOnce(I) -> (I, Result<T, E>) {
+    type Output = T;
+    type Error  = E;
+
+    fn parse(self, i: I) -> (I, Result<T, E>) {
+        (self)(i)
+    }
+}
+
+/// Returns `t` as a success value in the parsing context.
+///
+/// Equivalent to Haskell's `return` function in the `Monad` typeclass.
+///
+/// # Example
+///
+/// ```
+/// use chomp::types::{Input, parse_only, ret};
+///
+/// let r = parse_only(|i|
+///     // Annotate the error type
+///     ret::<_, ()>("Wohoo, success!"),
+///     b"some input");
+///
+/// assert_eq!(r, Ok("Wohoo, success!"));
+/// ```
+#[inline]
+pub fn ret<I: Input, T, E>(t: T) -> impl Parser<I, Output=T, Error=E> {
+    move |i| (i, Ok(t))
+}
+
+/// Returns `e` as an error value in the parsing context.
+///
+/// A more general version of Haskell's `fail` function in the `Monad` typeclass.
+///
+/// # Example
+///
+/// ```
+/// use chomp::prelude::{Input, parse_only};
+///
+/// let r = parse_only(|i|
+///     // Annotate the value type
+///     i.err::<(), _>("Something went wrong"),
+///     b"some input");
+///
+/// assert_eq!(r, Err((&b"some input"[..], "Something went wrong")));
+/// ```
+#[inline]
+pub fn err<I: Input, T, E>(e: E) -> impl Parser<I, Output=T, Error=E> {
+    move |i| (i, Err(e))
+}
+
+/// Converts a `Result` into a `Parser`, preserving parser state.
+///
+/// To convert an `Option` into a `Parser` it is recommended to use
+/// [`Option::ok_or`](https://doc.rust-lang.org/std/option/enum.Option.html#method.ok_or)
+/// or [`Option::ok_or_else`](https://doc.rust-lang.org/std/option/enum.Option.html#method.ok_or_else)
+/// in combination with this method.
+///
+/// # Examples
+///
+/// ```
+/// use chomp::prelude::{Input, parse_only};
+///
+/// let r = parse_only(|i| i.from_result::<_, ()>(Ok("foo")), b"test");
+///
+/// assert_eq!(r, Ok("foo"));
+///
+/// let r = parse_only(|i| i.from_result::<(), _>(Err("error message")), b"test");
+///
+/// assert_eq!(r, Err((&b"test"[..], "error message")));
+/// ```
+#[inline]
+pub fn from_result<I: Input, T, E>(r: Result<T, E>) -> impl Parser<I, Output=T, Error=E> {
+    move |i| (i, r)
+}
+
+/*
 /// The basic return type of a parser.
 ///
 /// This type satisfies a variant of the `Monad` typeclass. Due to the limitations of Rust's
@@ -465,158 +507,172 @@ impl<T> U8Input for T
 pub struct ParseResult<I: Input, T, E>(I, Result<T, E>);
 
 impl<I: Input, T, E> ParseResult<I, T, E> {
-    /// Sequentially composes the result with a parse action `f`, passing any produced value as
-    /// the second parameter.
-    ///
-    /// The first parameter to the supplied function `f` is the parser state (`Input`). This
-    /// state is then passed on to other parsers or used to return a value or an error.
-    ///
-    /// # Automatic conversion of `E`
-    ///
-    /// The error value `E` will automatically be converted using the `From` trait to the
-    /// desired type. The downside with this using the current stable version of Rust (1.4) is that
-    /// the type inferrence will currently not use the default value for the generic `V` and will
-    /// therefore require extra type hint for the error.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use chomp::prelude::{Input, parse_only};
-    ///
-    /// let r = parse_only(|i| {
-    ///         i.ret("data".to_owned())
-    ///         // Explicitly state the error type
-    ///          .bind::<_, _, ()>(|i, x| i.ret(x + " here!"))
-    ///     },
-    ///     b"test");
-    ///
-    /// assert_eq!(r, Ok("data here!".to_owned()));
-    /// ```
-    ///
-    /// Wrapping the expression in a function will both make it easier to compose and also provides
-    /// the type-hint for the error in the function signature:
-    ///
-    /// ```
-    /// use chomp::prelude::{Input, ParseResult, parse_only};
-    ///
-    /// fn parser<I: Input>(i: I, n: i32) -> ParseResult<I, i32, ()> {
-    ///     i.ret(n + 10)
-    /// }
-    ///
-    /// let r = parse_only(|i| i.ret(23).bind(parser), b"test");
-    ///
-    /// assert_eq!(r, Ok(33));
-    /// ```
-    #[inline]
-    pub fn bind<F, U, V>(self, f: F) -> ParseResult<I, U, V>
-      where F: FnOnce(I, T) -> ParseResult<I, U, V>,
-            V: From<E> {
-        match self.1 {
-            Ok(t)  => f(self.0, t).map_err(From::from),
-            Err(e) => ParseResult(self.0, Err(From::from(e))),
-        }
-    }
-
-    /// Sequentially composes the result with a parse action `f`, discarding any produced value.
-    ///
-    /// The first parameter to the supplied function `f` is the parser state (`Input`). This
-    /// state is then passed on to other parsers or used to return a value or an error.
-    ///
-    /// # Relation to `bind`
-    ///
-    /// ```text
-    /// ParseResult::then(g)  ≡  ParseResult::bind(|i, _| g(i))
-    /// ```
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use chomp::prelude::{Input, SimpleResult, parse_only};
-    ///
-    /// fn g<I: Input>(i: I) -> SimpleResult<I, &'static str> {
-    ///     i.ret("testing!")
-    /// }
-    ///
-    /// let r1 = parse_only(|i| i.ret("initial state").bind(|i, _| g(i)), b"data");
-    /// let r2 = parse_only(|i| i.ret("initial state").then(g), b"data");
-    ///
-    /// assert_eq!(r1, Ok("testing!"));
-    /// assert_eq!(r2, Ok("testing!"));
-    /// ```
-    #[inline]
-    pub fn then<F, U, V>(self, f: F) -> ParseResult<I, U, V>
-      where F: FnOnce(I) -> ParseResult<I, U, V>,
-            V: From<E> {
-        self.bind(|i, _| f(i))
-    }
-
-    /// Applies the function `f` on the contained data if the parser is in a success state.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use chomp::prelude::{parse_only, any};
-    ///
-    /// let r = parse_only(|i| any(i).map(|c| c + 12), b"abc");
-    ///
-    /// assert_eq!(r, Ok(b'm'));
-    /// ```
-    #[inline]
-    pub fn map<U, F>(self, f: F) -> ParseResult<I, U, E>
-      where F: FnOnce(T) -> U {
-        match self {
-            ParseResult(i, Ok(t))  => ParseResult(i, Ok(f(t))),
-            ParseResult(i, Err(e)) => ParseResult(i, Err(e)),
-        }
-    }
-
-    /// Applies the function `f` on the contained error if the parser is in an error state.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use chomp::prelude::{Input, parse_only};
-    ///
-    /// let r = parse_only(|i| i.err::<(), _>("this is")
-    ///          .map_err(|e| e.to_owned() + " an error"),
-    ///          b"foo");
-    ///
-    /// assert_eq!(r, Err((&b"foo"[..], "this is an error".to_owned())));
-    /// ```
-    #[inline]
-    pub fn map_err<V, F>(self, f: F) -> ParseResult<I, T, V>
-      where F: FnOnce(E) -> V {
-        match self {
-            ParseResult(i, Ok(t))  => ParseResult(i, Ok(t)),
-            ParseResult(i, Err(e)) => ParseResult(i, Err(f(e))),
-        }
-    }
-
-    /// Calls the function `f` with a reference of the contained data if the parser is in a success
-    /// state.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use chomp::prelude::{parse_only, take_while};
-    ///
-    /// let r = parse_only(|i| take_while(i, |c| c != b' ').inspect(|b| {
-    ///     println!("{:?}", b); // Prints "test"
-    /// }), b"test and more");
-    ///
-    /// assert_eq!(r, Ok(&b"test"[..]));
-    /// ```
-    #[inline]
-    pub fn inspect<F>(self, f: F) -> ParseResult<I, T, E>
-      where F: FnOnce(&T) {
-        if let Ok(ref t) = self.1 {
-             f(t)
-        }
-
-        self
+*/
+/// Sequentially composes the result with a parse action `f`, passing any produced value as
+/// the second parameter.
+///
+/// The first parameter to the supplied function `f` is the parser state (`Input`). This
+/// state is then passed on to other parsers or used to return a value or an error.
+///
+/// # Automatic conversion of `E`
+///
+/// The error value `E` will automatically be converted using the `From` trait to the
+/// desired type. The downside with this using the current stable version of Rust (1.4) is that
+/// the type inferrence will currently not use the default value for the generic `V` and will
+/// therefore require extra type hint for the error.
+///
+/// # Examples
+///
+/// ```
+/// use chomp::prelude::{Input, parse_only};
+///
+/// let r = parse_only(|i| {
+///         i.ret("data".to_owned())
+///         // Explicitly state the error type
+///          .bind::<_, _, ()>(|i, x| i.ret(x + " here!"))
+///     },
+///     b"test");
+///
+/// assert_eq!(r, Ok("data here!".to_owned()));
+/// ```
+///
+/// Wrapping the expression in a function will both make it easier to compose and also provides
+/// the type-hint for the error in the function signature:
+///
+/// ```
+/// use chomp::prelude::{Input, ParseResult, parse_only};
+///
+/// fn parser<I: Input>(i: I, n: i32) -> ParseResult<I, i32, ()> {
+///     i.ret(n + 10)
+/// }
+///
+/// let r = parse_only(|i| i.ret(23).bind(parser), b"test");
+///
+/// assert_eq!(r, Ok(33));
+/// ```
+#[inline]
+pub fn bind<I, M, F, R>(m: M, f: F) -> impl Parser<I, Output=R::Output, Error=M::Error>
+  where I: Input,
+        M: Parser<I>,
+        F: FnOnce(M::Output) -> R,
+        R: Parser<I, Error=M::Error> {
+    move |i| match m.parse(i) {
+        (i, Ok(t))  => f(t).parse(i),
+        (i, Err(e)) => (i, Err(e)),
     }
 }
 
+/// Sequentially composes the result with a parse action `f`, discarding any produced value.
+///
+/// The first parameter to the supplied function `f` is the parser state (`Input`). This
+/// state is then passed on to other parsers or used to return a value or an error.
+///
+/// # Relation to `bind`
+///
+/// ```text
+/// ParseResult::then(g)  ≡  ParseResult::bind(|i, _| g(i))
+/// ```
+///
+/// # Example
+///
+/// ```
+/// use chomp::prelude::{Input, SimpleResult, parse_only};
+///
+/// fn g<I: Input>(i: I) -> SimpleResult<I, &'static str> {
+///     i.ret("testing!")
+/// }
+///
+/// let r1 = parse_only(|i| i.ret("initial state").bind(|i, _| g(i)), b"data");
+/// let r2 = parse_only(|i| i.ret("initial state").then(g), b"data");
+///
+/// assert_eq!(r1, Ok("testing!"));
+/// assert_eq!(r2, Ok("testing!"));
+/// ```
+#[inline]
+pub fn then<I, M, F, R>(m: M, f: F) -> impl Parser<I, Output=R::Output, Error=M::Error>
+  where I: Input,
+        M: Parser<I>,
+        F: FnOnce() -> R,
+        R: Parser<I, Error=M::Error> {
+    bind(m, |_| f())
+}
+
+/// Applies the function `f` on the contained data if the parser is in a success state.
+///
+/// # Example
+///
+/// ```
+/// use chomp::prelude::{parse_only, any};
+///
+/// let r = parse_only(|i| any(i).map(|c| c + 12), b"abc");
+///
+/// assert_eq!(r, Ok(b'm'));
+/// ```
+#[inline]
+pub fn map<I, M, F, R>(m: M, f: F) -> impl Parser<I, Output=R, Error=M::Error>
+  where I: Input,
+        M: Parser<I>,
+        F: FnOnce(M::Output) -> R {
+    move |i| match m.parse(i) {
+        (i, Ok(t))  => (i, Ok(f(t))),
+        (i, Err(e)) => (i, Err(e)),
+    }
+}
+
+/// Applies the function `f` on the contained error if the parser is in an error state.
+///
+/// # Example
+///
+/// ```
+/// use chomp::prelude::{Input, parse_only};
+///
+/// let r = parse_only(|i| i.err::<(), _>("this is")
+///          .map_err(|e| e.to_owned() + " an error"),
+///          b"foo");
+///
+/// assert_eq!(r, Err((&b"foo"[..], "this is an error".to_owned())));
+/// ```
+#[inline]
+pub fn map_err<I, M, F, E>(m: M, f: F) -> impl Parser<I, Output=M::Output, Error=E>
+  where I: Input,
+        M: Parser<I>,
+        F: FnOnce(M::Error) -> E {
+    move |i| match m.parse(i) {
+        (i, Ok(t))  => (i, Ok(t)),
+        (i, Err(e)) => (i, Err(f(e))),
+    }
+}
+
+/// Calls the function `f` with a reference of the contained data if the parser is in a success
+/// state.
+///
+/// # Example
+///
+/// ```
+/// use chomp::prelude::{parse_only, take_while};
+///
+/// let r = parse_only(|i| take_while(i, |c| c != b' ').inspect(|b| {
+///     println!("{:?}", b); // Prints "test"
+/// }), b"test and more");
+///
+/// assert_eq!(r, Ok(&b"test"[..]));
+/// ```
+#[inline]
+pub fn inspect<I, M, F>(m: M, f: F) -> impl Parser<I, Output=M::Output, Error=M::Error>
+  where I: Input,
+        M: Parser<I>,
+        F: FnOnce(&M::Output) {
+    move |i| match m.parse(i) {
+        (i, Ok(t))      => {
+            f(&t);
+
+            (i, Ok(t))
+        },
+        (i, Err(e)) => (i, Err(e)),
+    }
+}
+
+/*
 /// **Primitive:** Consumes the `ParseResult` and exposes the internal state.
 ///
 /// # Primitive
@@ -638,160 +694,110 @@ impl<I: Input, T, E> IntoInner for ParseResult<I, T, E> {
         (self.0, self.1)
     }
 }
+*/
 
 #[cfg(test)]
 pub mod test {
-    use super::{Buffer, Input, ParseResult};
-    use primitives::IntoInner;
+    use super::{Buffer, Input, Parser, bind, err, ret, from_result, inspect};
     use std::fmt::Debug;
 
     #[test]
-    fn ret() {
-        let r1: ParseResult<_, u32, ()>   = b"in1".ret::<_, ()>(23u32);
-        let r2: ParseResult<_, i32, &str> = b"in2".ret::<_, &str>(23i32);
-
-        assert_eq!(r1.into_inner(), (&b"in1"[..], Ok(23u32)));
-        assert_eq!(r2.into_inner(), (&b"in2"[..], Ok(23i32)));
+    fn ret_test() {
+        assert_eq!(ret::<_, _, ()>(23u32).parse(&b"in1"[..]), (&b"in1"[..], Ok(23u32)));
+        assert_eq!(ret::<_, _, &str>(23i32).parse(&b"in2"[..]), (&b"in2"[..], Ok(23i32)));
     }
 
     #[test]
-    fn err() {
-        let r1: ParseResult<_, (), u32>   = b"in1".err::<(), _>(23u32);
-        let r2: ParseResult<_, &str, i32> = b"in2".err::<&str, _>(23i32);
-
-        assert_eq!(r1.into_inner(), (&b"in1"[..], Err(23u32)));
-        assert_eq!(r2.into_inner(), (&b"in2"[..], Err(23i32)));
+    fn err_test() {
+        assert_eq!(err::<_, (), _>(23u32).parse(&b"in1"[..]), (&b"in1"[..], Err(23u32)));
+        assert_eq!(err::<_, &str, _>(23i32).parse(&b"in2"[..]), (&b"in2"[..], Err(23i32)));
     }
 
     #[test]
-    fn from_result() {
+    fn from_result_test() {
         let i1: Result<u32, &str> = Ok(23);
         let i2: Result<&str, &str> = Err("foobar");
 
-        let r1 = b"in1".from_result(i1);
-        let r2 = b"in2".from_result(i2);
-
-        assert_eq!(r1.into_inner(), (&b"in1"[..], Ok(23u32)));
-        assert_eq!(r2.into_inner(), (&b"in2"[..], Err("foobar")));
+        assert_eq!(from_result(i1).parse(&b"in1"[..]), (&b"in1"[..], Ok(23u32)));
+        assert_eq!(from_result(i1).parse(&b"in2"[..]), (&b"in2"[..], Err("foobar")));
     }
 
     #[test]
     fn monad_left_identity() {
-        fn f<I: Input>(i: I, n: u32) -> ParseResult<I, u32, ()> {
-            i.ret(n + 1)
+        fn f<I: Input>(n: u32) -> impl Parser<I, Output=u32, Error=()> {
+            ret(n + 1)
         }
 
         let a = 123;
         // return a >>= f
-        let lhs = b"test".ret(a).bind(f);
+        let lhs = bind(ret(a), f);
         // f a
-        let rhs = f(&b"test"[..], a);
+        let rhs = f(a);
 
-        assert_eq!((lhs.0, lhs.1), (&b"test"[..], Ok(124)));
-        assert_eq!((rhs.0, rhs.1), (&b"test"[..], Ok(124)));
+        assert_eq!(lhs.parse(&b"test"[..]), (&b"test"[..], Ok(124)));
+        assert_eq!(rhs.parse(&b"test"[..]), (&b"test"[..], Ok(124)));
     }
 
     #[test]
     fn monad_right_identity() {
-        let m1 = b"test".ret::<_, ()>(1);
-        let m2 = b"test".ret::<_, ()>(1);
+        let m1 = ret::<_, _, ()>(1);
+        let m2 = ret::<_, _, ()>(1);
 
         // m1 >>= ret === m2
-        let lhs = m1.bind::<_, _, ()>(Input::ret);
+        let lhs = bind(m1, ret);
         let rhs = m2;
 
-        assert_eq!((lhs.0, rhs.1), (&b"test"[..], Ok(1)));
-        assert_eq!((rhs.0, lhs.1), (&b"test"[..], Ok(1)));
+        assert_eq!(lhs.parse(&b"test"[..]), (&b"test"[..], Ok(1)));
+        assert_eq!(rhs.parse(&b"test"[..]), (&b"test"[..], Ok(1)));
     }
 
     #[test]
     fn monad_associativity() {
-         fn f<I: Input>(i: I, num: u32) -> ParseResult<I, u64, ()> {
-            i.ret((num + 1) as u64)
+         fn f<I: Input>(num: u32) -> impl Parser<I, Output=u64, Error=()> {
+            ret((num + 1) as u64)
         }
 
-        fn g<I: Input>(i: I, num: u64) -> ParseResult<I, u64, ()> {
-            i.ret(num * 2)
+        fn g<I: Input>(num: u64) -> impl Parser<I, Output=u64, Error=()> {
+            ret(num * 2)
         }
 
-        let lhs_m = b"test".ret::<_, ()>(2);
-        let rhs_m = b"test".ret::<_, ()>(2);
+        let lhs_m = ret::<_, _, ()>(2);
+        let rhs_m = ret::<_, _, ()>(2);
 
         // (m >>= f) >>= g
-        let lhs = lhs_m.bind(f).bind(g);
+        let lhs = bind(bind(lhs_m, f), g);
         // m >>= (\x -> f x >>= g)
-        let rhs = rhs_m.bind(|i, x| f(i, x).bind(g));
+        let rhs = bind(rhs_m, |x| bind(f(x), g));
 
-        assert_eq!((lhs.0, lhs.1), (&b"test"[..], Ok(6)));
-        assert_eq!((rhs.0, rhs.1), (&b"test"[..], Ok(6)));
+        assert_eq!(lhs.parse(&b"test"[..]), (&b"test"[..], Ok(6)));
+        assert_eq!(rhs.parse(&b"test"[..]), (&b"test"[..], Ok(6)));
     }
 
+    /*
     #[test]
     fn parse_result_inspect() {
-        use primitives::IntoInner;
-
         let mut n1 = 0;
         let mut n2 = 0;
-        let i1     = b"test ".ret::<u32, ()>(23);
-        let i2     = b"test ".ret::<u32, ()>(23);
+        let i1     = ret::<_, u32, ()>(23);
+        let i2     = ret::<_, u32, ()>(23);
 
-        let r1 = i1.inspect(|d: &u32| {
+        let r1 = inspect(i1, |d: &u32| {
             assert_eq!(d, &23);
 
             n1 += 1;
         });
-        let r2 = i2.inspect(|d: &u32| {
+        let r2 = inspect(i2, |d: &u32| {
             assert_eq!(d, &23);
 
             n2 += 1;
         });
 
-        assert_eq!(r1.into_inner(), (&b"test "[..], Ok(23)));
+        assert_eq!(r1.parse(&b"test"[..]), (&b"test "[..], Ok(23)));
         assert_eq!(n1, 1);
-        assert_eq!(r2.into_inner(), (&b"test "[..], Ok(23)));
+        assert_eq!(r2.parse(&b"test"[..]), (&b"test "[..], Ok(23)));
         assert_eq!(n2, 1);
     }
-
-    #[test]
-    fn input_propagation() {
-        let mut n_calls = 0;
-
-        let i = b"test1".ret::<_, ()>(23);
-
-        assert_eq!(i.0, b"test1");
-        assert_eq!(i.1, Ok(23));
-
-        let r: ParseResult<_, _, ()> = i.bind(|i, t| { n_calls += 1; i.ret(t) });
-
-        assert_eq!((r.0, r.1), (&b"test1"[..], Ok(23)));
-        assert_eq!(n_calls, 1);
-    }
-
-    #[test]
-    fn error_propagation() {
-        let mut n_calls = 0;
-
-        let i = b"test1".err::<(), _>(23);
-
-        assert_eq!(i.0, b"test1");
-        assert_eq!(i.1, Err(23));
-
-        let r = i.bind(|i, t| { n_calls += 1; i.ret(t) });
-
-        assert_eq!((r.0, r.1), (&b"test1"[..], Err(23)));
-        assert_eq!(n_calls, 0);
-    }
-
-    #[test]
-    fn slice() {
-        fn f<I: Input>(i: I, n: u32) -> ParseResult<I, u32, ()> { i.ret(n + 1) }
-
-        let lhs = (&b"test"[..]).ret(123).bind(f);
-        let rhs = f(&b"test"[..], 123);
-
-        assert_eq!((lhs.0, lhs.1), (&b"test"[..], Ok(124)));
-        assert_eq!((rhs.0, rhs.1), (&b"test"[..], Ok(124)));
-    }
+    */
 
     #[test]
     fn test_slice() {
@@ -807,8 +813,6 @@ pub mod test {
     pub fn run_primitives_test<I: Input, F: Fn(u8) -> I::Token>(mut s: I, f: F)
       where I::Token:  Debug,
             I::Buffer: Clone {
-        use primitives::Primitives;
-
         fn buffer_eq_slice<B: Buffer + Clone, F: Fn(u8) -> B::Token>(b: B, s: &[u8], f: F)
           where B::Token: Debug, {
             assert_eq!(b.len(), s.len());

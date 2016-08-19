@@ -1,6 +1,4 @@
-use primitives::IntoInner;
-
-use types::{Input, ParseResult};
+use types::{Input, Parser};
 use buffer::{InputBuf, StreamError, Stream};
 
 /// Stream implementation for immutable slices.
@@ -67,17 +65,13 @@ impl<'a, 'i, I: 'i + Copy + PartialEq> Stream<'a, 'i> for SliceStream<'i, I> {
     type Input = InputBuf<'i, I>;
 
     #[inline]
-    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, StreamError<<Self::Input as Input>::Buffer, E>>
-      where F: FnOnce(Self::Input) -> ParseResult<Self::Input, T, E>,
-            T: 'i,
-            E: 'i {
-        use primitives::Primitives;
-
+    fn parse<P>(&'a mut self, p: P) -> Result<P::Output, StreamError<<Self::Input as Input>::Buffer, P::Error>>
+      where P: Parser<Self::Input> {
         if self.is_empty() {
             return Err(StreamError::EndOfInput);
         }
 
-        match f(InputBuf::new(&self.slice[self.pos..])).into_inner() {
+        match p.parse(InputBuf::new(&self.slice[self.pos..])) {
             (remainder, Ok(data)) => {
                 // TODO: Do something neater with the remainder
                 self.pos += self.len() - remainder.len();

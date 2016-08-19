@@ -198,6 +198,7 @@
 //!    The built-in `chomp::parsers::Error` type is zero-sized and carry no error-information. This
 //!    increases performance somewhat.
 
+#![feature(conservative_impl_trait, specialization)]
 #![warn(missing_docs,
         trivial_casts,
         unused_import_braces,
@@ -226,18 +227,18 @@ extern crate debugtrace;
 
 #[macro_use]
 mod macros;
-mod parse;
+// mod parse;
 
-pub mod ascii;
+// pub mod ascii;
 pub mod buffer;
 pub mod combinators;
 pub mod parsers;
-pub mod primitives;
+// pub mod primitives;
 pub mod types;
 
-pub use parse::parse_only;
-pub use parse::parse_only_str;
-pub use parse::run_parser;
+// pub use parse::parse_only;
+// pub use parse::parse_only_str;
+// pub use parse::run_parser;
 
 /// Basic prelude.
 pub mod prelude {
@@ -245,7 +246,7 @@ pub mod prelude {
         any,
         eof,
         not_token,
-        peek,
+        //peek,
         peek_next,
         run_scanner,
         satisfy,
@@ -254,16 +255,13 @@ pub mod prelude {
         skip_while,
         string,
         take,
-        take_remainder,
+        //take_remainder,
         take_till,
         take_while,
         take_while1,
         token,
     };
-    pub use parsers::{
-        Error,
-        SimpleResult,
-    };
+    pub use parsers::Error;
 
     pub use combinators::{
         count,
@@ -271,19 +269,28 @@ pub mod prelude {
         or,
         many,
         many1,
-        sep_by,
-        sep_by1,
-        many_till,
-        skip_many,
-        skip_many1,
+        //sep_by,
+        //sep_by1,
+        //many_till,
+        //skip_many,
+        //skip_many1,
         matched_by,
+    };
+    pub use types::{
+        ret,
+        err,
+        map,
+        inspect,
+        bind,
+        then,
+        from_result,
     };
     pub use types::{
         Buffer,
         Input,
         U8Input,
-        ParseResult,
+        Parser,
     };
-    pub use parse_only;
-    pub use parse_only_str;
+    //pub use parse_only;
+    //pub use parse_only_str;
 }

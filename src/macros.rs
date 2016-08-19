@@ -441,6 +441,8 @@ macro_rules! parse {
     ( $($t:tt)* ) => { __parse_internal!{ $($t)* } };
 }
 
+// FIXME: Update the grammar
+
 /// Internal rule to create an or-combinator, separate macro so that tests can override it.
 ///
 /// Cannot make a method on `Input` due to type-inference failures due to the exact implementation
@@ -448,7 +450,7 @@ macro_rules! parse {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __parse_internal_or {
-    ($input:expr, $lhs:expr, $rhs:expr) => { $crate::combinators::or($input, $lhs, $rhs) };
+    ($lhs:expr, $rhs:expr) => { $crate::combinators::or($lhs, $rhs) };
 }
 
 /// Actual implementation of the parse macro, hidden to make the documentation easier to read.
@@ -462,10 +464,10 @@ macro_rules! __parse_internal {
     // BIND ties an expression together with the following statement
     // The four versions are needed to allow the empty case (no tailing allowed on the empty
     // case), _, $pat and $ident:$ty.
-    ( @BIND(($input:expr ; _)                         $($exp:tt)+) )              => { __parse_internal!{@EXPR($input;) $($exp)* } };
-    ( @BIND(($input:expr ; _)                         $($exp:tt)+) $($tail:tt)+ ) => { (__parse_internal!{@EXPR($input;) $($exp)* }).bind(|i, _| __parse_internal!{i; $($tail)* }) };
-    ( @BIND(($input:expr ; $name:pat)                 $($exp:tt)+) $($tail:tt)+ ) => { (__parse_internal!{@EXPR($input;) $($exp)* }).bind(|i, $name| __parse_internal!{i; $($tail)* }) };
-    ( @BIND(($input:expr ; $name:ident : $name_ty:ty) $($exp:tt)+) $($tail:tt)+ ) => { (__parse_internal!{@EXPR($input;) $($exp)* }).bind(|i, $name : $name_ty| __parse_internal!{i; $($tail)* }) };
+    ( @BIND((_)                         $($exp:tt)+) )              => {  __parse_internal!{@EXPR() $($exp)* } };
+    ( @BIND((_)                         $($exp:tt)+) $($tail:tt)+ ) => { bind(__parse_internal!{@EXPR() $($exp)* }, |_| __parse_internal!{$($tail)* }) };
+    ( @BIND(($name:pat)                 $($exp:tt)+) $($tail:tt)+ ) => { bind(__parse_internal!{@EXPR() $($exp)* }, |$name| __parse_internal!{$($tail)* }) };
+    ( @BIND(($name:ident : $name_ty:ty) $($exp:tt)+) $($tail:tt)+ ) => { bind(__parse_internal!{@EXPR() $($exp)* }, |$name : $name_ty| __parse_internal!{$($tail)* }) };
 
     // Term ::= Ret
     //        | Err
@@ -473,83 +475,86 @@ macro_rules! __parse_internal {
     //        | Inline
     //        | Named
     // Ret ::= "ret" Typed
-    ( @TERM($input:expr) ret @ $t_ty:ty , $e_ty:ty : $e:expr )   => { $input.ret::<$t_ty, $e_ty>($e) };
+    ( @TERM(ret @ $t_ty:ty , $e_ty:ty : $e:expr) )   => { ret::<_, $t_ty, $e_ty>($e) };
     //       | "ret" $expr
-    ( @TERM($input:expr) ret $e:expr )                           => { $input.ret($e) };
+    ( @TERM(ret $e:expr) )                           => { ret($e) };
     // Err ::= "err" Typed
-    ( @TERM($input:expr) err @ $t_ty:ty , $e_ty:ty : $e:expr )   => { $input.err::<$t_ty, $e_ty>($e) };
+    ( @TERM(err @ $t_ty:ty , $e_ty:ty : $e:expr) )   => { err::<_, $t_ty, $e_ty>($e) };
     //       | "err" $expr
-    ( @TERM($input:expr) err $e:expr )                           => { $input.err($e) };
+    ( @TERM(err $e:expr) )                           => { err($e) };
     // '(' Expr ')'
-    ( @TERM($input:expr) ( $($inner:tt)* ) )                     => { __parse_internal!{@EXPR($input;) $($inner)*} };
+    ( @TERM(( $($inner:tt)* )) )                     => { __parse_internal!{@EXPR() $($inner)*} };
     // Inline ::= $ident "->" $expr
-    ( @TERM($input:expr) $state:ident -> $e:expr )               => { { let $state = $input; $e } };
+    //( @TERM() $state:ident -> $e:expr )               => { { let $state = $input; $e } };
     // Named ::= $ident '(' ($expr ',')* (',')* ')'
-    ( @TERM($input:expr) $func:ident ( $($param:expr),* $(,)*) ) => { $func($input, $($param),*) };
+    //( @TERM() $func:ident ( $($param:expr),* $(,)*) ) => { $func($($param),*) };
+    //( @TERM($parser:expr) )                          => { $parser };
+
+    ( @TERM($($t:tt)*) ) => { $($t)* };
 
     // EXPR groups by lowest priority item first which is then ">>"
     // Expr ::= ExprAlt
-    ( @EXPR($input:expr; $($lhs:tt)*) )                          => { __parse_internal!{@EXPR_ALT($input;) $($lhs)*} };
+    ( @EXPR($($lhs:tt)*) )                          => { __parse_internal!{@EXPR_ALT() $($lhs)*} };
     //        | ExprAlt ">>" Expr
-    ( @EXPR($input:expr; $($lhs:tt)*) >> $($tail:tt)* )          => { __parse_internal!{@EXPR_ALT($input;) $($lhs)*}.bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
+    ( @EXPR($($lhs:tt)*) >> $($tail:tt)* )          => { bind(__parse_internal!{@EXPR_ALT() $($lhs)*}, |_| __parse_internal!{@EXPR() $($tail)*}) };
     // recurse until >> or end
     // unrolled:
-    // ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $($tail:tt)* )      => { __parse_internal!{@EXPR($input; $($lhs)* $t1) $($tail)*} };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt )                                                               => {  __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1} };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt >> $($tail:tt)* )                                               => { (__parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1}).bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt )                                                        => {  __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2} };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt >> $($tail:tt)* )                                        => { (__parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2}).bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt )                                                 => {  __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3} };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt >> $($tail:tt)* )                                 => { (__parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3}).bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt )                                          => {  __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4} };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt >> $($tail:tt)* )                          => { (__parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4}).bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt )                                   => {  __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5} };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt >> $($tail:tt)* )                   => { (__parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5}).bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt )                            => {  __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6} };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt >> $($tail:tt)* )            => { (__parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6}).bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt )                     => {  __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7} };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt >> $($tail:tt)* )     => { (__parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7}).bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt $t8:tt $($tail:tt)* ) => {  __parse_internal!{@EXPR($input; $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7 $t8) $($tail)*} };
+    // ( @EXPR($($lhs:tt)*) $t1:tt $($tail:tt)* )      => { __parse_internal!{@EXPR($($lhs)* $t1) $($tail)*} };
+    ( @EXPR($($lhs:tt)*) $t1:tt )                                                               => {  __parse_internal!{@EXPR_ALT() $($lhs)* $t1} };
+    ( @EXPR($($lhs:tt)*) $t1:tt >> $($tail:tt)* )                                               => { bind(__parse_internal!{@EXPR_ALT() $($lhs)* $t1}, |_| __parse_internal!{@EXPR() $($tail)*}) };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt )                                                        => {  __parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2} };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt >> $($tail:tt)* )                                        => { bind(__parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2}, |_| __parse_internal!{@EXPR() $($tail)*}) };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt )                                                 => {  __parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3} };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt >> $($tail:tt)* )                                 => { bind(__parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3}, |_| __parse_internal!{@EXPR() $($tail)*}) };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt )                                          => {  __parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4} };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt >> $($tail:tt)* )                          => { bind(__parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4}, |_| __parse_internal!{@EXPR() $($tail)*}) };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt )                                   => {  __parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4 $t5} };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt >> $($tail:tt)* )                   => { bind(__parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4 $t5}, |_| __parse_internal!{@EXPR() $($tail)*}) };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt )                            => {  __parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6} };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt >> $($tail:tt)* )            => { bind(__parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6}, |_| __parse_internal!{@EXPR() $($tail)*}) };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt )                     => {  __parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7} };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt >> $($tail:tt)* )     => { bind(__parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7}, |_| __parse_internal!{@EXPR() $($tail)*}) };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt $t8:tt $($tail:tt)* ) => {  __parse_internal!{@EXPR($($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7 $t8) $($tail)*} };
 
     // ExprAlt ::= ExprSkip
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) )                      => { __parse_internal!{@EXPR_SKIP($input;) $($lhs)*} };
+    ( @EXPR_ALT($($lhs:tt)*) )                      => { __parse_internal!{@EXPR_SKIP() $($lhs)*} };
     //           | ExprSkip <|> ExprAlt
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) <|> $($tail:tt)* )     => { __parse_internal_or!{$input, |i| __parse_internal!{@EXPR_SKIP(i;) $($lhs)*}, |i| __parse_internal!{@EXPR_ALT(i;) $($tail)*}} };
+    ( @EXPR_ALT($($lhs:tt)*) <|> $($tail:tt)* )     => { __parse_internal_or!{__parse_internal!{@EXPR_SKIP() $($lhs)*}, __parse_internal!{@EXPR_ALT() $($tail)*}} };
     // recurse until <|> or end
     // unrolled:
-    // ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $($tail:tt)* )  => { __parse_internal!{@EXPR_ALT($input; $($lhs)* $t1) $($tail)*} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt )                                                               => { __parse_internal!{@EXPR_SKIP($input;) $($lhs)* $t1} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt <|> $($tail:tt)* )                                              => { __parse_internal_or!{$input, |i| __parse_internal!{@EXPR_SKIP(i;) $($lhs)* $t1}, |i| __parse_internal!{@EXPR_ALT(i;) $($tail)*}} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt )                                                        => { __parse_internal!{@EXPR_SKIP($input;) $($lhs)* $t1 $t2} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt <|> $($tail:tt)* )                                       => { __parse_internal_or!{$input, |i| __parse_internal!{@EXPR_SKIP(i;) $($lhs)* $t1 $t2}, |i| __parse_internal!{@EXPR_ALT(i;) $($tail)*}} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt )                                                 => { __parse_internal!{@EXPR_SKIP($input;) $($lhs)* $t1 $t2 $t3} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt <|> $($tail:tt)* )                                => { __parse_internal_or!{$input, |i| __parse_internal!{@EXPR_SKIP(i;) $($lhs)* $t1 $t2 $t3}, |i| __parse_internal!{@EXPR_ALT(i;) $($tail)*}} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt )                                          => { __parse_internal!{@EXPR_SKIP($input;) $($lhs)* $t1 $t2 $t3 $t4} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt <|> $($tail:tt)* )                         => { __parse_internal_or!{$input, |i| __parse_internal!{@EXPR_SKIP(i;) $($lhs)* $t1 $t2 $t3 $t4}, |i| __parse_internal!{@EXPR_ALT(i;) $($tail)*}} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt )                                   => { __parse_internal!{@EXPR_SKIP($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt <|> $($tail:tt)* )                  => { __parse_internal_or!{$input, |i| __parse_internal!{@EXPR_SKIP(i;) $($lhs)* $t1 $t2 $t3 $t4 $t5}, |i| __parse_internal!{@EXPR_ALT(i;) $($tail)*}} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt )                            => { __parse_internal!{@EXPR_SKIP($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt <|> $($tail:tt)* )           => { __parse_internal_or!{$input, |i| __parse_internal!{@EXPR_SKIP(i;) $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6}, |i| __parse_internal!{@EXPR_ALT(i;) $($tail)*}} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt )                     => { __parse_internal!{@EXPR_SKIP($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt <|> $($tail:tt)* )    => { __parse_internal_or!{$input, |i| __parse_internal!{@EXPR_SKIP(i;) $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7}, |i| __parse_internal!{@EXPR_ALT(i;) $($tail)*}} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt $t8:tt $($tail:tt)* ) => { __parse_internal!{@EXPR_ALT($input; $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7 $t8) $($tail)*} };
+    // ( @EXPR_ALT($($lhs:tt)*) $t1:tt $($tail:tt)* )  => { __parse_internal!{@EXPR_ALT($($lhs)* $t1) $($tail)*} };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt )                                                               => { __parse_internal!{@EXPR_SKIP() $($lhs)* $t1} };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt <|> $($tail:tt)* )                                              => { __parse_internal_or!{__parse_internal!{@EXPR_SKIP() $($lhs)* $t1}, __parse_internal!{@EXPR_ALT() $($tail)*}} };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt )                                                        => { __parse_internal!{@EXPR_SKIP() $($lhs)* $t1 $t2} };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt <|> $($tail:tt)* )                                       => { __parse_internal_or!{__parse_internal!{@EXPR_SKIP() $($lhs)* $t1 $t2}, __parse_internal!{@EXPR_ALT() $($tail)*}} };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt $t3:tt )                                                 => { __parse_internal!{@EXPR_SKIP() $($lhs)* $t1 $t2 $t3} };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt $t3:tt <|> $($tail:tt)* )                                => { __parse_internal_or!{__parse_internal!{@EXPR_SKIP() $($lhs)* $t1 $t2 $t3}, __parse_internal!{@EXPR_ALT() $($tail)*}} };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt )                                          => { __parse_internal!{@EXPR_SKIP() $($lhs)* $t1 $t2 $t3 $t4} };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt <|> $($tail:tt)* )                         => { __parse_internal_or!{__parse_internal!{@EXPR_SKIP() $($lhs)* $t1 $t2 $t3 $t4}, __parse_internal!{@EXPR_ALT() $($tail)*}} };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt )                                   => { __parse_internal!{@EXPR_SKIP() $($lhs)* $t1 $t2 $t3 $t4 $t5} };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt <|> $($tail:tt)* )                  => { __parse_internal_or!{__parse_internal!{@EXPR_SKIP() $($lhs)* $t1 $t2 $t3 $t4 $t5}, __parse_internal!{@EXPR_ALT() $($tail)*}} };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt )                            => { __parse_internal!{@EXPR_SKIP() $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6} };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt <|> $($tail:tt)* )           => { __parse_internal_or!{__parse_internal!{@EXPR_SKIP() $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6}, __parse_internal!{@EXPR_ALT() $($tail)*}} };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt )                     => { __parse_internal!{@EXPR_SKIP() $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7} };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt <|> $($tail:tt)* )    => { __parse_internal_or!{__parse_internal!{@EXPR_SKIP() $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7}, __parse_internal!{@EXPR_ALT() $($tail)*}} };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt $t8:tt $($tail:tt)* ) => { __parse_internal!{@EXPR_ALT($($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7 $t8) $($tail)*} };
 
     // ExprSkip ::= Term
-    ( @EXPR_SKIP($input:expr; $($lhs:tt)*) )                     => { __parse_internal!{@TERM($input) $($lhs)*} };
+    ( @EXPR_SKIP($($lhs:tt)*) )                     => { __parse_internal!{@TERM($($lhs)*)} };
     //            | Term <* ExprSkip
-    ( @EXPR_SKIP($input:expr; $($lhs:tt)*) <* $($tail:tt)* )     => { __parse_internal!{@TERM($input) $($lhs)*}.bind(|i, l| __parse_internal!{@EXPR_SKIP(i;) $($tail)*}.map(|_| l)) };
+    ( @EXPR_SKIP($($lhs:tt)*) <* $($tail:tt)* )     => { __parse_internal!{@TERM($($lhs)*)}.bind(|l| __parse_internal!{@EXPR_SKIP() $($tail)*}.map(|_| l)) };
     // recurse until <* or end
     // unrolled:
-    // ( @EXPR_SKIP($input:expr; $($lhs:tt)*) $t1:tt $($tail:tt)* ) => { __parse_internal!{@EXPR_SKIP($input; $($lhs)* $t1) $($tail)*} };
-    ( @EXPR_SKIP($input:expr; $($lhs:tt)*) $t1:tt )                                          => { __parse_internal!{@TERM($input) $($lhs)* $t1} };
-    ( @EXPR_SKIP($input:expr; $($lhs:tt)*) $t1:tt <* $($tail:tt)* )                          => { __parse_internal!{@TERM($input) $($lhs)* $t1}.bind(|i, l| __parse_internal!{@EXPR_SKIP(i;) $($tail)*}.map(|_| l)) };
-    ( @EXPR_SKIP($input:expr; $($lhs:tt)*) $t1:tt $t2:tt )                                   => { __parse_internal!{@TERM($input) $($lhs)* $t1 $t2} };
-    ( @EXPR_SKIP($input:expr; $($lhs:tt)*) $t1:tt $t2:tt <* $($tail:tt)* )                   => { __parse_internal!{@TERM($input) $($lhs)* $t1 $t2}.bind(|i, l| __parse_internal!{@EXPR_SKIP(i;) $($tail)*}.map(|_| l)) };
-    ( @EXPR_SKIP($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt )                            => { __parse_internal!{@TERM($input) $($lhs)* $t1 $t2 $t3} };
-    ( @EXPR_SKIP($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt <* $($tail:tt)* )            => { __parse_internal!{@TERM($input) $($lhs)* $t1 $t2 $t3}.bind(|i, l| __parse_internal!{@EXPR_SKIP(i;) $($tail)*}.map(|_| l)) };
-    ( @EXPR_SKIP($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt )                     => { __parse_internal!{@TERM($input) $($lhs)* $t1 $t2 $t3 $t4} };
-    ( @EXPR_SKIP($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt <* $($tail:tt)* )     => { __parse_internal!{@TERM($input) $($lhs)* $t1 $t2 $t3 $t4}.bind(|i, l| __parse_internal!{@EXPR_SKIP(i;) $($tail)*}.map(|_| l)) };
-    ( @EXPR_SKIP($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $($tail:tt)* ) => { __parse_internal!{@EXPR_SKIP($input; $($lhs)* $t1 $t2 $t3 $t4 $t5) $($tail)*} };
+    // ( @EXPR_SKIP($($lhs:tt)*) $t1:tt $($tail:tt)* ) => { __parse_internal!{@EXPR_SKIP($($lhs)* $t1) $($tail)*} };
+    ( @EXPR_SKIP($($lhs:tt)*) $t1:tt )                                          => { __parse_internal!{@TERM($($lhs)* $t1)} };
+    ( @EXPR_SKIP($($lhs:tt)*) $t1:tt <* $($tail:tt)* )                          => { __parse_internal!{@TERM($($lhs)* $t1)}.bind(|i, l| __parse_internal!{@EXPR_SKIP() $($tail)*}.map(|_| l)) };
+    ( @EXPR_SKIP($($lhs:tt)*) $t1:tt $t2:tt )                                   => { __parse_internal!{@TERM($($lhs)* $t1 $t2)} };
+    ( @EXPR_SKIP($($lhs:tt)*) $t1:tt $t2:tt <* $($tail:tt)* )                   => { __parse_internal!{@TERM($($lhs)* $t1 $t2)}.bind(|i, l| __parse_internal!{@EXPR_SKIP() $($tail)*}.map(|_| l)) };
+    ( @EXPR_SKIP($($lhs:tt)*) $t1:tt $t2:tt $t3:tt )                            => { __parse_internal!{@TERM($($lhs)* $t1 $t2 $t3)} };
+    ( @EXPR_SKIP($($lhs:tt)*) $t1:tt $t2:tt $t3:tt <* $($tail:tt)* )            => { __parse_internal!{@TERM($($lhs)* $t1 $t2 $t3)}.bind(|i, l| __parse_internal!{@EXPR_SKIP() $($tail)*}.map(|_| l)) };
+    ( @EXPR_SKIP($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt )                     => { __parse_internal!{@TERM($($lhs)* $t1 $t2 $t3 $t4)} };
+    ( @EXPR_SKIP($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt <* $($tail:tt)* )     => { __parse_internal!{@TERM($($lhs)* $t1 $t2 $t3 $t4)}.bind(|i, l| __parse_internal!{@EXPR_SKIP() $($tail)*}.map(|_| l)) };
+    ( @EXPR_SKIP($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $($tail:tt)* ) => { __parse_internal!{@EXPR_SKIP($($lhs)* $t1 $t2 $t3 $t4 $t5) $($tail)*} };
 
     // STATEMENT eats and groups a full parse! expression until the next ;
     ( @STATEMENT($args:tt $($data:tt)*) )                        => { __parse_internal!{@BIND($args $($data)*)} };
@@ -585,44 +590,27 @@ macro_rules! __parse_internal {
     // Statement ::= Bind ';'
     //             | Expr ';'
     //           ::= 'let' $pat '=' Expr
-    ( $input:expr ; let $name:pat = $($tail:tt)+ )                 => { __parse_internal!{@STATEMENT(($input; $name)) $($tail)+} };
+    ( let $name:pat = $($tail:tt)+ )                 => { __parse_internal!{@STATEMENT(($name)) $($tail)+} };
     //             | 'let' $ident ':' $ty '=' Expr
-    ( $input:expr ; let $name:ident : $name_ty:ty = $($tail:tt)+ ) => { __parse_internal!{@STATEMENT(($input; $name:$name_ty)) $($tail)+} };
+    ( let $name:ident : $name_ty:ty = $($tail:tt)+ ) => { __parse_internal!{@STATEMENT(($name:$name_ty)) $($tail)+} };
     //           ::= Expr ';'
-    ( $input:expr ; $($tail:tt)+ )                                 => { __parse_internal!{@STATEMENT(($input; _)) $($tail)+} };
+    ( $($tail:tt)+ )                                 => { __parse_internal!{@STATEMENT((_)) $($tail)+} };
 
+    ( $e:expr ) => { $e };
 
     // Empty
-    ( $input:expr )   => { $input };
-    ( $input:expr ; ) => { $input };
+    ( )   => { };
 }
 
-/// Macro wrapping an invocation to ``parse!`` in a closure, useful for creating parsers inline.
-///
-/// ```
-/// # #[macro_use] extern crate chomp;
-/// # fn main() {
-/// use chomp::prelude::{parse_only, string};
-///
-/// let r = parser!{ string(b"ab") <|> string(b"ac") };
-///
-/// assert_eq!(parse_only(r, b"ac"), Ok(&b"ac"[..]));
-/// # }
-/// ```
-#[macro_export]
-macro_rules! parser {
-    ( $($t:tt)* ) => { |i| parse!{i; $($t)* } }
-}
-
+// FIXME: Update
+/*
 #[cfg(test)]
 mod test {
     /// Override the or-combinator used by parse! to make it possible to use the simplified
     /// test-types.
     macro_rules! __parse_internal_or {
-        ($input:expr, $lhs:expr, $rhs:expr) => {
+        ($lhs:expr, $rhs:expr) => {
             {
-                let Input(i) = $input;
-
                 match ($lhs)(Input(i)) {
                     Data::Value(j, t) => Data::Value(j, t),
                     Data::Error(_, _) => ($rhs)(Input(i)),
@@ -697,7 +685,7 @@ mod test {
         let i = Input(123);
 
         // Type annotation necessary since ret leaves E free
-        let r: Data<_, ()> = parse!{i; ret "foo"};
+        let r: Data<_, ()> = parse!{ret "foo"};
 
         assert_eq!(r, Data::Value(123, "foo"));
     }
@@ -706,7 +694,7 @@ mod test {
     fn ret_typed() {
         let i = Input(123);
 
-        let r = parse!{i; ret @ _, (): "foo"};
+        let r = parse!{ret @ _, (): "foo"};
 
         assert_eq!(r, Data::Value(123, "foo"));
     }
@@ -715,7 +703,7 @@ mod test {
     fn ret_typed2() {
         let i = Input(123);
 
-        let r = parse!{i; ret @ &str, (): "foo"};
+        let r = parse!{ret @ &str, (): "foo"};
 
         assert_eq!(r, Data::Value(123, "foo"));
     }
@@ -725,7 +713,7 @@ mod test {
         let i = Input(123);
 
         // Type annotation necessary since err leaves T free
-        let r: Data<(), _> = parse!{i; err "foo"};
+        let r: Data<(), _> = parse!{err "foo"};
 
         assert_eq!(r, Data::Error(123, "foo"));
     }
@@ -734,7 +722,7 @@ mod test {
     fn err_typed() {
         let i = Input(123);
 
-        let r = parse!{i; err @(), _: "foo"};
+        let r = parse!{err @(), _: "foo"};
 
         assert_eq!(r, Data::Error(123, "foo"));
     }
@@ -743,7 +731,7 @@ mod test {
     fn err_typed2() {
         let i = Input(123);
 
-        let r = parse!{i; err @(), &str: "foo"};
+        let r = parse!{err @(), &str: "foo"};
 
         assert_eq!(r, Data::Error(123, "foo"));
     }
@@ -756,7 +744,7 @@ mod test {
 
         let i = Input(123);
 
-        let r = parse!(i; doit());
+        let r = parse!(doit());
 
         assert_eq!(r, Data::Value(123, "doit"));
     }
@@ -769,7 +757,7 @@ mod test {
 
         let i = Input(123);
 
-        let r = parse!(i; doit("doit"));
+        let r = parse!(doit("doit"));
 
         assert_eq!(r, Data::Value(123, "doit"));
     }
@@ -782,7 +770,7 @@ mod test {
 
         let i = Input(123);
 
-        let r = parse!(i; doit("doit", 1337));
+        let r = parse!(doit("doit", 1337));
 
         assert_eq!(r, Data::Value(123, ("doit", 1337)));
     }
@@ -802,7 +790,7 @@ mod test {
 
         let i = Input(123);
 
-        let r = parse!(i; doit(); something());
+        let r = parse!(doit(); something());
 
         assert_eq!(r, Data::Value(123, 2));
     }
@@ -822,7 +810,7 @@ mod test {
 
         let i = Input(123);
 
-        let r = parse!(i; doit(22); something(33));
+        let r = parse!(doit(22); something(33));
 
         assert_eq!(r, Data::Value(123, 33));
     }
@@ -842,7 +830,7 @@ mod test {
 
         let i = Input(123);
 
-        let r = parse!(i; doit(22, 1); something(33, 2));
+        let r = parse!(doit(22, 1); something(33, 2));
 
         assert_eq!(r, Data::Value(123, (33, 2)));
     }
@@ -881,8 +869,8 @@ mod test {
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<_, ()> = parse!{i1; doit(2); something(4, 5); ret 5};
-        let r2              = parse!{i2; doit(2); something(4, 5); ret @ _, (): 5};
+        let r1: Data<_, ()> = parse!{doit(2); something(4, 5); ret 5};
+        let r2              = parse!{doit(2); something(4, 5); ret @ _, (): 5};
 
         assert_eq!(r1, Data::Value(111, 5));
         assert_eq!(r2, Data::Value(111, 5));
@@ -899,8 +887,8 @@ mod test {
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<_, ()> = parse!{i1; let n = doit(40); ret n + 2};
-        let r2              = parse!{i2; let n = doit(40); ret @ _, (): n + 2};
+        let r1: Data<_, ()> = parse!{let n = doit(40); ret n + 2};
+        let r2              = parse!{let n = doit(40); ret @ _, (): n + 2};
 
         assert_eq!(r1, Data::Value(321, 42));
         assert_eq!(r2, Data::Value(321, 42));
@@ -922,8 +910,8 @@ mod test {
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<_, ()> = parse!{i1; let n = doit(40); let x = something(n, 4); ret x + 6};
-        let r2              = parse!{i2; let n = doit(40); let x = something(n, 4);
+        let r1: Data<_, ()> = parse!{let n = doit(40); let x = something(n, 4); ret x + 6};
+        let r2              = parse!{let n = doit(40); let x = something(n, 4);
                                   ret @ _, (): x + 6};
 
         assert_eq!(r1, Data::Value(111, 42));
@@ -941,8 +929,8 @@ mod test {
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<(), u8> = parse!{i1; let n = doit(40); err n as u8 + 2};
-        let r2               = parse!{i2; let n = doit(40); err @ (), u8: n as u8 + 2};
+        let r1: Data<(), u8> = parse!{let n = doit(40); err n as u8 + 2};
+        let r2               = parse!{let n = doit(40); err @ (), u8: n as u8 + 2};
 
         assert_eq!(r1, Data::Error(321, 42));
         assert_eq!(r2, Data::Error(321, 42));
@@ -964,8 +952,8 @@ mod test {
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<(), u8> = parse!{i1; let n = doit(40); let x = something(n, 4); err x as u8 + 6};
-        let r2               = parse!{i2; let n = doit(40); let x = something(n, 4);
+        let r1: Data<(), u8> = parse!{let n = doit(40); let x = something(n, 4); err x as u8 + 6};
+        let r2               = parse!{let n = doit(40); let x = something(n, 4);
                                   err @ (), u8: x as u8 + 6};
 
         assert_eq!(r1, Data::Error(111, 42));
@@ -988,8 +976,8 @@ mod test {
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<_, ()> = parse!{i1; let x = something(6, 4); doit(x)};
-        let r2              = parse!{i2; let x = something(6, 4); doit(x)};
+        let r1: Data<_, ()> = parse!{let x = something(6, 4); doit(x)};
+        let r2              = parse!{let x = something(6, 4); doit(x)};
 
         assert_eq!(r1, Data::Value(321, 2));
         assert_eq!(r2, Data::Value(321, 2));
@@ -1011,8 +999,8 @@ mod test {
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<_, ()> = parse!{i1; let _x = something(6, 4); doit(3)};
-        let r2              = parse!{i2; let _x = something(6, 4); doit(3)};
+        let r1: Data<_, ()> = parse!{let _x = something(6, 4); doit(3)};
+        let r2              = parse!{let _x = something(6, 4); doit(3)};
 
         assert_eq!(r1, Data::Value(321, 3));
         assert_eq!(r2, Data::Value(321, 3));
@@ -1029,8 +1017,8 @@ mod test {
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<_, ()> = parse!{i1; let n: u64 = doit(42); ret n};
-        let r2              = parse!{i2; let n: u64 = doit(42); ret @ _, (): n};
+        let r1: Data<_, ()> = parse!{let n: u64 = doit(42); ret n};
+        let r2              = parse!{let n: u64 = doit(42); ret @ _, (): n};
 
         assert_eq!(r1, Data::Value(321, 42u64));
         assert_eq!(r2, Data::Value(321, 42u64));
@@ -1047,8 +1035,8 @@ mod test {
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<_, ()> = parse!{i1; let (x, y) = something(2, 4); ret x + y};
-        let r2              = parse!{i2; let (x, y) = something(2, 4); ret @ _, (): x + y};
+        let r1: Data<_, ()> = parse!{let (x, y) = something(2, 4); ret x + y};
+        let r2              = parse!{let (x, y) = something(2, 4); ret @ _, (): x + y};
 
         assert_eq!(r1, Data::Value(111, 6));
         assert_eq!(r2, Data::Value(111, 6));
@@ -1070,9 +1058,9 @@ mod test {
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<_, ()> = parse!{i1; let n = doit(40); let (x, y) = something(n, 4);
+        let r1: Data<_, ()> = parse!{let n = doit(40); let (x, y) = something(n, 4);
                                   ret x + y as i32};
-        let r2              = parse!{i2; let n = doit(40); let (x, y) = something(n, 4);
+        let r2              = parse!{let n = doit(40); let (x, y) = something(n, 4);
                                   ret @ _, (): x + y as i32};
 
         assert_eq!(r1, Data::Value(111, 44));
@@ -1113,13 +1101,14 @@ mod test {
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<(), u8> = parse!{i1; doit(2); something(4, 5); err 5};
-        let r2               = parse!{i2; doit(2); something(4, 5); err @ (), u8: 5};
+        let r1: Data<(), u8> = parse!{doit(2); something(4, 5); err 5};
+        let r2               = parse!{doit(2); something(4, 5); err @ (), u8: 5};
 
         assert_eq!(r1, Data::Error(111, 5));
         assert_eq!(r2, Data::Error(111, 5));
     }
 
+    /*
     #[test]
     fn inline_action() {
         let i = Input(123);
@@ -1209,14 +1198,15 @@ mod test {
 
         assert_eq!(r, Data::Value(321, 28));
     }
+    */
 
     #[test]
     fn expr_ret() {
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<_, ()> = parse!{i1; let a = ret "test"; ret a};
-        let r2: Data<_, ()> = parse!{i2; ret "throwaway"; ret "foo"};
+        let r1: Data<_, ()> = parse!{let a = ret "test"; ret a};
+        let r2: Data<_, ()> = parse!{ret "throwaway"; ret "foo"};
 
         assert_eq!(r1, Data::Value(123, "test"));
         assert_eq!(r2, Data::Value(123, "foo"));
@@ -1227,10 +1217,10 @@ mod test {
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<&str, &str> = parse!{i1; let a = err "error"; ret a};
+        let r1: Data<&str, &str> = parse!{let a = err "error"; ret a};
         // Necessary with type annotation here since the value type is not defined in the first
         // statement in parse
-        let r2: Data<(), &str>   = parse!{i2; err @ (), _: "this"; err "not this"};
+        let r2: Data<(), &str>   = parse!{err @ (), _: "this"; err "not this"};
 
         assert_eq!(r1, Data::Error(123, "error"));
         assert_eq!(r2, Data::Error(123, "this"));
@@ -1254,10 +1244,12 @@ mod test {
         let i3 = Input(123);
         let i4 = Input(123);
 
-        let r1 = parse!{i1; fail() <|> doit() };
-        let r2 = parse!{i2; doit() <|> fail() };
-        let r3 = parse!{i3; doit() <|> doit() };
-        let r4 = parse!{i4; fail() <|> fail() };
+        trace_macros!(true);
+        let r1 = parse!{fail() <|> doit()};
+        trace_macros!(false);
+        let r2 = parse!{doit() <|> fail()};
+        let r3 = parse!{doit() <|> doit()};
+        let r4 = parse!{fail() <|> fail()};
 
         assert_eq!(r1, Data::Value(321, 2));
         assert_eq!(r2, Data::Value(321, 2));
@@ -1281,7 +1273,7 @@ mod test {
         let i = Input(123);
 
 
-        let r1 = parse!{i; fail() <|> fail() <|> doit() };
+        let r1 = parse!{fail() <|> fail() <|> doit() };
 
         assert_eq!(r1, Data::Value(321, 2));
     }
@@ -1309,9 +1301,9 @@ mod test {
         let i2 = Input(123);
         let i3 = Input(123);
 
-        let r1 = parse!{i1; fail() <|> doit(); next() };
-        let r2 = parse!{i2; doit() <|> fail(); next() };
-        let r3 = parse!{i3; fail() <|> fail(); next() };
+        let r1 = parse!{fail() <|> doit(); next() };
+        let r2 = parse!{doit() <|> fail(); next() };
+        let r3 = parse!{fail() <|> fail(); next() };
 
         assert_eq!(r1, Data::Value(322, 42));
         assert_eq!(r2, Data::Value(322, 42));
@@ -1349,19 +1341,19 @@ mod test {
         let i11 = Input(123);
         let i12 = Input(123);
 
-        let r1  = parse!{i1; a() <* b() <* c()};
-        let r2  = parse!{i2; a() <* b() >> c()};
-        let r3  = parse!{i3; a() >> b() <* c()};
-        let r4  = parse!{i4; a() >> b() >> c()};
+        let r1  = parse!{a() <* b() <* c()};
+        let r2  = parse!{a() <* b() >> c()};
+        let r3  = parse!{a() >> b() <* c()};
+        let r4  = parse!{a() >> b() >> c()};
 
-        let r5  = parse!{i5;  (a() <* b()) <* c()};
-        let r6  = parse!{i6;   a() <* (b() <* c())};
-        let r7  = parse!{i7;  (a() <* b()) >> c()};
-        let r8  = parse!{i_8;  a() <* (b() >> c())};
-        let r9  = parse!{i9;  (a() >> b()) <* c()};
-        let r10 = parse!{i10;  a() >> (b() <* c())};
-        let r11 = parse!{i11; (a() >> b()) >> c()};
-        let r12 = parse!{i12;  a() >> (b() >> c())};
+        let r5  = parse!{ (a() <* b()) <* c()};
+        let r6  = parse!{  a() <* (b() <* c())};
+        let r7  = parse!{ (a() <* b()) >> c()};
+        let r8  = parse!{ a() <* (b() >> c())};
+        let r9  = parse!{ (a() >> b()) <* c()};
+        let r10 = parse!{ a() >> (b() <* c())};
+        let r11 = parse!{(a() >> b()) >> c()};
+        let r12 = parse!{ a() >> (b() >> c())};
 
         assert_eq!(r1, Data::Value(323, 2));
         assert_eq!(r2, Data::Value(323, 43));
@@ -1415,19 +1407,19 @@ mod test {
         let i11 = Input(123);
         let i12 = Input(123);
 
-        let r1 = parse!{i1; a() <* b() <* c()};
-        let r2 = parse!{i2; a() <* b() <|> c()};
-        let r3 = parse!{i3; a() <|> b() <* c()};
-        let r4 = parse!{i4; a() <|> b() <|> c()};
+        let r1 = parse!{a() <* b() <* c()};
+        let r2 = parse!{a() <* b() <|> c()};
+        let r3 = parse!{a() <|> b() <* c()};
+        let r4 = parse!{a() <|> b() <|> c()};
 
-        let r5  = parse!{i5;  (a() <*  b()) <* c()};
-        let r6  = parse!{i6;  (a() <*  b()) <|> c()};
-        let r7  = parse!{i7;  (a() <|> b()) <* c_a()};
-        let r8  = parse!{i_8; (a() <|> b()) <|> c()};
-        let r9  = parse!{i9;   a() <*  (b() <* c())};
-        let r10 = parse!{i10;  a() <*  (b() <|> c())};
-        let r11 = parse!{i11;  a() <|> (b() <* c())};
-        let r12 = parse!{i12;  a() <|> (b() <|> c())};
+        let r5  = parse!{ (a() <*  b()) <* c()};
+        let r6  = parse!{ (a() <*  b()) <|> c()};
+        let r7  = parse!{ (a() <|> b()) <* c_a()};
+        let r8  = parse!{ (a() <|> b()) <|> c()};
+        let r9  = parse!{  a() <*  (b() <* c())};
+        let r10 = parse!{  a() <*  (b() <|> c())};
+        let r11 = parse!{  a() <|> (b() <* c())};
+        let r12 = parse!{  a() <|> (b() <|> c())};
 
         assert_eq!(r1, Data::Value(323, 2));
         assert_eq!(r2, Data::Value(322, 2));
@@ -1481,19 +1473,19 @@ mod test {
         let i11 = Input(123);
         let i12 = Input(123);
 
-        let r1 = parse!{i1; a() <|> b() <|> c()};
-        let r2 = parse!{i2; a() <|> b() >> c_a()};
-        let r3 = parse!{i3; a() >> b() <|> c()};
-        let r4 = parse!{i4; a() >> b() >> c()};
+        let r1 = parse!{a() <|> b() <|> c()};
+        let r2 = parse!{a() <|> b() >> c_a()};
+        let r3 = parse!{a() >> b() <|> c()};
+        let r4 = parse!{a() >> b() >> c()};
 
-        let r5  = parse!{i5;  (a() <|> b()) <|> c()};
-        let r6  = parse!{i6;  (a() <|> b()) >> c_a()};
-        let r7  = parse!{i7;  (a() >>  b()) <|> c()};
-        let r8  = parse!{i_8; (a() >>  b()) >> c()};
-        let r9  = parse!{i9;   a() <|> (b() <|> c())};
-        let r10 = parse!{i10;  a() <|> (b() >> c_a())};
-        let r11 = parse!{i11;  a() >>  (b() <|> c())};
-        let r12 = parse!{i12;  a() >>  (b() >> c())};
+        let r5  = parse!{ (a() <|> b()) <|> c()};
+        let r6  = parse!{ (a() <|> b()) >> c_a()};
+        let r7  = parse!{ (a() >>  b()) <|> c()};
+        let r8  = parse!{ (a() >>  b()) >> c()};
+        let r9  = parse!{  a() <|> (b() <|> c())};
+        let r10 = parse!{  a() <|> (b() >> c_a())};
+        let r11 = parse!{  a() >>  (b() <|> c())};
+        let r12 = parse!{  a() >>  (b() >> c())};
 
         assert_eq!(r1, Data::Value(321, 2));
         assert_eq!(r2, Data::Value(323, 43));
@@ -1510,6 +1502,7 @@ mod test {
         assert_eq!(r12, Data::Value(323, 43));
     }
 
+    /*
     #[test]
     fn alt_inline_action() {
         let i = Input(123);
@@ -1566,6 +1559,7 @@ mod test {
 
         assert_eq!(r, Data::Value(333, 21));
     }
+    */
 
     // Test to make sure we do not hit the default macro iteration limit (64)
     #[test]
@@ -1578,8 +1572,9 @@ mod test {
 
         let i = Input(123);
 
-        let r = parse!{i; a() <|> a() <|> a() <|> a() <|> a() <|> a() <|> a() <|> a() <|> a()};
+        let r = parse!{a() <|> a() <|> a() <|> a() <|> a() <|> a() <|> a() <|> a() <|> a()};
 
         assert_eq!(r, Data::Value(321, 2));
     }
 }
+*/

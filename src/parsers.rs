@@ -5,14 +5,10 @@ use std::mem;
 use types::{
     Buffer,
     Input,
-    ParseResult,
+    Parser,
 };
-use primitives::Primitives;
 
 pub use self::error::Error;
-
-/// Result returned from the basic parsers.
-pub type SimpleResult<I, T> = ParseResult<I, T, Error<<I as Input>::Token>>;
 
 // Only export if we have backtraces enabled, in debug/test profiles the StackFrame is only used
 // to debug-print.
@@ -29,10 +25,10 @@ pub use debugtrace::StackFrame;
 /// assert_eq!(parse_only(any, b"abc"), Ok(b'a'));
 /// ```
 #[inline]
-pub fn any<I: Input>(mut i: I) -> SimpleResult<I, I::Token> {
-    match i.pop() {
-        Some(c) => i.ret(c),
-        None    => i.err(Error::unexpected()),
+pub fn any<I: Input>() -> impl Parser<I, Output=I::Token, Error=Error<I::Token>> {
+    move |mut i: I| match i.pop() {
+        Some(c) => (i, Ok(c)),
+        None    => (i, Err(Error::unexpected())),
     }
 }
 
@@ -47,11 +43,11 @@ pub fn any<I: Input>(mut i: I) -> SimpleResult<I, I::Token> {
 /// assert_eq!(parse_only(|i| satisfy(i, |c| c == b'a'), b"abc"), Ok(b'a'));
 /// ```
 #[inline]
-pub fn satisfy<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Token>
+pub fn satisfy<I: Input, F>(f: F) -> impl Parser<I, Output=I::Token, Error=Error<I::Token>>
   where F: FnOnce(I::Token) -> bool {
-    match i.peek() {
-        Some(c) if f(c) => { i.pop(); i.ret(c) },
-        _               => i.err(Error::unexpected()),
+    move |mut i: I| match i.peek() {
+        Some(c) if f(c) => { i.pop(); (i, Ok(c)) },
+        _               => (i, Err(Error::unexpected())),
     }
 }
 
@@ -70,20 +66,20 @@ pub fn satisfy<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Token>
 /// assert_eq!(r, Ok(b'T'));
 /// ```
 #[inline]
-pub fn satisfy_with<I: Input, T: Clone, F, P>(mut i: I, f: F, p: P) -> SimpleResult<I, T>
+pub fn satisfy_with<I: Input, T: Clone, F, P>(f: F, p: P) -> impl Parser<I, Output=T, Error=Error<I::Token>>
   where F: FnOnce(I::Token) -> T,
         P: FnOnce(T) -> bool {
-    match i.peek().map(f) {
+    move |mut i: I| match i.peek().map(f) {
         Some(c) => {
             if p(c.clone()) {
                 i.pop();
 
-                i.ret(c)
+                (i, Ok(c))
             } else {
-                i.err(Error::unexpected())
+                (i, Err(Error::unexpected()))
             }
         },
-        _                           => i.err(Error::unexpected()),
+        _ => (i, Err(Error::unexpected())),
     }
 }
 
@@ -97,10 +93,10 @@ pub fn satisfy_with<I: Input, T: Clone, F, P>(mut i: I, f: F, p: P) -> SimpleRes
 /// assert_eq!(parse_only(|i| token(i, b'a'), b"abc"), Ok(b'a'));
 /// ```
 #[inline]
-pub fn token<I: Input>(mut i: I, t: I::Token) -> SimpleResult<I, I::Token> {
-    match i.peek() {
-        Some(c) if c == t => { i.pop(); i.ret(c) },
-        _                 => i.err(Error::expected(t)),
+pub fn token<I: Input>(t: I::Token) -> impl Parser<I, Output=I::Token, Error=Error<I::Token>> {
+    move |mut i: I| match i.peek() {
+        Some(c) if c == t => { i.pop(); (i, Ok(c)) },
+        _                 => (i, Err(Error::expected(t))),
     }
 }
 
@@ -114,10 +110,10 @@ pub fn token<I: Input>(mut i: I, t: I::Token) -> SimpleResult<I, I::Token> {
 /// assert_eq!(parse_only(|i| not_token(i, b'b'), b"abc"), Ok(b'a'));
 /// ```
 #[inline]
-pub fn not_token<I: Input>(mut i: I, t: I::Token) -> SimpleResult<I, I::Token> {
-    match i.peek() {
-        Some(c) if c != t => { i.pop(); i.ret(c) },
-        _                 => i.err(Error::unexpected()),
+pub fn not_token<I: Input>(t: I::Token) -> impl Parser<I, Output=I::Token, Error=Error<I::Token>> {
+    move |mut i: I| match i.peek() {
+        Some(c) if c != t => { i.pop(); (i, Ok(c)) },
+        _                 => (i, Err(Error::unexpected())),
     }
 }
 
@@ -134,10 +130,12 @@ pub fn not_token<I: Input>(mut i: I, t: I::Token) -> SimpleResult<I, I::Token> {
 /// assert_eq!(parse_only(peek, b""), Ok(None));
 /// ```
 #[inline]
-pub fn peek<I: Input>(mut i: I) -> SimpleResult<I, Option<I::Token>> {
-    let t = i.peek();
+pub fn peek<I: Input>() -> impl Parser<I, Output=Option<I::Token>, Error=Error<I::Token>> {
+    |mut i: I| {
+        let t = i.peek();
 
-    i.ret(t)
+        (i, Ok(t))
+    }
 }
 
 /// Matches any item but does not consume it.
@@ -150,10 +148,10 @@ pub fn peek<I: Input>(mut i: I) -> SimpleResult<I, Option<I::Token>> {
 /// assert_eq!(parse_only(peek_next, b"abc"), Ok(b'a'));
 /// ```
 #[inline]
-pub fn peek_next<I: Input>(mut i: I) -> SimpleResult<I, I::Token> {
-    match i.peek() {
-        Some(c) => i.ret(c),
-        None    => i.err(Error::unexpected()),
+pub fn peek_next<I: Input>() -> impl Parser<I, Output=I::Token, Error=Error<I::Token>> {
+    move |mut i: I| match i.peek() {
+        Some(c) => (i, Ok(c)),
+        None    => (i, Err(Error::unexpected())),
     }
 }
 
@@ -167,11 +165,10 @@ pub fn peek_next<I: Input>(mut i: I) -> SimpleResult<I, I::Token> {
 /// assert_eq!(parse_only(|i| take(i, 3), b"abcd"), Ok(&b"abc"[..]));
 /// ```
 #[inline]
-pub fn take<I: Input>(mut i: I, num: usize) -> SimpleResult<I, I::Buffer> {
-    match i.consume(num) {
-        Some(b) => i.ret(b),
-        // TODO: Proper incomplete error here?
-        None    => i.err(Error::unexpected()),
+pub fn take<I: Input>(num: usize) -> impl Parser<I, Output=I::Buffer, Error=Error<I::Token>> {
+    move |mut i: I| match i.consume(num) {
+        Some(b) => (i, Ok(b)),
+        None    => (i, Err(Error::unexpected())),
     }
 }
 
@@ -198,11 +195,13 @@ pub fn take<I: Input>(mut i: I, num: usize) -> SimpleResult<I, I::Buffer> {
 /// assert_eq!(r, Ok(&b""[..]));
 /// ```
 #[inline]
-pub fn take_while<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Buffer>
+pub fn take_while<I: Input, F>(f: F) -> impl Parser<I, Output=I::Buffer, Error=Error<I::Token>>
   where F: FnMut(I::Token) -> bool {
-    let b = i.consume_while(f);
+    move |mut i: I| {
+        let b = i.consume_while(f);
 
-    i.ret(b)
+        (i, Ok(b))
+    }
 }
 
 /// Matches all items while ``f`` returns true, if at least one item matched this parser succeeds
@@ -219,14 +218,16 @@ pub fn take_while<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Buffer>
 /// assert_eq!(r, Ok(&b"ab"[..]));
 /// ```
 #[inline]
-pub fn take_while1<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Buffer>
+pub fn take_while1<I: Input, F>(f: F) -> impl Parser<I, Output=I::Buffer, Error=Error<I::Token>>
   where F: FnMut(I::Token) -> bool {
-    let b = i.consume_while(f);
+    move |mut i: I| {
+        let b = i.consume_while(f);
 
-    if b.is_empty() {
-        i.err(Error::unexpected())
-    } else {
-        i.ret(b)
+        if b.is_empty() {
+            (i, Err(Error::unexpected()))
+        } else {
+            (i, Ok(b))
+        }
     }
 }
 
@@ -259,24 +260,26 @@ pub fn skip_while<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, ()>
 /// assert_eq!(r, Ok(&b"abc"[..]));
 /// ```
 #[inline]
-pub fn take_till<I: Input, F>(mut i: I, mut f: F) -> SimpleResult<I, I::Buffer>
+pub fn take_till<I: Input, F>(mut f: F) -> impl Parser<I, Output=I::Buffer, Error=Error<I::Token>>
   where F: FnMut(I::Token) -> bool {
-    let mut ok = false;
+    move |mut i: I| {
+        let mut ok = false;
 
-    let b = i.consume_while(|c| {
-        if f(c) {
-            ok = true;
+        let b = i.consume_while(|c| {
+            if f(c) {
+                ok = true;
 
-            false
+                false
+            } else {
+                true
+            }
+        });
+
+        if ok {
+            (i, Ok(b))
         } else {
-            true
+            (i, Err(Error::unexpected()))
         }
-    });
-
-    if ok {
-        i.ret(b)
-    } else {
-        i.err(Error::unexpected())
     }
 }
 
@@ -295,13 +298,15 @@ pub fn take_till<I: Input, F>(mut i: I, mut f: F) -> SimpleResult<I, I::Buffer>
 /// assert_eq!(parse_only(p, b"/*test*of*scan*/ foo"), Ok(&b"/*test*of*scan*"[..]));
 /// ```
 #[inline]
-pub fn scan<I: Input, S, F>(mut i: I, s: S, mut f: F) -> SimpleResult<I, I::Buffer>
+pub fn scan<I: Input, S, F>(s: S, mut f: F) -> impl Parser<I, Output=I::Buffer, Error=Error<I::Token>>
   where F: FnMut(S, I::Token) -> Option<S> {
-    let mut state = Some(s);
+    move |mut i: I| {
+        let mut state = Some(s);
 
-    let b = i.consume_while(|c| { state = f(mem::replace(&mut state, None).expect("scan: Failed to obtain state, consume_while most likely called closure after end"), c); state.is_some() });
+        let b = i.consume_while(|c| { state = f(mem::replace(&mut state, None).expect("scan: Failed to obtain state, consume_while most likely called closure after end"), c); state.is_some() });
 
-    i.ret(b)
+        (i, Ok(b))
+    }
 }
 
 /// Like `scan` but generalized to return the final state of the scanner.
@@ -318,19 +323,21 @@ pub fn scan<I: Input, S, F>(mut i: I, s: S, mut f: F) -> SimpleResult<I, I::Buff
 /// ```
 #[inline]
 // TODO: Remove Copy bound on S
-pub fn run_scanner<I: Input, S: Copy, F>(mut i: I, s: S, mut f: F) -> SimpleResult<I, (I::Buffer, S)>
+pub fn run_scanner<I: Input, S: Copy, F>(s: S, mut f: F) -> impl Parser<I, Output=(I::Buffer, S), Error=Error<I::Token>>
   where F: FnMut(S, I::Token) -> Option<S> {
-    let mut state = s;
+    move |mut i: I| {
+        let mut state = s;
 
-    let b = i.consume_while(|c| {
-        let t = f(state, c);
-        match t {
-            None    => false,
-            Some(v) => { state = v; true }
-        }
-    });
+        let b = i.consume_while(|c| {
+            let t = f(state, c);
+            match t {
+                None    => false,
+                Some(v) => { state = v; true }
+            }
+        });
 
-    i.ret((b, state))
+        (i, Ok((b, state)))
+    }
 }
 
 /// Matches the remainder of the buffer and returns it, always succeeds.
@@ -341,10 +348,12 @@ pub fn run_scanner<I: Input, S: Copy, F>(mut i: I, s: S, mut f: F) -> SimpleResu
 /// assert_eq!(parse_only(take_remainder, b"abcd"), Ok(&b"abcd"[..]));
 /// ```
 #[inline]
-pub fn take_remainder<I: Input>(mut i: I) -> SimpleResult<I, I::Buffer> {
-    let b = i.consume_remaining();
+pub fn take_remainder<I: Input>() -> impl Parser<I, Output=I::Buffer, Error=Error<I::Token>> {
+    move |mut i: I| {
+        let b = i.consume_remaining();
 
-    i.ret(b)
+        (i, Ok(b))
+    }
 }
 
 /// Matches the given slice against the parser, returning the matched slice upon success.
@@ -359,27 +368,29 @@ pub fn take_remainder<I: Input>(mut i: I) -> SimpleResult<I, I::Buffer> {
 /// ```
 // TODO: Does not actually work with &str yet
 #[inline]
-pub fn string<T: Copy + PartialEq, I: Input<Token=T>>(mut i: I, s: &[T])
-    -> SimpleResult<I, I::Buffer> {
-    let mut n = 0;
-    let len   = s.len();
+// pub fn string<'a, I: Input>(s: &'a [I::Token]) -> impl Parser<I, Output=I::Buffer, Error=Error<I::Token>> {
+pub fn string<I: Input>(s: &'static [I::Token]) -> impl Parser<I, Output=I::Buffer, Error=Error<I::Token>> {
+    move |mut i: I| {
+        let mut n = 0;
+        let len   = s.len();
 
-    // TODO: There has to be some more efficient way here
-    let b = i.consume_while(|c| {
-        if n >= len || c != s[n] {
-            false
+        // TODO: There has to be some more efficient way here
+        let b = i.consume_while(|c| {
+            if n >= len || c != s[n] {
+                false
+            }
+            else {
+                n += 1;
+
+                true
+            }
+        });
+
+        if n >= len {
+            (i, Ok(b))
+        } else {
+            (i, Err(Error::expected(s[n])))
         }
-        else {
-            n += 1;
-
-            true
-        }
-    });
-
-    if n >= len {
-        i.ret(b)
-    } else {
-        i.err(Error::expected(s[n]))
     }
 }
 
@@ -393,11 +404,11 @@ pub fn string<T: Copy + PartialEq, I: Input<Token=T>>(mut i: I, s: &[T])
 /// assert_eq!(r, Ok(()));
 /// ```
 #[inline]
-pub fn eof<I: Input>(mut i: I) -> SimpleResult<I, ()> {
-    if i.peek() == None {
-        i.ret(())
+pub fn eof<I: Input>() -> impl Parser<I, Output=(), Error=Error<I::Token>> {
+    move |mut i: I| if i.peek() == None {
+        (i, Ok(()))
     } else {
-        i.err(Error::unexpected())
+        (i, Err(Error::unexpected()))
     }
 }
 
@@ -557,6 +568,7 @@ mod error {
     }
 }
 
+/*
 #[cfg(test)]
 mod test {
     use primitives::IntoInner;
@@ -712,3 +724,4 @@ mod test {
         assert!(this.name.as_ref().map(|n| n.contains("parsers::test::backtrace_test")).unwrap_or(false), "Expected trace to contain \"parsers::test::backtrace_test\", got: {:?}", this.name.as_ref());
     }
 }
+*/

@@ -26,9 +26,9 @@ use std::ops::{
 };
 use std::cmp::max;
 
-use types::{Input, ParseResult};
-use primitives::{Primitives, IntoInner};
+use types::{Input, Parser, bind, err, ret, map, inspect, then};
 
+/*
 /// Trait for applying a parser multiple times based on a range.
 pub trait BoundedRange {
     // TODO: Update documentation regarding input state. Incomplete will point to the last
@@ -50,8 +50,8 @@ pub trait BoundedRange {
     /// * If the last parser succeeds on the last input item then this parser is still considered
     ///   incomplete if the input flag END_OF_INPUT is not set as there might be more data to fill.
     #[inline]
-    fn parse_many<I: Input, T, E, F, U>(self, I, F) -> ParseResult<I, T, E>
-      where F: FnMut(I) -> ParseResult<I, U, E>,
+    fn parse_many<I: Input, T, E, F, U>(self, I, F) -> impl Parser<I, T, E>
+      where F: Parser<I, U, E>,
             T: FromIterator<U>;
 
     /// Applies the parser `F` multiple times until it fails or the maximum value of the range has
@@ -70,8 +70,8 @@ pub trait BoundedRange {
     /// * If the last parser succeeds on the last input item then this parser is still considered
     ///   incomplete if the input flag END_OF_INPUT is not set as there might be more data to fill.
     #[inline]
-    fn skip_many<I: Input, T, E, F>(self, I, F) -> ParseResult<I, (), E>
-      where F: FnMut(I) -> ParseResult<I, T, E>;
+    fn skip_many<I: Input, T, E, F>(self, I, F) -> impl Parser<I, (), E>
+      where F: Parser<I, T, E>;
 
     // TODO: Fix documentation regarding incomplete
     /// Applies the parser `P` multiple times until the parser `F` succeeds and returns a value
@@ -90,59 +90,61 @@ pub trait BoundedRange {
     /// * If the last parser succeeds on the last input item then this combinator is still considered
     ///   incomplete unless the parser `F` matches or the lower bound has not been met.
     #[inline]
-    fn many_till<I: Input, T, E, R, F, U, N, V>(self, I, R, F) -> ParseResult<I, T, E>
+    fn many_till<I: Input, T, E, R, F, U, N, V>(self, I, R, F) -> impl Parser<I, T, E>
       where T: FromIterator<U>,
             E: From<N>,
-            R: FnMut(I) -> ParseResult<I, U, E>,
-            F: FnMut(I) -> ParseResult<I, V, N>;
+            R: Parser<I, U, E>,
+            F: Parser<I, V, N>;
 }
+*/
 
-impl BoundedRange for Range<usize> {
-    #[inline]
-    fn parse_many<I: Input, T, E, F, U>(self, i: I, f: F) -> ParseResult<I, T, E>
-      where F: FnMut(I) -> ParseResult<I, U, E>,
-            T: FromIterator<U> {
-        // Range does not perform this assertion
-        assert!(self.start <= self.end);
+#[inline]
+pub fn many<I: Input, F, P, T>(start: usize, end: usize, f: F) -> impl Parser<I, Output=T, Error=P::Error>
+  where F: FnMut() -> P,
+        P: Parser<I>,
+        T: FromIterator<P::Output> {
+    // Range does not perform this assertion
+    assert!(start <= end);
 
-        run_iter!{
-            input:  i,
-            parser: f,
-            // Range is closed on left side, open on right, ie. [self.start, self.end)
-            state:  (usize, usize): (self.start, max(self.start, self.end.saturating_sub(1))),
+    mk_iter!{
+        parser: f,
+        // Range is closed on left side, open on right, ie. [start, end)
+        state:  (usize, usize): (start, max(end, 1) - 1),
 
-            size_hint(self) {
-                (self.data.0, Some(self.data.1))
-            }
+        size_hint(self) {
+            (self.data.0, Some(self.data.1))
+        }
 
-            next(self) {
-                pre {
-                    if self.data.1 == 0 {
-                        return None;
-                    }
-                }
-                on {
-                    self.data.0  = self.data.0.saturating_sub(1);
-                    // Can't overflow unless we do not quit when self.data.1 == 0
-                    self.data.1 -= 1;
+        next(self) {
+            pre {
+                if self.data.1 == 0 {
+                    return None;
                 }
             }
-
-            => result : T {
-                // Got all occurrences of the parser
-                // First state or reached max => do not restore to mark since it is from last
-                // iteration
-                (s, (0, 0), _, _)       => s.ret(result),
-                // Ok, last parser failed and we have reached minimum, we have iterated all.
-                // Return remainder of buffer and the collected result
-                (s, (0, _), m, Some(_)) => s.restore(m).ret(result),
-                // Did not reach minimum, propagate
-                (s, (_, _), _, Some(e)) => s.err(e),
-                (_, _, _, None)         => unreachable!(),
+            on {
+                // TODO: Saturating sub?
+                self.data.0  = if self.data.0 == 0 { 0 } else { self.data.0 - 1 };
+                self.data.1 -= 1;
             }
         }
-    }
 
+        => result : T {
+            // Got all occurrences of the parser
+            // First state or reached max => do not restore to mark since it is from last
+            // iteration
+            (s, (0, 0), _, _)       => (s, Ok(result)),
+            // Ok, last parser failed and we have reached minimum, we have iterated all.
+            // Return remainder of buffer and the collected result
+            (s, (0, _), m, Some(_)) => (s.restore(m), Ok(result)),
+            // Did not reach minimum, propagate
+            (s, (_, _), _, Some(e)) => (s, Err(e)),
+            (_, _, _, None)         => unreachable!(),
+        }
+    }
+}
+
+/*
+impl BoundedRange for Range<usize> {
     #[inline]
     fn skip_many<I: Input, T, E, F>(self, mut i: I, mut f: F) -> ParseResult<I, (), E>
       where F: FnMut(I) -> ParseResult<I, T, E> {
@@ -250,39 +252,40 @@ impl BoundedRange for Range<usize> {
         }
     }
 }
+*/
 
-impl BoundedRange for RangeFrom<usize> {
-    #[inline]
-    fn parse_many<I: Input, T, E, F, U>(self, i: I, f: F) -> ParseResult<I, T, E>
-      where F: FnMut(I) -> ParseResult<I, U, E>,
-            T: FromIterator<U> {
-        run_iter!{
-            input:  i,
-            parser: f,
-            // Inclusive
-            state:  usize: self.start,
+pub fn many_from<I: Input, F, P, T>(start: usize, f: F) -> impl Parser<I, Output=T, Error=P::Error>
+  where F: FnMut() -> P,
+        P: Parser<I>,
+        T: FromIterator<P::Output> {
+    mk_iter!{
+        parser: f,
+        // Inclusive
+        state:  usize: start,
 
-            size_hint(self) {
-                (self.data, None)
-            }
+        size_hint(self) {
+            (self.data, None)
+        }
 
-            next(self) {
-                pre {}
-                on  {
-                    self.data = self.data.saturating_sub(1);
-                }
-            }
-
-            => result : T {
-                // We got at least n items
-                (s, 0, m, Some(_))      => s.restore(m).ret(result),
-                // Items still remaining, propagate
-                (s, _, _, Some(e))      => s.err(e),
-                (_, _, _, None) => unreachable!(),
+        next(self) {
+            pre {}
+            on  {
+                self.data = if self.data == 0 { 0 } else { self.data - 1 };
             }
         }
-    }
 
+        => result : T {
+            // We got at least n items
+            (s, 0, m, Some(_)) => (s.restore(m), Ok(result)),
+            // Items still remaining, propagate
+            (s, _, _, Some(e)) => (s, Err(e)),
+            (_, _, _, None)    => unreachable!(),
+        }
+    }
+}
+
+/*
+impl BoundedRange for RangeFrom<usize> {
     #[inline]
     fn skip_many<I: Input, T, E, F>(self, mut i: I, mut f: F) -> ParseResult<I, (), E>
       where F: FnMut(I) -> ParseResult<I, T, E> {
@@ -354,33 +357,48 @@ impl BoundedRange for RangeFrom<usize> {
         }
     }
 }
+*/
 
-impl BoundedRange for RangeFull {
-    #[inline]
-    fn parse_many<I: Input, T, E, F, U>(self, i: I, f: F) -> ParseResult<I, T, E>
-      where F: FnMut(I) -> ParseResult<I, U, E>,
-            T: FromIterator<U> {
-        run_iter!{
-            input:  i,
-            parser: f,
-            state:  (): (),
+/// Applies the parser `F` multiple times until it fails or the maximum value of the range has
+/// been reached, collecting the successful values into a `T: FromIterator`.
+///
+/// Propagates errors if the minimum number of iterations has not been met
+///
+/// # Panics
+///
+/// Will panic if the end of the range is smaller than the start of the range.
+///
+/// # Notes
+///
+/// * Will allocate depending on the `FromIterator` implementation.
+/// * Will never yield more items than the upper bound of the range.
+#[inline]
+pub fn many_unbounded<I: Input, F, P, T>(f: F) -> impl Parser<I, Output=T, Error=P::Error>
+  where F: FnMut() -> P,
+        P: Parser<I>,
+        T: FromIterator<P::Output> {
+    mk_iter!{
+        parser: f,
+        state:  (): (),
 
-            size_hint(self) {
-                (0, None)
-            }
+        size_hint(self) {
+            (0, None)
+        }
 
-            next(self) {
-                pre {}
-                on  {}
-            }
+        next(self) {
+            pre {}
+            on  {}
+        }
 
-            => result : T {
-                (s, (), m, Some(_)) => s.restore(m).ret(result),
-                (_, _, _, None)     => unreachable!(),
-            }
+        => result : T {
+            (s, (), m, Some(_)) => (s.restore(m), Ok(result)),
+            (_, _, _, None)     => unreachable!(),
         }
     }
+}
 
+/*
+impl BoundedRange for RangeFull {
     #[inline]
     fn skip_many<I: Input, T, E, F>(self, mut i: I, mut f: F) -> ParseResult<I, (), E>
       where F: FnMut(I) -> ParseResult<I, T, E> {
@@ -433,44 +451,46 @@ impl BoundedRange for RangeFull {
         }
     }
 }
+*/
 
-impl BoundedRange for RangeTo<usize> {
-    #[inline]
-    fn parse_many<I: Input, T, E, F, U>(self, i: I, f: F) -> ParseResult<I, T, E>
-      where F: FnMut(I) -> ParseResult<I, U, E>,
-            T: FromIterator<U> {
-        run_iter!{
-            input:  i,
-            parser: f,
-            // Exclusive range [0, end)
-            state:  usize:  max(self.end, 1) - 1,
+#[inline]
+pub fn many_to<I: Input, F, P, T>(end: usize, f: F) -> impl Parser<I, Output=T, Error=P::Error>
+  where F: FnMut() -> P,
+        P: Parser<I>,
+        T: FromIterator<P::Output> {
+    mk_iter!{
+        parser: f,
+        // Exclusive range [0, end)
+        state:  usize:  max(end, 1) - 1,
 
-            size_hint(self) {
-                (0, Some(self.data))
-            }
+        size_hint(self) {
+            (0, Some(self.data))
+        }
 
-            next(self) {
-                pre {
-                    if self.data == 0 {
-                        return None;
-                    }
-                }
-                on {
-                    self.data  -= 1;
+        next(self) {
+            pre {
+                if self.data == 0 {
+                    return None;
                 }
             }
-
-            => result : T {
-                // First state or reached max => do not restore to mark since it is from last
-                // iteration
-                (s, 0, _, _)                       => s.ret(result),
-                // Inside of range, never outside
-                (s, _, m, Some(_))      => s.restore(m).ret(result),
-                (_, _, _, None) => unreachable!(),
+            on {
+                self.data  -= 1;
             }
         }
-    }
 
+        => result : T {
+            // First state or reached max => do not restore to mark since it is from last
+            // iteration
+            (s, 0, _, _)       => (s, Ok(result)),
+            // Inside of range, never outside
+            (s, _, m, Some(_)) => (s.restore(m), Ok(result)),
+            (_, _, _, None)    => unreachable!(),
+        }
+    }
+}
+
+/*
+impl BoundedRange for RangeTo<usize> {
     #[inline]
     fn skip_many<I: Input, T, E, F>(self, mut i: I, mut f: F) -> ParseResult<I, (), E>
       where F: FnMut(I) -> ParseResult<I, T, E> {
@@ -559,44 +579,46 @@ impl BoundedRange for RangeTo<usize> {
         }
     }
 }
+*/
 
-impl BoundedRange for usize {
-    // TODO: Any way to avoid marking for backtracking here?
-    #[inline]
-    fn parse_many<I: Input, T, E, F, U>(self, i: I, f: F) -> ParseResult<I, T, E>
-      where F: FnMut(I) -> ParseResult<I, U, E>,
-            T: FromIterator<U> {
-        run_iter!{
-            input:  i,
-            parser: f,
-            // Excatly self
-            state:  usize: self,
+// TODO: Any way to avoid marking for backtracking here?
+#[inline]
+pub fn many_exact<I: Input, F, P, T>(n: usize, f: F) -> impl Parser<I, Output=T, Error=P::Error>
+  where F: FnMut() -> P,
+        P: Parser<I>,
+        T: FromIterator<P::Output> {
+    mk_iter!{
+        parser: f,
+        // Excatly self
+        state:  usize: n,
 
-            size_hint(self) {
-                (self.data, Some(self.data))
-            }
+        size_hint(self) {
+            (self.data, Some(self.data))
+        }
 
-            next(self) {
-                pre {
-                    if self.data == 0 {
-                        return None;
-                    }
-                }
-                on {
-                    self.data  -= 1;
+        next(self) {
+            pre {
+                if self.data == 0 {
+                    return None;
                 }
             }
-
-            => result : T {
-                // Got exact
-                (s, 0, _, _)                       => s.ret(result),
-                // We have got too few items, propagate error
-                (s, _, _, Some(e))      => s.err(e),
-                (_, _, _, None) => unreachable!(),
+            on {
+                self.data  -= 1;
             }
         }
-    }
 
+        => result : T {
+            // Got exact
+            (s, 0, _, _)       => (s, Ok(result)),
+            // We have got too few items, propagate error
+            (s, _, _, Some(e)) => (s, Err(e)),
+            (_, _, _, None)    => unreachable!(),
+        }
+    }
+}
+
+/*
+impl BoundedRange for usize {
     #[inline]
     fn skip_many<I: Input, T, E, F>(self, mut i: I, mut f: F) -> ParseResult<I, (), E>
       where F: FnMut(I) -> ParseResult<I, T, E> {
@@ -680,28 +702,9 @@ impl BoundedRange for usize {
         }
     }
 }
+*/
 
-/// Applies the parser `F` multiple times until it fails or the maximum value of the range has
-/// been reached, collecting the successful values into a `T: FromIterator`.
-///
-/// Propagates errors if the minimum number of iterations has not been met
-///
-/// # Panics
-///
-/// Will panic if the end of the range is smaller than the start of the range.
-///
-/// # Notes
-///
-/// * Will allocate depending on the `FromIterator` implementation.
-/// * Will never yield more items than the upper bound of the range.
-#[inline]
-pub fn many<I: Input, T, E, F, U, R>(i: I, r: R, f: F) -> ParseResult<I, T, E>
-  where R: BoundedRange,
-        F: FnMut(I) -> ParseResult<I, U, E>,
-        T: FromIterator<U> {
-    BoundedRange::parse_many(r, i, f)
-}
-
+/*
 /// Applies the parser `F` multiple times until it fails or the maximum value of the range has
 /// been reached, throwing away any produced value.
 ///
@@ -743,7 +746,9 @@ pub fn many_till<I: Input, T, E, R, F, U, N, P, V>(i: I, r: R, p: P, end: F) -> 
         F: FnMut(I) -> ParseResult<I, V, N> {
     BoundedRange::many_till(r, i, p, end)
 }
+*/
 
+/*
 /// Applies the parser `p` multiple times, separated by the parser `sep` and returns a value
 /// populated with the values yielded by `p`. If the number of items yielded by `p` does not fall
 /// into the range `r` and the separator or parser registers error or incomplete failure is
@@ -758,29 +763,101 @@ pub fn many_till<I: Input, T, E, R, F, U, N, P, V>(i: I, r: R, p: P, end: F) -> 
 /// * Will allocate depending on the `FromIterator` implementation.
 /// * Will never yield more items than the upper bound of the range.
 #[inline]
-pub fn sep_by<I: Input, T, E, R, F, U, N, P, V>(i: I, r: R, mut p: P, mut sep: F) -> ParseResult<I, T, E>
-  where T: FromIterator<U>,
-        E: From<N>,
-        R: BoundedRange,
-        P: FnMut(I) -> ParseResult<I, U, E>,
-        F: FnMut(I) -> ParseResult<I, V, N> {
+pub fn sep_by_unbounded<I: Input, T, F, G, P, Q>(mut p: F, mut sep: G) -> impl Parser<I, Output=T, Error=P::Error>
+  where T: FromIterator<P::Output>,
+        F: FnMut() -> P,
+        G: FnMut() -> Q,
+        // E: From<N>,
+        P: Parser<I>,
+        Q: Parser<I, Error=P::Error> {
     // If we have parsed at least one item
     let mut item = false;
     // Add sep in front of p if we have read at least one item
-    let parser   = |i| (if item {
-            sep(i).map(|_| ())
+    let parser = move || inspect(then(|i: I| if item {
+            match sep().parse(i) {
+                (i, Ok(_)) => (i, Ok(())),
+                (i, Err(e)) => (i, Err(e)),
+            }
         } else {
-            i.ret(())
-        })
-        .then(&mut p)
-        .inspect(|_| item = true);
+            (i, Ok(()))
+        }, &mut p), |_| item = true);
 
-    BoundedRange::parse_many(r, i, parser)
+    many_unbounded(parser)
 }
 
+#[inline]
+pub fn sep_by_from<I: Input, T, F, G, P, Q>(from: usize, mut p: F, mut sep: G) -> impl Parser<I, Output=T, Error=P::Error>
+  where T: FromIterator<P::Output>,
+        F: FnMut() -> P,
+        G: FnMut() -> Q,
+        // E: From<N>,
+        P: Parser<I>,
+        Q: Parser<I, Error=P::Error> {
+    // If we have parsed at least one item
+    let mut item = false;
+    // Add sep in front of p if we have read at least one item
+    let parser = move || inspect(then(|i: I| if item {
+            match sep().parse(i) {
+                (i, Ok(_)) => (i, Ok(())),
+                (i, Err(e)) => (i, Err(e)),
+            }
+        } else {
+            (i, Ok(()))
+        }, &mut p), |_| item = true);
+
+    many_from(from, parser)
+}
+
+#[inline]
+pub fn sep_by_to<I: Input, T, F, G, P, Q>(to: usize, mut p: F, mut sep: G) -> impl Parser<I, Output=T, Error=P::Error>
+  where T: FromIterator<P::Output>,
+        F: FnMut() -> P,
+        G: FnMut() -> Q,
+        // E: From<N>,
+        P: Parser<I>,
+        Q: Parser<I, Error=P::Error> {
+    // If we have parsed at least one item
+    let mut item = false;
+    // Add sep in front of p if we have read at least one item
+    let parser = move || inspect(then(|i: I| if item {
+            match sep().parse(i) {
+                (i, Ok(_)) => (i, Ok(())),
+                (i, Err(e)) => (i, Err(e)),
+            }
+        } else {
+            (i, Ok(()))
+        }, &mut p), |_| item = true);
+
+    many_to(to, parser)
+}
+
+#[inline]
+pub fn sep_by<I: Input, T, F, G, P, Q>(from: usize, to: usize, mut p: F, mut sep: G) -> impl Parser<I, Output=T, Error=P::Error>
+  where T: FromIterator<P::Output>,
+        F: FnMut() -> P,
+        G: FnMut() -> Q,
+        // E: From<N>,
+        P: Parser<I>,
+        Q: Parser<I, Error=P::Error> {
+    // If we have parsed at least one item
+    let mut item = false;
+    // Add sep in front of p if we have read at least one item
+    let parser = move || inspect(then(|i: I| if item {
+            match sep().parse(i) {
+                (i, Ok(_)) => (i, Ok(())),
+                (i, Err(e)) => (i, Err(e)),
+            }
+        } else {
+            (i, Ok(()))
+        }, &mut p), |_| item = true);
+
+    many(from, to, mk_sep_by(p, sep))
+}
+*/
+
+/*
 #[cfg(test)]
 mod test {
-    use types::ParseResult;
     use parsers::{Error, any, token, string};
     use primitives::IntoInner;
 
@@ -1108,3 +1185,4 @@ mod test {
         assert_eq!(r.into_inner(), (&b"ab"[..], Ok(vec![b'a', b'a', b'a'])));
     }
 }
+*/

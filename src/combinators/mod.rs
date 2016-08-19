@@ -7,15 +7,7 @@ pub mod bounded;
 
 use std::iter::FromIterator;
 
-use types::{
-    ParseResult,
-    Input,
-};
-
-use primitives::{
-    IntoInner,
-    Primitives,
-};
+use types::{Input, Parser};
 
 /// Applies the parser `p` exactly `num` times collecting all items into `T: FromIterator`.
 ///
@@ -34,10 +26,11 @@ use primitives::{
 /// assert_eq!(parse_only(with_remainder, b"aaa"), Ok((&b"a"[..], vec![b'a', b'a'])));
 /// ```
 #[inline]
-pub fn count<I: Input, T, E, F, U>(i: I, num: usize, p: F) -> ParseResult<I, T, E>
-  where F: FnMut(I) -> ParseResult<I, U, E>,
-        T: FromIterator<U> {
-    bounded::many(i, num, p)
+pub fn count<I: Input, P, T, F>(num: usize, p: F) -> impl Parser<I, Output=T, Error=P::Error>
+  where F: FnMut() -> P,
+        P: Parser<I>,
+        T: FromIterator<P::Output> {
+    bounded::many_exact(num, p)
 }
 
 /// Tries the parser `f`, on success it yields the parsed value, on failure `default` will be
@@ -56,13 +49,15 @@ pub fn count<I: Input, T, E, F, U>(i: I, num: usize, p: F) -> ParseResult<I, T, 
 /// assert_eq!(parse_only(f, b"bbc"), Ok(b'd'));
 /// ```
 #[inline]
-pub fn option<I: Input, T, E, F>(i: I, f: F, default: T) -> ParseResult<I, T, E>
-  where F: FnOnce(I) -> ParseResult<I, T, E> {
-    let m = i.mark();
+pub fn option<I: Input, P>(p: P, default: P::Output) -> impl Parser<I, Output=P::Output, Error=P::Error>
+  where P: Parser<I> {
+    move |mut i: I| {
+        let m = i.mark();
 
-    match f(i).into_inner() {
-        (b, Ok(d))  => b.ret(d),
-        (b, Err(_)) => b.restore(m).ret(default),
+        match p.parse(i) {
+            (b, Ok(d))  => (b, Ok(d)),
+            (b, Err(_)) => (b.restore(m), Ok(default)),
+        }
     }
 }
 
@@ -86,14 +81,16 @@ pub fn option<I: Input, T, E, F>(i: I, f: F, default: T) -> ParseResult<I, T, E>
 /// assert_eq!(parse_only(&p, b"cbc"), Err((&b"cbc"[..], Error::expected(b'b'))));
 /// ```
 #[inline]
-pub fn or<I: Input, T, E, F, G>(i: I, f: F, g: G) -> ParseResult<I, T, E>
-  where F: FnOnce(I) -> ParseResult<I, T, E>,
-        G: FnOnce(I) -> ParseResult<I, T, E> {
-    let m = i.mark();
+pub fn or<I: Input, F, G>(f: F, g: G) -> impl Parser<I, Output=F::Output, Error=F::Error>
+  where F: Parser<I>,
+        G: Parser<I, Output=F::Output, Error=F::Error> {
+    move |mut i: I| {
+        let m = i.mark();
 
-    match f(i).into_inner() {
-        (b, Ok(d))  => b.ret(d),
-        (b, Err(_)) => g(b.restore(m)),
+        match f.parse(i) {
+            (b, Ok(d))  => (b, Ok(d)),
+            (b, Err(_)) => g.parse(b.restore(m)),
+        }
     }
 }
 
@@ -114,10 +111,11 @@ pub fn or<I: Input, T, E, F, G>(i: I, f: F, g: G) -> ParseResult<I, T, E>
 /// assert_eq!(r, Ok(vec![&b"a"[..], &b"bc"[..]]));
 /// ```
 #[inline]
-pub fn many<I: Input, T, E, F, U>(i: I, f: F) -> ParseResult<I, T, E>
-  where F: FnMut(I) -> ParseResult<I, U, E>,
-        T: FromIterator<U> {
-    bounded::many(i, .., f)
+pub fn many<I: Input, T, F, P>(f: F) -> impl Parser<I, Output=T, Error=P::Error>
+  where F: FnMut() -> P,
+        P: Parser<I>,
+        T: FromIterator<P::Output> {
+    bounded::many_unbounded(f)
 }
 
 /// Parses at least one instance of `f` and continues until it does no longer match, collecting
@@ -139,12 +137,15 @@ pub fn many<I: Input, T, E, F, U>(i: I, f: F) -> ParseResult<I, T, E>
 /// assert_eq!(parse_only(&p, b"a, "), Ok(vec![&b"a"[..]]));
 /// ```
 #[inline]
-pub fn many1<I: Input, T, E, F, U>(i: I, f: F) -> ParseResult<I, T, E>
-  where F: FnMut(I) -> ParseResult<I, U, E>,
-        T: FromIterator<U> {
-    bounded::many(i, 1.., f)
+pub fn many1<I: Input, F, T, P>(f: F) -> impl Parser<I, Output=T, Error=P::Error>
+  where F: FnMut() -> P,
+        P: Parser<I>,
+        T: FromIterator<P::Output> {
+    bounded::many_from(1, f)
 }
 
+// FIXME
+/*
 /// Applies the parser `R` zero or more times, separated by the parser `F`. All matches from `R`
 /// will be collected into the type `T: FromIterator`.
 ///
@@ -162,12 +163,12 @@ pub fn many1<I: Input, T, E, F, U>(i: I, f: F) -> ParseResult<I, T, E>
 /// assert_eq!(r, Ok(vec![91, 03, 20]));
 /// ```
 #[inline]
-pub fn sep_by<I: Input, T, E, R, F, U, N, V>(i: I, p: R, sep: F) -> ParseResult<I, T, E>
-  where T: FromIterator<U>,
-        E: From<N>,
-        R: FnMut(I) -> ParseResult<I, U, E>,
-        F: FnMut(I) -> ParseResult<I, V, N> {
-    bounded::sep_by(i, .., p, sep)
+pub fn sep_by<I: Input, T, R, F>(p: R, sep: F) -> impl Parser<I, Output=T, Error=R::Error>
+  where T: FromIterator<R::Output>,
+        //E: From<N>,
+        R: Parser<I>,
+        F: Parser<I, Error=R::Error> {
+    bounded::sep_by_unbounded(p, sep)
 }
 
 
@@ -188,12 +189,12 @@ pub fn sep_by<I: Input, T, E, R, F, U, N, V>(i: I, p: R, sep: F) -> ParseResult<
 /// assert_eq!(r, Ok(vec![91, 03, 20]));
 /// ```
 #[inline]
-pub fn sep_by1<I: Input, T, E, R, F, U, N, V>(i: I, p: R, sep: F) -> ParseResult<I, T, E>
-  where T: FromIterator<U>,
-        E: From<N>,
-        R: FnMut(I) -> ParseResult<I, U, E>,
-        F: FnMut(I) -> ParseResult<I, V, N> {
-    bounded::sep_by(i, 1.., p, sep)
+pub fn sep_by1<I: Input, T, R, F>(p: R, sep: F) -> impl Parser<I, Output=T, Error=R::Error>
+  where T: FromIterator<R::Output>,
+        //E: From<N>,
+        R: Parser<I>,
+        F: Parser<I, Error=R::Error> {
+    bounded::sep_by_from(1, p, sep)
 }
 
 /// Applies the parser `R` multiple times until the parser `F` succeeds and returns a
@@ -211,12 +212,12 @@ pub fn sep_by1<I: Input, T, E, R, F, U, N, V>(i: I, p: R, sep: F) -> ParseResult
 /// assert_eq!(r, Ok(vec![b'a', b'b', b'c']));
 /// ```
 #[inline]
-pub fn many_till<I: Input, T, E, R, F, U, N, V>(i: I, p: R, end: F) -> ParseResult<I, T, E>
-  where T: FromIterator<U>,
-        E: From<N>,
-        R: FnMut(I) -> ParseResult<I, U, E>,
-        F: FnMut(I) -> ParseResult<I, V, N> {
-    bounded::many_till(i, .., p, end)
+pub fn many_till<I: Input, T, R, F>(p: R, end: F) -> impl Parser<I, Output=T, Error=R::Error>
+  where T: FromIterator<R::Output>,
+        //E: From<N>,
+        R: Parser<I>,
+        F: Parser<I, Error=R::Error> {
+    bounded::many_till_unbounded(p, end)
 }
 
 /// Runs the given parser until it fails, discarding matched input.
@@ -234,9 +235,9 @@ pub fn many_till<I: Input, T, E, R, F, U, N, V>(i: I, p: R, end: F) -> ParseResu
 /// assert_eq!(r, Ok(b'b'));
 /// ```
 #[inline]
-pub fn skip_many<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, (), E>
-  where F: FnMut(I) -> ParseResult<I, T, E> {
-    bounded::skip_many(i, .., f)
+pub fn skip_many<I: Input, F>(f: F) -> impl Parser<I, Output=(), Error=F::Error>
+  where F: Parser<I> {
+    bounded::skip_many_unbounded(f)
 }
 
 /// Runs the given parser until it fails, discarding matched input, expects at least one match.
@@ -258,10 +259,11 @@ pub fn skip_many<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, (), E>
 /// assert_eq!(parse_only(&p, b"bc"), Err((&b"bc"[..], Error::expected(b'a'))));
 /// ```
 #[inline]
-pub fn skip_many1<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, (), E>
-  where F: FnMut(I) -> ParseResult<I, T, E> {
-    bounded::skip_many(i, 1.., f)
+pub fn skip_many1<I: Input, F>(f: F) -> impl Parser<I, Output=(), Error=F::Error>
+  where F: Parser<I> {
+    bounded::skip_many_from(1, f)
 }
+*/
 
 /// Returns the result of the given parser as well as the slice which matched it.
 ///
@@ -272,17 +274,19 @@ pub fn skip_many1<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, (), E>
 /// assert_eq!(parse_only(|i| matched_by(i, decimal), b"123"), Ok((&b"123"[..], 123u32)));
 /// ```
 #[inline]
-pub fn matched_by<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, (I::Buffer, T), E>
-  where F: FnOnce(I) -> ParseResult<I, T, E> {
-    let m = i.mark();
+pub fn matched_by<I: Input, F>(f: F) -> impl Parser<I, Output=(I::Buffer, F::Output), Error=F::Error>
+  where F: Parser<I> {
+    move |mut i: I| {
+        let m = i.mark();
 
-    match f(i).into_inner() {
-        (mut b, Ok(t)) => {
-            let n = b.consume_from(m);
+        match f.parse(i) {
+            (mut b, Ok(t)) => {
+                let n = b.consume_from(m);
 
-            b.ret((n, t))
-        },
-        (b, Err(e))   => b.err(e),
+                (b, Ok((n, t)))
+            },
+            (b, Err(e))   => (b, Err(e)),
+        }
     }
 }
 
@@ -297,16 +301,20 @@ pub fn matched_by<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, (I::Buffer, T
 /// assert_eq!(parse_only(p, b"testing"), Ok((&b"test"[..], &b"testing"[..])));
 /// ```
 #[inline]
-pub fn look_ahead<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, T, E>
-  where F: FnOnce(I) -> ParseResult<I, T, E> {
-    let m = i.mark();
+pub fn look_ahead<I: Input, F>(f: F) -> impl Parser<I, Output=F::Output, Error=F::Error>
+  where F: Parser<I> {
+    move |mut i: I| {
+        let m = i.mark();
 
-    match f(i).into_inner() {
-        (b, Ok(t))  => b.restore(m).ret(t),
-        (b, Err(t)) => b.restore(m).err(t),
+        match f.parse(i) {
+            (b, Ok(t))  => (b.restore(m), Ok(t)),
+            (b, Err(t)) => (b.restore(m), Err(t)),
+        }
     }
 }
 
+// FIXME: Update
+/*
 #[cfg(test)]
 mod test {
     use types::{Input, ParseResult};
@@ -523,3 +531,4 @@ mod test {
         assert_eq!(look_ahead(&b"aa"[..], |i| token(i, b'a').then(|i| token(i, b'b')).map_err(|_| "err")).into_inner(), (&b"aa"[..], Err("err")));
     }
 }
+*/
