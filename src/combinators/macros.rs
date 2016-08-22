@@ -1,9 +1,9 @@
-/// Macro to implement and run a parser iterator, it provides the ability to add an extra state
+/// Macro to implement, run and create a constructor for a parser iterator, it provides the ability to add an extra state
 /// variable into it and also provide a size_hint as well as a pre- and on-next hooks.
 macro_rules! mk_iter {
     (
-        parser:    $parser:expr,
-        state:     $data_ty:ty : $data:expr,
+        parser_ctor: $parser_ctor:expr,
+        state:       $data_ty:ty : $data:expr,
 
         size_hint($size_hint_self:ident) $size_hint:block
         next($next_self:ident) {
@@ -15,18 +15,6 @@ macro_rules! mk_iter {
              $($pat:pat => $arm:expr),*$(,)*
         }
     ) => { {
-        struct IteratingParser<I: Input, F, P, T>
-          where F: FnMut() -> P,
-                P: Parser<I> {
-            /// Parser to execute once for each iteration
-            parser_constructor: F,
-            /// Nested state
-            data:      $data_ty,
-            _i:        PhantomData<I>,
-            _t:        PhantomData<T>,
-            _p:        PhantomData<P>,
-        }
-
         struct ParserIterator<I: Input, F, P, T>
           where F: FnMut() -> P,
                 P: Parser<I> {
@@ -34,7 +22,7 @@ macro_rules! mk_iter {
             state:  Option<P::Error>,
             /// Parser constructor function to execute once for each iteration to obtain
             /// a new parser to run for each iteration
-            parser_constructor: F,
+            parser_ctor: F,
             /// Remaining buffer
             ///
             /// Wrapped in option to prevent two calls to destructors.
@@ -80,7 +68,7 @@ macro_rules! mk_iter {
                 // TODO: Any way to prevent marking here since it is not used at all times?
                 $next_self.mark = i.mark();
 
-                match ($next_self.parser_constructor)().parse(i) {
+                match ($next_self.parser_ctor)().parse(i) {
                     (b, Ok(v)) => {
                         $next_self.buf = Some(b);
 
@@ -98,6 +86,21 @@ macro_rules! mk_iter {
             }
         }
 
+        // TODO: Any benefit in keeping this struct?
+        /*
+        struct IteratingParser<I: Input, F, P, T>
+          where F: FnMut() -> P,
+                T: FromIterator<P::Output>,
+                P: Parser<I> {
+            /// Parser to execute once for each iteration
+            parser_ctor: F,
+            /// Nested state
+            data:      $data_ty,
+            _i:        PhantomData<I>,
+            _t:        PhantomData<T>,
+            _p:        PhantomData<P>,
+        }
+
         impl<I: Input, F, P, T> Parser<I> for IteratingParser<I, F, P, T>
           where F: FnMut() -> P,
                 P: Parser<I>,
@@ -110,14 +113,14 @@ macro_rules! mk_iter {
                 let mark = i.mark();
 
                 let mut iter = ParserIterator::<_, _, _, $t> {
-                    state:              None,
-                    parser_constructor: self.parser_constructor,
-                    buf:                Some(i),
-                    mark:               mark,
-                    data:               self.data,
-                    _i:                 PhantomData,
-                    _t:                 PhantomData,
-                    _p:                 PhantomData,
+                    state:       None,
+                    parser_ctor: self.parser_ctor,
+                    buf:         Some(i),
+                    mark:        mark,
+                    data:        self.data,
+                    _i:          PhantomData,
+                    _t:          PhantomData,
+                    _p:          PhantomData,
                 };
 
                 let $result: T = FromIterator::from_iter(iter.by_ref());
@@ -129,11 +132,33 @@ macro_rules! mk_iter {
         }
 
         IteratingParser::<_, _, _, $t> {
-            parser_constructor: $parser,
+            parser_ctor: $parser,
             data:               $data,
             _i:                 PhantomData,
             _t:                 PhantomData,
             _p:                 PhantomData,
+        }*/
+
+        move |i: I| {
+            // TODO: Not always used
+            let mark = i.mark();
+
+            let mut iter = ParserIterator::<_, _, _, $t> {
+                state:       None,
+                parser_ctor: $parser_ctor,
+                buf:         Some(i),
+                mark:        mark,
+                data:        $data,
+                _i:          PhantomData,
+                _t:          PhantomData,
+                _p:          PhantomData,
+            };
+
+            let $result: T = FromIterator::from_iter(iter.by_ref());
+
+            match iter.end_state() {
+                $($pat => $arm),*
+            }
         }
     } }
 }
