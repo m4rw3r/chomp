@@ -49,7 +49,7 @@ pub trait Numbering: Clone {
 
     /// Updates the numbering based on the contents of the buffer, adding it to the current
     /// numbering.
-    fn update<'a, B>(&mut self, &'a B)
+    fn update<B>(&mut self, &B)
       where B: Buffer<Token=Self::Token>;
 
     /// Adds the token to the numbering.
@@ -85,7 +85,7 @@ impl Default for LineNumber {
 impl Numbering for LineNumber {
     type Token  = u8;
 
-    fn update<'a, B>(&mut self, b: &'a B)
+    fn update<B>(&mut self, b: &B)
       where B: Buffer<Token=Self::Token> {
         let mut n = 0;
 

@@ -762,8 +762,8 @@ impl<I, P, F, R> Parser<I> for BindParser<I, P, F, R>
     #[inline]
     fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
         match self.p.parse(i) {
-            (i, Ok(t))  => (self.f)(t).parse(i),
-            (i, Err(e)) => (i, Err(e)),
+            (r, Ok(t))  => (self.f)(t).parse(r),
+            (r, Err(e)) => (r, Err(e)),
         }
     }
 }
@@ -786,8 +786,8 @@ impl<I, P, Q> Parser<I> for ThenParser<P, Q>
     #[inline]
     fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
         match self.p.parse(i) {
-            (i, Ok(_))  => (self.q).parse(i),
-            (i, Err(e)) => (i, Err(e)),
+            (r, Ok(_))  => (self.q).parse(r),
+            (r, Err(e)) => (r, Err(e)),
         }
     }
 }
@@ -810,8 +810,8 @@ impl<I, P, F, R> Parser<I> for MapParser<P, F>
     #[inline]
     fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
         match self.p.parse(i) {
-            (i, Ok(t))  => (i, Ok((self.f)(t))),
-            (i, Err(e)) => (i, Err(e)),
+            (r, Ok(t))  => (r, Ok((self.f)(t))),
+            (r, Err(e)) => (r, Err(e)),
         }
     }
 }
@@ -834,8 +834,8 @@ impl<I, P, F, E> Parser<I> for MapErrParser<P, F>
     #[inline]
     fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
         match self.p.parse(i) {
-            (i, Ok(t))  => (i, Ok(t)),
-            (i, Err(e)) => (i, Err((self.f)(e))),
+            (r, Ok(t))  => (r, Ok(t)),
+            (r, Err(e)) => (r, Err((self.f)(e))),
         }
     }
 }
@@ -858,12 +858,12 @@ impl<I, P, F> Parser<I> for InspectParser<P, F>
     #[inline]
     fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
         match self.p.parse(i) {
-            (i, Ok(t))      => {
+            (r, Ok(t))      => {
                 (self.f)(&t);
 
-                (i, Ok(t))
+                (r, Ok(t))
             },
-            (i, Err(e)) => (i, Err(e)),
+            (r, Err(e)) => (r, Err(e)),
         }
     }
 }
@@ -887,8 +887,8 @@ impl<I, P, Q> Parser<I> for OrParser<P, Q>
         let m = i.mark();
 
         match self.p.parse(i) {
-            (b, Ok(d))  => (b, Ok(d)),
-            (b, Err(_)) => self.q.parse(b.restore(m)),
+            (r, Ok(d))  => (r, Ok(d)),
+            (r, Err(_)) => self.q.parse(r.restore(m)),
         }
     }
 }
@@ -911,11 +911,11 @@ impl<I, P, Q> Parser<I> for SkipParser<P, Q>
     fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
         // Merge of p.bind(|t| q.map(|_| t))
         match self.p.parse(i) {
-            (i, Ok(t))  => match self.q.parse(i) {
-                (i, Ok(_))  => (i, Ok(t)),
-                (i, Err(e)) => (i, Err(e)),
+            (r, Ok(t))  => match self.q.parse(r) {
+                (b, Ok(_))  => (b, Ok(t)),
+                (b, Err(e)) => (b, Err(e)),
             },
-            (i, Err(e)) => (i, Err(e)),
+            (r, Err(e)) => (r, Err(e)),
         }
     }
 }

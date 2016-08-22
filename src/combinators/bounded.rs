@@ -1079,8 +1079,8 @@ impl<I, P> Parser<I> for MaybeAParser<P>
     fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
         match self.0 {
             Some(p) => match p.parse(i) {
-                (i, Ok(t))  => (i, Ok(Some(t))),
-                (i, Err(e)) => (i, Err(e)),
+                (r, Ok(t))  => (r, Ok(Some(t))),
+                (r, Err(e)) => (r, Err(e)),
             },
             None    => (i, Ok(None)),
         }
