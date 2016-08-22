@@ -35,6 +35,7 @@ macro_rules! many_iter {
             type Output = T;
             type Error  = P::Error;
 
+            #[inline]
             fn parse(self, i: I) -> (I, Result<T, P::Error>) {
                 struct ParserIterator<I: Input, F, P, T>
                   where F: FnMut() -> P,
