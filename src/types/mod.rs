@@ -564,6 +564,25 @@ pub trait Parser<I: Input> {
         InspectParser { p: self, f: f }
     }
 
+    /// Tries to match the parser `f`, if `f` fails it tries `g`. Returns the success value of
+    /// the first match, otherwise the error of the last one if both fail.
+    ///
+    /// Incomplete state is propagated from the first one to report incomplete.
+    ///
+    /// If multiple `or` combinators are used in the same expression, consider using the `parse!` macro
+    /// and its alternation operator (`<|>`).
+    ///
+    /// ```
+    /// use chomp::prelude::{Error, parse_only, or, token};
+    ///
+    /// let p = |i| or(i,
+    ///             |i| token(i, b'a'),
+    ///             |i| token(i, b'b'));
+    ///
+    /// assert_eq!(parse_only(&p, b"abc"), Ok(b'a'));
+    /// assert_eq!(parse_only(&p, b"bbc"), Ok(b'b'));
+    /// assert_eq!(parse_only(&p, b"cbc"), Err((&b"cbc"[..], Error::expected(b'b'))));
+    /// ```
     // TODO: Write the laws for MonadPlus, or should satisfy MonadPlus laws (stronger guarantees
     // compared to Alternative typeclass laws)
     #[inline]

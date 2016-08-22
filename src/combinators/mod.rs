@@ -51,45 +51,12 @@ pub fn count<I: Input, P, T, F>(num: usize, p: F) -> impl Parser<I, Output=T, Er
 #[inline]
 pub fn option<I: Input, P>(p: P, default: P::Output) -> impl Parser<I, Output=P::Output, Error=P::Error>
   where P: Parser<I> {
-    move |mut i: I| {
+    move |i: I| {
         let m = i.mark();
 
         match p.parse(i) {
             (b, Ok(d))  => (b, Ok(d)),
             (b, Err(_)) => (b.restore(m), Ok(default)),
-        }
-    }
-}
-
-/// Tries to match the parser `f`, if `f` fails it tries `g`. Returns the success value of
-/// the first match, otherwise the error of the last one if both fail.
-///
-/// Incomplete state is propagated from the first one to report incomplete.
-///
-/// If multiple `or` combinators are used in the same expression, consider using the `parse!` macro
-/// and its alternation operator (`<|>`).
-///
-/// ```
-/// use chomp::prelude::{Error, parse_only, or, token};
-///
-/// let p = |i| or(i,
-///             |i| token(i, b'a'),
-///             |i| token(i, b'b'));
-///
-/// assert_eq!(parse_only(&p, b"abc"), Ok(b'a'));
-/// assert_eq!(parse_only(&p, b"bbc"), Ok(b'b'));
-/// assert_eq!(parse_only(&p, b"cbc"), Err((&b"cbc"[..], Error::expected(b'b'))));
-/// ```
-#[inline]
-pub fn or<I: Input, F, G>(f: F, g: G) -> impl Parser<I, Output=F::Output, Error=F::Error>
-  where F: Parser<I>,
-        G: Parser<I, Output=F::Output, Error=F::Error> {
-    move |mut i: I| {
-        let m = i.mark();
-
-        match f.parse(i) {
-            (b, Ok(d))  => (b, Ok(d)),
-            (b, Err(_)) => g.parse(b.restore(m)),
         }
     }
 }
@@ -276,7 +243,7 @@ pub fn skip_many1<I: Input, F>(f: F) -> impl Parser<I, Output=(), Error=F::Error
 #[inline]
 pub fn matched_by<I: Input, F>(f: F) -> impl Parser<I, Output=(I::Buffer, F::Output), Error=F::Error>
   where F: Parser<I> {
-    move |mut i: I| {
+    move |i: I| {
         let m = i.mark();
 
         match f.parse(i) {
@@ -303,7 +270,7 @@ pub fn matched_by<I: Input, F>(f: F) -> impl Parser<I, Output=(I::Buffer, F::Out
 #[inline]
 pub fn look_ahead<I: Input, F>(f: F) -> impl Parser<I, Output=F::Output, Error=F::Error>
   where F: Parser<I> {
-    move |mut i: I| {
+    move |i: I| {
         let m = i.mark();
 
         match f.parse(i) {

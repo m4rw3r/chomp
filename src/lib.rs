@@ -266,7 +266,6 @@ pub mod prelude {
     pub use combinators::{
         count,
         option,
-        or,
         many,
         many1,
         //sep_by,
@@ -279,10 +278,6 @@ pub mod prelude {
     pub use types::{
         ret,
         err,
-        map,
-        inspect,
-        bind,
-        then,
         from_result,
     };
     pub use types::{
