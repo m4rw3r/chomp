@@ -507,8 +507,8 @@ mod test {
         let i1: InputBuf<u8> = InputBuf::new(b"in1");
         let i2: InputBuf<u8> = InputBuf::new(b"in2");
 
-        assert_eq!(ret::<_, _, ()>(23u32).parse(i1), (InputBuf::new(b"in1"), Ok(23u32)));
-        assert_eq!(ret::<_, _, &str>(23i32).parse(i2), (InputBuf::new(b"in2"), Ok(23i32)));
+        assert_eq!(ret::<_, ()>(23u32).parse(i1), (InputBuf::new(b"in1"), Ok(23u32)));
+        assert_eq!(ret::<_, &str>(23i32).parse(i2), (InputBuf::new(b"in2"), Ok(23i32)));
     }
 
     #[test]
@@ -516,8 +516,8 @@ mod test {
         let i1: InputBuf<u8> = InputBuf::new(b"in1");
         let i2: InputBuf<u8> = InputBuf::new(b"in2");
 
-        assert_eq!(err::<_, (), _>(23u32).parse(i1), (InputBuf::new(b"in1"), Err(23u32)));
-        assert_eq!(err::<_, &str, _>(23i32).parse(i2), (InputBuf::new(b"in2"), Err(23i32)));
+        assert_eq!(err::<(), _>(23u32).parse(i1), (InputBuf::new(b"in1"), Err(23u32)));
+        assert_eq!(err::<&str, _>(23i32).parse(i2), (InputBuf::new(b"in2"), Err(23i32)));
     }
 
     #[test]
