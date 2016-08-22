@@ -1,5 +1,7 @@
 //! Types which facillitates the chaining of parsers and their results.
 
+use std::marker::PhantomData;
+
 pub mod numbering;
 #[cfg(feature = "tendril")]
 pub mod tendril;
@@ -382,7 +384,26 @@ impl<T> U8Input for T
   where T: Input<Token=u8> {}
 
 // TODO: More docs
-/// A parser.
+/// The parser monad type.
+///
+/// Do-notation is provided by the macro `parse!`.
+///
+/// # Equivalence with Haskell's `Monad` typeclass:
+///
+/// ```text
+/// f >>= g   ≡  f().bind(g)
+/// f >> g    ≡  f().then(g)
+/// return a  ≡  ret(a)
+/// fail a    ≡  err(a)
+/// ```
+///
+/// It also satisfies the monad laws:
+///
+/// ```ignore
+/// ret(a).bind(f)    =  f(a)
+/// m.then(ret)       =  m
+/// m.bind(f).bind(g) =  m.bind(|x| f(x).bind(g))
+/// ```
 pub trait Parser<I: Input> {
     /// Output type created by the parser, may refer to data owned by `I`.
     type Output;
@@ -391,16 +412,177 @@ pub trait Parser<I: Input> {
 
     /// Apply the parser to an input `I`.
     fn parse(self, I) -> (I, Result<Self::Output, Self::Error>);
-}
 
-impl<I, T, E, F> Parser<I> for F
-  where I: Input,
-        F: FnOnce(I) -> (I, Result<T, E>) {
-    type Output = T;
-    type Error  = E;
+    /// Sequentially composes the result with a parse action `f`, passing any produced value as
+    /// the second parameter.
+    ///
+    /// The first parameter to the supplied function `f` is the parser state (`Input`). This
+    /// state is then passed on to other parsers or used to return a value or an error.
+    ///
+    /// # Automatic conversion of `E`
+    ///
+    /// The error value `E` will automatically be converted using the `From` trait to the
+    /// desired type. The downside with this using the current stable version of Rust (1.4) is that
+    /// the type inferrence will currently not use the default value for the generic `V` and will
+    /// therefore require extra type hint for the error.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use chomp::prelude::{Input, parse_only};
+    ///
+    /// let r = parse_only(|i| {
+    ///         i.ret("data".to_owned())
+    ///         // Explicitly state the error type
+    ///          .bind::<_, _, ()>(|i, x| i.ret(x + " here!"))
+    ///     },
+    ///     b"test");
+    ///
+    /// assert_eq!(r, Ok("data here!".to_owned()));
+    /// ```
+    ///
+    /// Wrapping the expression in a function will both make it easier to compose and also provides
+    /// the type-hint for the error in the function signature:
+    ///
+    /// ```
+    /// use chomp::prelude::{Input, ParseResult, parse_only};
+    ///
+    /// fn parser<I: Input>(i: I, n: i32) -> ParseResult<I, i32, ()> {
+    ///     i.ret(n + 10)
+    /// }
+    ///
+    /// let r = parse_only(|i| i.ret(23).bind(parser), b"test");
+    ///
+    /// assert_eq!(r, Ok(33));
+    /// ```
+    #[inline(always)]
+    // TODO: Add From::from
+    // TODO: Is it possible to remove I and R here?
+    fn bind<F, R>(self, f: F) -> BindParser<I, Self, F, R>
+      where F: FnOnce(Self::Output) -> R,
+            R: Parser<I, Error=Self::Error>,
+            Self: Sized {
+        BindParser { p: self, f: f, _i: PhantomData }
+    }
 
-    fn parse(self, i: I) -> (I, Result<T, E>) {
-        (self)(i)
+    /// Sequentially composes the result with a parse action `f`, discarding any produced value.
+    ///
+    /// The first parameter to the supplied function `f` is the parser state (`Input`). This
+    /// state is then passed on to other parsers or used to return a value or an error.
+    ///
+    /// # Relation to `bind`
+    ///
+    /// ```text
+    /// p.then(g)  ≡  p.bind(|_| g)
+    /// ```
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use chomp::prelude::{Input, SimpleResult, parse_only};
+    ///
+    /// fn g<I: Input>(i: I) -> SimpleResult<I, &'static str> {
+    ///     i.ret("testing!")
+    /// }
+    ///
+    /// let r1 = parse_only(|i| i.ret("initial state").bind(|i, _| g(i)), b"data");
+    /// let r2 = parse_only(|i| i.ret("initial state").then(g), b"data");
+    ///
+    /// assert_eq!(r1, Ok("testing!"));
+    /// assert_eq!(r2, Ok("testing!"));
+    /// ```
+    #[inline(always)]
+    // TODO: Add From::from
+    // TODO: Is it possible to use this without I and R in the same way as bind? because bind does
+    // not seem to work without I and R
+    // TODO: What are the implications of not exactly mirroring bind? Write down equivalent
+    // examples and see if they typecheck
+    // Helps immensely if P already is a parser for eg. sep_by since that solves some lifetime
+    // issues neatly.
+    fn then<P>(self, p: P) -> ThenParser<Self, P>
+      where P: Parser<I, Error=Self::Error>,
+            Self: Sized {
+        ThenParser { p: self, q: p }
+    }
+
+    /// Applies the function `f` on the contained data if the parser is in a success state.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use chomp::prelude::{parse_only, any};
+    ///
+    /// let r = parse_only(|i| any(i).map(|c| c + 12), b"abc");
+    ///
+    /// assert_eq!(r, Ok(b'm'));
+    /// ```
+    #[inline]
+    fn map<F, R>(self, f: F) -> MapParser<Self, F>
+      where F: FnOnce(Self::Output) -> R,
+            Self: Sized {
+        MapParser { p: self, f: f }
+    }
+
+    /// Applies the function `f` on the contained error if the parser is in an error state.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use chomp::prelude::{Input, parse_only};
+    ///
+    /// let r = parse_only(|i| i.err::<(), _>("this is")
+    ///          .map_err(|e| e.to_owned() + " an error"),
+    ///          b"foo");
+    ///
+    /// assert_eq!(r, Err((&b"foo"[..], "this is an error".to_owned())));
+    /// ```
+    #[inline]
+    fn map_err<F, E>(self, f: F) -> MapErrParser<Self, F>
+      where F: FnOnce(Self::Error) -> E,
+            Self: Sized {
+        MapErrParser { p: self, f: f }
+    }
+
+    /// Calls the function `f` with a reference of the contained data if the parser is in a success
+    /// state.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use chomp::prelude::{parse_only, take_while};
+    ///
+    /// let r = parse_only(|i| take_while(i, |c| c != b' ').inspect(|b| {
+    ///     println!("{:?}", b); // Prints "test"
+    /// }), b"test and more");
+    ///
+    /// assert_eq!(r, Ok(&b"test"[..]));
+    /// ```
+    #[inline]
+    fn inspect<F>(self, f: F) -> InspectParser<Self, F>
+      where F: FnOnce(&Self::Output),
+            Self: Sized {
+        InspectParser { p: self, f: f }
+    }
+
+    // TODO: Write the laws for MonadPlus, or should satisfy MonadPlus laws (stronger guarantees
+    // compared to Alternative typeclass laws)
+    #[inline]
+    fn or<P>(self, p: P) -> OrParser<Self, P>
+      where P: Parser<I, Output=Self::Output, Error=Self::Error>,
+            Self: Sized {
+        OrParser { p: self, q: p }
+    }
+
+    // TODO: Get more of the Applicative instance in here, make tests
+    // TODO: Docs
+    #[inline]
+    fn skip<P>(self, p: P) -> SkipParser<Self, P>
+      where P: Parser<I, Error=Self::Error>,
+            Self: Sized {
+        // Would be nice to be able to return the following, but conservative impl Trait does not
+        // work on traits:
+        // self.bind(|t| p.map(|_| t))
+        SkipParser{ p: self, q: p }
     }
 }
 
@@ -421,8 +603,8 @@ impl<I, T, E, F> Parser<I> for F
 /// assert_eq!(r, Ok("Wohoo, success!"));
 /// ```
 #[inline]
-pub fn ret<I: Input, T, E>(t: T) -> impl Parser<I, Output=T, Error=E> {
-    move |i| (i, Ok(t))
+pub fn ret<T, E>(t: T) -> RetParser<T, E> {
+    RetParser { t: t, _e: PhantomData }
 }
 
 /// Returns `e` as an error value in the parsing context.
@@ -442,8 +624,8 @@ pub fn ret<I: Input, T, E>(t: T) -> impl Parser<I, Output=T, Error=E> {
 /// assert_eq!(r, Err((&b"some input"[..], "Something went wrong")));
 /// ```
 #[inline]
-pub fn err<I: Input, T, E>(e: E) -> impl Parser<I, Output=T, Error=E> {
-    move |i| (i, Err(e))
+pub fn err<T, E>(e: E) -> ErrParser<T, E> {
+    ErrParser { e: e, _t: PhantomData }
 }
 
 /// Converts a `Result` into a `Parser`, preserving parser state.
@@ -467,250 +649,276 @@ pub fn err<I: Input, T, E>(e: E) -> impl Parser<I, Output=T, Error=E> {
 /// assert_eq!(r, Err((&b"test"[..], "error message")));
 /// ```
 #[inline]
-pub fn from_result<I: Input, T, E>(r: Result<T, E>) -> impl Parser<I, Output=T, Error=E> {
-    move |i| (i, r)
+pub fn from_result<T, E>(r: Result<T, E>) -> FromResultParser<T, E> {
+    FromResultParser { r: r }
 }
 
-/*
-/// The basic return type of a parser.
+/// Parser containing a success value.
 ///
-/// This type satisfies a variant of the `Monad` typeclass. Due to the limitations of Rust's
-/// return types closures cannot be returned without boxing which has an unacceptable performance
-/// impact.
-///
-/// To get around this issue and still provide a simple to use and safe (as in hard to accidentally
-/// violate the monad laws or the assumptions taken by the parser type) an `Input` wrapper is
-/// provided which ensures that the parser state is carried properly through every call to `bind`.
-/// This is also known as a Linear Type (emulated through hiding destructors and using the
-/// annotation `#[must_use]`).
-///
-/// Do-notation is provided by the macro `parse!`.
-///
-/// # Equivalence with Haskell's `Monad` typeclass:
-///
-/// ```text
-/// f >>= g   ≡  f(m).bind(g)
-/// f >> g    ≡  f(m).then(g)
-/// return a  ≡  m.ret(a)
-/// fail a    ≡  m.err(a)
-/// ```
-///
-/// It also satisfies the monad laws:
-///
-/// ```text
-/// return a >>= f   ≡  f a
-/// m >>= return     ≡  m
-/// (m >>= f) >>= g  ≡  m >>= (\x -> f x >>= g)
-/// ```
-#[must_use]
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct ParseResult<I: Input, T, E>(I, Result<T, E>);
+/// This is created by `ret`.
+pub struct RetParser<T, E> {
+    t:  T,
+    _e: PhantomData<E>,
+}
 
-impl<I: Input, T, E> ParseResult<I, T, E> {
-*/
-/// Sequentially composes the result with a parse action `f`, passing any produced value as
-/// the second parameter.
-///
-/// The first parameter to the supplied function `f` is the parser state (`Input`). This
-/// state is then passed on to other parsers or used to return a value or an error.
-///
-/// # Automatic conversion of `E`
-///
-/// The error value `E` will automatically be converted using the `From` trait to the
-/// desired type. The downside with this using the current stable version of Rust (1.4) is that
-/// the type inferrence will currently not use the default value for the generic `V` and will
-/// therefore require extra type hint for the error.
-///
-/// # Examples
-///
-/// ```
-/// use chomp::prelude::{Input, parse_only};
-///
-/// let r = parse_only(|i| {
-///         i.ret("data".to_owned())
-///         // Explicitly state the error type
-///          .bind::<_, _, ()>(|i, x| i.ret(x + " here!"))
-///     },
-///     b"test");
-///
-/// assert_eq!(r, Ok("data here!".to_owned()));
-/// ```
-///
-/// Wrapping the expression in a function will both make it easier to compose and also provides
-/// the type-hint for the error in the function signature:
-///
-/// ```
-/// use chomp::prelude::{Input, ParseResult, parse_only};
-///
-/// fn parser<I: Input>(i: I, n: i32) -> ParseResult<I, i32, ()> {
-///     i.ret(n + 10)
-/// }
-///
-/// let r = parse_only(|i| i.ret(23).bind(parser), b"test");
-///
-/// assert_eq!(r, Ok(33));
-/// ```
-#[inline]
-pub fn bind<I, M, F, R>(m: M, f: F) -> impl Parser<I, Output=R::Output, Error=M::Error>
-  where I: Input,
-        M: Parser<I>,
-        F: FnOnce(M::Output) -> R,
-        R: Parser<I, Error=M::Error> {
-    move |i| match m.parse(i) {
-        (i, Ok(t))  => f(t).parse(i),
-        (i, Err(e)) => (i, Err(e)),
+impl<I, T, E> Parser<I> for RetParser<T, E>
+  where I: Input {
+    type Output = T;
+    type Error  = E;
+
+    #[inline]
+    fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
+        (i, Ok(self.t))
     }
 }
 
-/// Sequentially composes the result with a parse action `f`, discarding any produced value.
+/// Parser containing an error value.
 ///
-/// The first parameter to the supplied function `f` is the parser state (`Input`). This
-/// state is then passed on to other parsers or used to return a value or an error.
-///
-/// # Relation to `bind`
-///
-/// ```text
-/// ParseResult::then(g)  ≡  ParseResult::bind(|i, _| g(i))
-/// ```
-///
-/// # Example
-///
-/// ```
-/// use chomp::prelude::{Input, SimpleResult, parse_only};
-///
-/// fn g<I: Input>(i: I) -> SimpleResult<I, &'static str> {
-///     i.ret("testing!")
-/// }
-///
-/// let r1 = parse_only(|i| i.ret("initial state").bind(|i, _| g(i)), b"data");
-/// let r2 = parse_only(|i| i.ret("initial state").then(g), b"data");
-///
-/// assert_eq!(r1, Ok("testing!"));
-/// assert_eq!(r2, Ok("testing!"));
-/// ```
-#[inline]
-pub fn then<I, M, F, R>(m: M, f: F) -> impl Parser<I, Output=R::Output, Error=M::Error>
-  where I: Input,
-        M: Parser<I>,
-        F: FnOnce() -> R,
-        R: Parser<I, Error=M::Error> {
-    bind(m, |_| f())
+/// This is created by `err`.
+pub struct ErrParser<T, E> {
+    e:  E,
+    _t: PhantomData<T>,
 }
 
-/// Applies the function `f` on the contained data if the parser is in a success state.
-///
-/// # Example
-///
-/// ```
-/// use chomp::prelude::{parse_only, any};
-///
-/// let r = parse_only(|i| any(i).map(|c| c + 12), b"abc");
-///
-/// assert_eq!(r, Ok(b'm'));
-/// ```
-#[inline]
-pub fn map<I, M, F, R>(m: M, f: F) -> impl Parser<I, Output=R, Error=M::Error>
-  where I: Input,
-        M: Parser<I>,
-        F: FnOnce(M::Output) -> R {
-    move |i| match m.parse(i) {
-        (i, Ok(t))  => (i, Ok(f(t))),
-        (i, Err(e)) => (i, Err(e)),
+impl<I, T, E> Parser<I> for ErrParser<T, E>
+  where I: Input {
+    type Output = T;
+    type Error  = E;
+
+    #[inline]
+    fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
+        (i, Err(self.e))
     }
 }
 
-/// Applies the function `f` on the contained error if the parser is in an error state.
+/// Parser containing a `Result<T, E>`.
 ///
-/// # Example
+/// This is created by `from_result`.
+pub struct FromResultParser<T, E> {
+    r:  Result<T, E>,
+}
+
+impl<I, T, E> Parser<I> for FromResultParser<T, E>
+  where I: Input {
+    type Output = T;
+    type Error  = E;
+
+    #[inline]
+    fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
+        (i, self.r)
+    }
+}
+
+/// Parser for the `Parser::bind` chaining operator, allowing to chain parsers.
 ///
-/// ```
-/// use chomp::prelude::{Input, parse_only};
-///
-/// let r = parse_only(|i| i.err::<(), _>("this is")
-///          .map_err(|e| e.to_owned() + " an error"),
-///          b"foo");
-///
-/// assert_eq!(r, Err((&b"foo"[..], "this is an error".to_owned())));
-/// ```
-#[inline]
-pub fn map_err<I, M, F, E>(m: M, f: F) -> impl Parser<I, Output=M::Output, Error=E>
+/// This is created by the `Parser::bind` method.
+pub struct BindParser<I, P, F, R>
   where I: Input,
-        M: Parser<I>,
-        F: FnOnce(M::Error) -> E {
-    move |i| match m.parse(i) {
-        (i, Ok(t))  => (i, Ok(t)),
-        (i, Err(e)) => (i, Err(f(e))),
-    }
+        P: Parser<I>,
+        F: FnOnce(P::Output) -> R,
+        R: Parser<I, Error=P::Error> {
+    p:  P,
+    f:  F,
+    // Necessary for inference, if we do not have I here we cannot describe the return value of `F`
+    // and this would make it impossible for rustc to infer the type of the created parser.
+    _i: PhantomData<I>,
 }
 
-/// Calls the function `f` with a reference of the contained data if the parser is in a success
-/// state.
-///
-/// # Example
-///
-/// ```
-/// use chomp::prelude::{parse_only, take_while};
-///
-/// let r = parse_only(|i| take_while(i, |c| c != b' ').inspect(|b| {
-///     println!("{:?}", b); // Prints "test"
-/// }), b"test and more");
-///
-/// assert_eq!(r, Ok(&b"test"[..]));
-/// ```
-#[inline]
-pub fn inspect<I, M, F>(m: M, f: F) -> impl Parser<I, Output=M::Output, Error=M::Error>
+impl<I, P, F, R> Parser<I> for BindParser<I, P, F, R>
   where I: Input,
-        M: Parser<I>,
-        F: FnOnce(&M::Output) {
-    move |i| match m.parse(i) {
-        (i, Ok(t))      => {
-            f(&t);
+        P: Parser<I>,
+        F: FnOnce(P::Output) -> R,
+        R: Parser<I, Error=P::Error> {
+    type Output = R::Output;
+    type Error  = R::Error;
 
-            (i, Ok(t))
-        },
-        (i, Err(e)) => (i, Err(e)),
+    #[inline]
+    fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
+        match self.p.parse(i) {
+            (i, Ok(t))  => (self.f)(t).parse(i),
+            (i, Err(e)) => (i, Err(e)),
+        }
     }
 }
 
-/*
-/// **Primitive:** Consumes the `ParseResult` and exposes the internal state.
+/// Parser for the `Parser::then` chaining operator, allowing to chain parsers.
 ///
-/// # Primitive
-///
-/// Only used by fundamental parsers and combinators.
-///
-/// # Motivation
-///
-/// The `ParseResult` type is a semi-linear type, supposed to act like a linear type while used in
-/// a parsing context to carry the state. Normally it should be as restrictive as the `Input` type
-/// in terms of how much it exposes its internals, but the `IntoInner` trait implementation
-/// allows fundamental parsers and combinators to expose the inner `Result` of the `ParseResult`
-/// and act on this.
-impl<I: Input, T, E> IntoInner for ParseResult<I, T, E> {
-    type Inner = (I, Result<T, E>);
+/// This is created by the `Parser::then` method.
+pub struct ThenParser<P, Q> {
+    p:  P,
+    q:  Q,
+}
 
-    #[inline(always)]
-    fn into_inner(self) -> Self::Inner {
-        (self.0, self.1)
+impl<I, P, Q> Parser<I> for ThenParser<P, Q>
+  where I: Input,
+        P: Parser<I>,
+        Q: Parser<I, Error=P::Error> {
+    type Output = Q::Output;
+    type Error  = Q::Error;
+
+    #[inline]
+    fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
+        match self.p.parse(i) {
+            (i, Ok(_))  => (self.q).parse(i),
+            (i, Err(e)) => (i, Err(e)),
+        }
     }
 }
-*/
+
+/// Parser for the `Parser::map` combinator.
+///
+/// This is created by the `Parser::map` method.
+pub struct MapParser<P, F> {
+    p:  P,
+    f:  F,
+}
+
+impl<I, P, F, R> Parser<I> for MapParser<P, F>
+  where I: Input,
+        P: Parser<I>,
+        F: FnOnce(P::Output) -> R {
+    type Output = R;
+    type Error  = P::Error;
+
+    #[inline]
+    fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
+        match self.p.parse(i) {
+            (i, Ok(t))  => (i, Ok((self.f)(t))),
+            (i, Err(e)) => (i, Err(e)),
+        }
+    }
+}
+
+/// Parser for the `Parser::map_err` combinator.
+///
+/// This is created by the `Parser::map_err` method.
+pub struct MapErrParser<P, F> {
+    p:  P,
+    f:  F,
+}
+
+impl<I, P, F, E> Parser<I> for MapErrParser<P, F>
+  where I: Input,
+        P: Parser<I>,
+        F: FnOnce(P::Error) -> E {
+    type Output = P::Output;
+    type Error  = E;
+
+    #[inline]
+    fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
+        match self.p.parse(i) {
+            (i, Ok(t))  => (i, Ok(t)),
+            (i, Err(e)) => (i, Err((self.f)(e))),
+        }
+    }
+}
+
+/// Parser for the `Parser::inspect` combinator.
+///
+/// This is created by `Parser::inspect`.
+pub struct InspectParser<P, F> {
+    p:  P,
+    f:  F,
+}
+
+impl<I, P, F> Parser<I> for InspectParser<P, F>
+  where I: Input,
+        P: Parser<I>,
+        F: FnOnce(&P::Output) {
+    type Output = P::Output;
+    type Error  = P::Error;
+
+    #[inline]
+    fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
+        match self.p.parse(i) {
+            (i, Ok(t))      => {
+                (self.f)(&t);
+
+                (i, Ok(t))
+            },
+            (i, Err(e)) => (i, Err(e)),
+        }
+    }
+}
+
+/// Parser for the `Parser::or` combinator.
+///
+/// This is created by `Parser::or`.
+pub struct OrParser<P, Q> {
+    p: P,
+    q: Q,
+}
+
+impl<I, P, Q> Parser<I> for OrParser<P, Q>
+  where I: Input,
+        P: Parser<I>,
+        Q: Parser<I, Output=P::Output, Error=P::Error> {
+    type Output = P::Output;
+    type Error  = P::Error;
+
+    fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
+        let m = i.mark();
+
+        match self.p.parse(i) {
+            (b, Ok(d))  => (b, Ok(d)),
+            (b, Err(_)) => self.q.parse(b.restore(m)),
+        }
+    }
+}
+
+/// Parser for the `Parser::skip` combinator.
+///
+/// This is created by `Parser::skip`.
+pub struct SkipParser<P, Q> {
+    p: P,
+    q: Q,
+}
+
+impl<I, P, Q> Parser<I> for SkipParser<P, Q>
+  where I: Input,
+        P: Parser<I>,
+        Q: Parser<I, Error=P::Error> {
+    type Output = P::Output;
+    type Error  = P::Error;
+
+    fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
+        // Merge of p.bind(|t| q.map(|_| t))
+        match self.p.parse(i) {
+            (i, Ok(t))  => match self.q.parse(i) {
+                (i, Ok(_))  => (i, Ok(t)),
+                (i, Err(e)) => (i, Err(e)),
+            },
+            (i, Err(e)) => (i, Err(e)),
+        }
+    }
+}
+
+impl<I, T, E, F> Parser<I> for F
+  where I: Input,
+        F: FnOnce(I) -> (I, Result<T, E>) {
+    type Output = T;
+    type Error  = E;
+
+    fn parse(self, i: I) -> (I, Result<T, E>) {
+        (self)(i)
+    }
+}
 
 #[cfg(test)]
 pub mod test {
-    use super::{Buffer, Input, Parser, bind, err, ret, from_result, inspect};
+    use super::{Buffer, Input, Parser, ret, err, from_result};
     use std::fmt::Debug;
 
     #[test]
     fn ret_test() {
-        assert_eq!(ret::<_, _, ()>(23u32).parse(&b"in1"[..]), (&b"in1"[..], Ok(23u32)));
-        assert_eq!(ret::<_, _, &str>(23i32).parse(&b"in2"[..]), (&b"in2"[..], Ok(23i32)));
+        assert_eq!(ret::<_, ()>(23u32).parse(&b"in1"[..]), (&b"in1"[..], Ok(23u32)));
+        assert_eq!(ret::<_, &str>(23i32).parse(&b"in2"[..]), (&b"in2"[..], Ok(23i32)));
     }
 
     #[test]
     fn err_test() {
-        assert_eq!(err::<_, (), _>(23u32).parse(&b"in1"[..]), (&b"in1"[..], Err(23u32)));
-        assert_eq!(err::<_, &str, _>(23i32).parse(&b"in2"[..]), (&b"in2"[..], Err(23i32)));
+        assert_eq!(err::<(), _>(23u32).parse(&b"in1"[..]), (&b"in1"[..], Err(23u32)));
+        assert_eq!(err::<&str, _>(23i32).parse(&b"in2"[..]), (&b"in2"[..], Err(23i32)));
     }
 
     #[test]
@@ -719,7 +927,7 @@ pub mod test {
         let i2: Result<&str, &str> = Err("foobar");
 
         assert_eq!(from_result(i1).parse(&b"in1"[..]), (&b"in1"[..], Ok(23u32)));
-        assert_eq!(from_result(i1).parse(&b"in2"[..]), (&b"in2"[..], Err("foobar")));
+        assert_eq!(from_result(i2).parse(&b"in2"[..]), (&b"in2"[..], Err("foobar")));
     }
 
     #[test]
@@ -730,7 +938,7 @@ pub mod test {
 
         let a = 123;
         // return a >>= f
-        let lhs = bind(ret(a), f);
+        let lhs = ret(a).bind(f);
         // f a
         let rhs = f(a);
 
@@ -740,11 +948,11 @@ pub mod test {
 
     #[test]
     fn monad_right_identity() {
-        let m1 = ret::<_, _, ()>(1);
-        let m2 = ret::<_, _, ()>(1);
+        let m1 = ret::<_, ()>(1);
+        let m2 = ret::<_, ()>(1);
 
         // m1 >>= ret === m2
-        let lhs = bind(m1, ret);
+        let lhs = m1.bind(ret);
         let rhs = m2;
 
         assert_eq!(lhs.parse(&b"test"[..]), (&b"test"[..], Ok(1)));
@@ -761,25 +969,26 @@ pub mod test {
             ret(num * 2)
         }
 
-        let lhs_m = ret::<_, _, ()>(2);
-        let rhs_m = ret::<_, _, ()>(2);
+        let lhs_m = ret::<_, ()>(2);
+        let rhs_m = ret::<_, ()>(2);
 
         // (m >>= f) >>= g
-        let lhs = bind(bind(lhs_m, f), g);
+        let lhs = lhs_m.bind(f).bind(g);
         // m >>= (\x -> f x >>= g)
-        let rhs = bind(rhs_m, |x| bind(f(x), g));
+        let rhs = rhs_m.bind(|x| f(x).bind(g));
 
         assert_eq!(lhs.parse(&b"test"[..]), (&b"test"[..], Ok(6)));
         assert_eq!(rhs.parse(&b"test"[..]), (&b"test"[..], Ok(6)));
     }
 
+    // FIXME: Inspect lifetimes
     /*
     #[test]
     fn parse_result_inspect() {
         let mut n1 = 0;
         let mut n2 = 0;
-        let i1     = ret::<_, u32, ()>(23);
-        let i2     = ret::<_, u32, ()>(23);
+        let i1     = ret::<u32, ()>(23);
+        let i2     = ret::<u32, ()>(23);
 
         let r1 = inspect(i1, |d: &u32| {
             assert_eq!(d, &23);
