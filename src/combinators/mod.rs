@@ -30,7 +30,7 @@ pub fn count<I: Input, P, T, F>(num: usize, p: F) -> impl Parser<I, Output=T, Er
   where F: FnMut() -> P,
         P: Parser<I>,
         T: FromIterator<P::Output> {
-    bounded::many_exact(num, p)
+    bounded::many(num, p)
 }
 
 /// Tries the parser `f`, on success it yields the parsed value, on failure `default` will be
@@ -82,7 +82,7 @@ pub fn many<I: Input, T, F, P>(f: F) -> impl Parser<I, Output=T, Error=P::Error>
   where F: FnMut() -> P,
         P: Parser<I>,
         T: FromIterator<P::Output> {
-    bounded::many_unbounded(f)
+    bounded::many(.., f)
 }
 
 /// Parses at least one instance of `f` and continues until it does no longer match, collecting
@@ -108,7 +108,7 @@ pub fn many1<I: Input, F, T, P>(f: F) -> impl Parser<I, Output=T, Error=P::Error
   where F: FnMut() -> P,
         P: Parser<I>,
         T: FromIterator<P::Output> {
-    bounded::many_from(1, f)
+    bounded::many(1.., f)
 }
 
 // FIXME

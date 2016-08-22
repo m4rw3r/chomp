@@ -592,6 +592,14 @@ pub trait Parser<I: Input> {
         OrParser { p: self, q: p }
     }
 
+    /// Creates a new parser which matches `Self` and if successful tries to match `P`, if `P` is
+    /// also matched the result of `Self` is yielded.
+    ///
+    /// Equivalent to:
+    ///
+    /// ```ignore
+    /// self.bind(|t| p.map(|_| t))
+    /// ```
     // TODO: Get more of the Applicative instance in here, make tests
     // TODO: Docs
     #[inline]
