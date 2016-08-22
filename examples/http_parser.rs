@@ -66,7 +66,7 @@ fn is_end_of_line(c: u8)      -> bool { c == b'\r' || c == b'\n' }
 fn is_http_version(c: u8)     -> bool { c >= b'0' && c <= b'9' || c == b'.' }
 
 fn end_of_line<I: Input<Token=u8>>() -> impl Parser<I, Output=u8, Error=Error<u8>> {
-    parse!{(token(b'\r') <|> ret b'\0') >> token(b'\n')}
+    parse!{(token(b'\r') <|> ret(b'\0')) >> token(b'\n')}
 }
 
 fn message_header_line<I: Input<Token=u8>>() -> impl Parser<I, Output=I::Buffer, Error=Error<u8>> {
@@ -75,7 +75,7 @@ fn message_header_line<I: Input<Token=u8>>() -> impl Parser<I, Output=I::Buffer,
         let line = take_till(is_end_of_line);
                    end_of_line();
 
-        ret line
+        ret(line)
     }
 }
 
@@ -85,10 +85,10 @@ fn message_header<I: Input<Token=u8>>() -> impl Parser<I, Output=Header<I::Buffe
                     token(b':');
         let lines = many1(message_header_line);
 
-        ret Header {
+        ret(Header {
             name:  name,
             value: lines,
-        }
+        })
     }
 }
 
@@ -107,11 +107,11 @@ fn request_line<I: Input<Token=u8>>() -> impl Parser<I, Output=Request<I::Buffer
                       take_while1(is_space);
         let version = http_version();
 
-        ret Request {
+        ret(Request {
             method:  method,
             uri:     uri,
             version: version,
-        }
+        })
     }
 }
 
@@ -124,7 +124,7 @@ fn request<I: Input<Token=u8>>() -> impl Parser<I, Output=(Request<I::Buffer>, V
         let h = many(message_header);
                 end_of_line();
 
-        ret (r, h)
+        ret((r, h))
     }
 }
 
