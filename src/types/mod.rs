@@ -493,12 +493,7 @@ pub trait Parser<I: Input> {
     /// ```
     #[inline(always)]
     // TODO: Add From::from
-    // TODO: Is it possible to use this without I and R in the same way as bind? because bind does
-    // not seem to work without I and R
-    // TODO: What are the implications of not exactly mirroring bind? Write down equivalent
-    // examples and see if they typecheck
-    // Helps immensely if P already is a parser for eg. sep_by since that solves some lifetime
-    // issues neatly.
+    // TODO: Tests
     fn then<P>(self, p: P) -> ThenParser<Self, P>
       where P: Parser<I, Error=Self::Error>,
             Self: Sized {
@@ -516,6 +511,7 @@ pub trait Parser<I: Input> {
     ///
     /// assert_eq!(r, Ok(b'm'));
     /// ```
+    // TODO: Tests
     #[inline]
     fn map<F, R>(self, f: F) -> MapParser<Self, F>
       where F: FnOnce(Self::Output) -> R,
@@ -536,6 +532,7 @@ pub trait Parser<I: Input> {
     ///
     /// assert_eq!(r, Err((&b"foo"[..], "this is an error".to_owned())));
     /// ```
+    // TODO: Tests
     #[inline]
     fn map_err<F, E>(self, f: F) -> MapErrParser<Self, F>
       where F: FnOnce(Self::Error) -> E,
@@ -557,6 +554,7 @@ pub trait Parser<I: Input> {
     ///
     /// assert_eq!(r, Ok(&b"test"[..]));
     /// ```
+    // TODO: Tests
     #[inline]
     fn inspect<F>(self, f: F) -> InspectParser<Self, F>
       where F: FnOnce(&Self::Output),
@@ -585,6 +583,7 @@ pub trait Parser<I: Input> {
     /// ```
     // TODO: Write the laws for MonadPlus, or should satisfy MonadPlus laws (stronger guarantees
     // compared to Alternative typeclass laws)
+    // TODO: Tests
     #[inline]
     fn or<P>(self, p: P) -> OrParser<Self, P>
       where P: Parser<I, Output=Self::Output, Error=Self::Error>,
@@ -602,6 +601,7 @@ pub trait Parser<I: Input> {
     /// ```
     // TODO: Get more of the Applicative instance in here, make tests
     // TODO: Docs
+    // TODO: Tests
     #[inline]
     fn skip<P>(self, p: P) -> SkipParser<Self, P>
       where P: Parser<I, Error=Self::Error>,
@@ -1007,6 +1007,21 @@ pub mod test {
         assert_eq!(lhs.parse(&b"test"[..]), (&b"test"[..], Ok(6)));
         assert_eq!(rhs.parse(&b"test"[..]), (&b"test"[..], Ok(6)));
     }
+
+    #[test]
+    fn or_test() {
+        use parsers::{Error, any, take, token};
+
+        assert_eq!(any().or(any()).parse(&b""[..]), (&b""[..], Err(Error::unexpected())));
+        assert_eq!(any().or(any()).parse(&b"a"[..]), (&b""[..], Ok(b'a')));
+        assert_eq!(take(2).or(take(1)).parse(&b"a"[..]), (&b""[..], Ok(&b"a"[..])));
+        assert_eq!(take(2).or(take(1)).parse(&b"ab"[..]), (&b""[..], Ok(&b"ab"[..])));
+        assert_eq!(token(b'a').or(token(b'b')).parse(&b"a"[..]), (&b""[..], Ok(b'a')));
+        assert_eq!(token(b'a').or(token(b'b')).parse(&b"b"[..]), (&b""[..], Ok(b'b')));
+        assert_eq!(token(b'a').map_err(|_| "a err").or(token(b'b').map_err(|_| "b err")).parse(&b"c"[..]), (&b"c"[..], Err("b err")));
+    }
+
+    // TODO: More tests for fundamental combinators implemented on Parser
 
     // FIXME: Inspect lifetimes
     /*
