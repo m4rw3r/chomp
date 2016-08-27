@@ -1092,7 +1092,7 @@ impl<I, P> Parser<I> for MaybeAParser<P>
 #[cfg(test)]
 mod test {
     use parsers::{Error, any, token, string};
-    use types::Parser;
+    use types::{Parser, ret};
 
     use super::{
         many,
@@ -1133,6 +1133,13 @@ mod test {
         let r = many(..3, || string(b"ab")); assert_eq!(r.parse(&b"abac"[..]),  (&b"ac"[..], Ok(vec![&b"ab"[..]])));
         let r = many(..3, || string(b"ab")); assert_eq!(r.parse(&b"abac"[..]),  (&b"ac"[..], Ok(vec![&b"ab"[..]])));
         let r = many(..3, || string(b"ab")); assert_eq!(r.parse(&b"aba"[..]),   (&b"a"[..], Ok(vec![&b"ab"[..]])));
+    }
+
+    #[test]
+    fn many_range_to_limit() {
+        // Test infinite
+        let r: (_, Result<Vec<_>, ()>) = many(..4, || ret(b'a')).parse(&b"bbbbbbbbbb"[..]);
+        assert_eq!(r, (&b"bbbbbbbbbb"[..], Ok(vec![b'a', b'a', b'a'])));
     }
 
     #[test]
@@ -1180,6 +1187,13 @@ mod test {
         // Test where we error inside of the inner parser
         let r = many(1..3, || string(b"ab")); assert_eq!(r.parse(&b"abac"[..]),    (&b"ac"[..], Ok(vec![&b"ab"[..]])));
         let r = many(1..3, || string(b"ab")); assert_eq!(r.parse(&b"ababac"[..]),  (&b"ac"[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
+    }
+
+    #[test]
+    fn many_range_limit() {
+        // Test infinite
+        let r: (_, Result<Vec<_>, ()>) = many(2..4, || ret(b'a')).parse(&b"bbbbbbbbbb"[..]);
+        assert_eq!(r, (&b"bbbbbbbbbb"[..], Ok(vec![b'a', b'a', b'a'])));
     }
 
     #[test]
