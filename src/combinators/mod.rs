@@ -285,99 +285,65 @@ pub fn look_ahead<I: Input, F>(f: F) -> impl Parser<I, Output=F::Output, Error=F
     }
 }
 
-// FIXME: Update
-/*
 #[cfg(test)]
 mod test {
-    use types::{Input, ParseResult};
-    use primitives::IntoInner;
+    use types::{Parser, err};
     use super::*;
 
     use parsers::{Error, any, take, token, string};
 
     #[test]
     fn option_test() {
-        assert_eq!(option(&b""[..],   any, b'-').into_inner(), (&b""[..], Ok(b'-')));
-        assert_eq!(option(&b"a"[..],  any, b'-').into_inner(), (&b""[..], Ok(b'a')));
-        assert_eq!(option(&b""[..],   |i| take(i, 2).map(ToOwned::to_owned), vec![]).into_inner(), (&b""[..], Ok(vec![])));
-        assert_eq!(option(&b"a"[..],  |i| take(i, 2).map(ToOwned::to_owned), vec![]).into_inner(), (&b"a"[..], Ok(vec![])));
-        assert_eq!(option(&b"ab"[..], |i| take(i, 2).map(ToOwned::to_owned), vec![]).into_inner(), (&b""[..], Ok(vec![b'a', b'b'])));
+        assert_eq!(option(any(), b'-').parse(&b""[..]), (&b""[..], Ok(b'-')));
+        assert_eq!(option(any(), b'-').parse(&b"a"[..]), (&b""[..], Ok(b'a')));
+        assert_eq!(option(take(2), &b""[..]).parse(&b""[..]),   (&b""[..], Ok(&b""[..])));
+        assert_eq!(option(take(2), &b""[..]).parse(&b"a"[..]),  (&b"a"[..], Ok(&b""[..])));
+        assert_eq!(option(take(2), &b""[..]).parse(&b"ab"[..]), (&b""[..], Ok(&b"ab"[..])));
 
-        assert_eq!(option(&b"a"[..], |i| token(i, b' ').map_err(|_| "token_err"), b'-').into_inner(), (&b"a"[..], Ok(b'-')));
-    }
-
-    #[test]
-    fn or_test() {
-        assert_eq!(or(&b""[..],  any, any).into_inner(), (&b""[..], Err(Error::unexpected())));
-        assert_eq!(or(&b"a"[..], any, any).into_inner(), (&b""[..], Ok(b'a')));
-        assert_eq!(or(&b"a"[..],  |i| take(i, 2), |i| take(i, 1)).into_inner(), (&b""[..], Ok(&b"a"[..])));
-        assert_eq!(or(&b"ab"[..], |i| take(i, 2), |i| take(i, 1)).into_inner(), (&b""[..], Ok(&b"ab"[..])));
-        assert_eq!(or(&b"a"[..],  |i| token(i, b'a'), |i| token(i, b'b')).into_inner(), (&b""[..], Ok(b'a')));
-        assert_eq!(or(&b"b"[..],  |i| token(i, b'a'), |i| token(i, b'b')).into_inner(), (&b""[..], Ok(b'b')));
-        assert_eq!(or(&b"c"[..],  |i| token(i, b'a').map_err(|_| "a err"), |i| token(i, b'b').map_err(|_| "b err")).into_inner(), (&b"c"[..], Err("b err")));
+        assert_eq!(option(token(b' ').map_err(|_| "token_err"), b'-').parse(&b"a"[..]), (&b"a"[..], Ok(b'-')));
     }
 
     #[test]
     fn many_test() {
-        let r: (_, Result<Vec<u8>, _>) = many(&b""[..], |i| i.err("the error")).into_inner();
-        assert_eq!(r, (&b""[..], Ok(vec![])));
-        let r: (_, Result<Vec<u8>, _>) = many(&b"abc"[..], |i| i.err("the error")).into_inner();
-        assert_eq!(r, (&b"abc"[..], Ok(vec![])));
+        let r: (_, Result<Vec<u8>, _>) = many(|| err("the error")).parse(&b""[..]); assert_eq!(r, (&b""[..], Ok(vec![])));
+        let r: (_, Result<Vec<u8>, _>) = many(|| err("the error")).parse(&b"abc"[..]); assert_eq!(r, (&b"abc"[..], Ok(vec![])));
 
-        let r: (_, Result<Vec<_>, _>) = many(&b""[..], |i| token(i, b'a')).into_inner();
-        assert_eq!(r, (&b""[..], Ok(vec![])));
-        let r: (_, Result<Vec<_>, _>) = many(&b"a"[..], |i| token(i, b'a')).into_inner();
-        assert_eq!(r, (&b""[..], Ok(vec![b'a'])));
-        let r: (_, Result<Vec<_>, _>) = many(&b"aa"[..], |i| token(i, b'a')).into_inner();
-        assert_eq!(r, (&b""[..], Ok(vec![b'a', b'a'])));
+        let r: (_, Result<Vec<_>, _>) = many(|| token(b'a')).parse(&b""[..]); assert_eq!(r, (&b""[..], Ok(vec![])));
+        let r: (_, Result<Vec<_>, _>) = many(|| token(b'a')).parse(&b"a"[..]); assert_eq!(r, (&b""[..], Ok(vec![b'a'])));
+        let r: (_, Result<Vec<_>, _>) = many(|| token(b'a')).parse(&b"aa"[..]); assert_eq!(r, (&b""[..], Ok(vec![b'a', b'a'])));
 
-        let r: (_, Result<Vec<_>, _>) = many(&b"bbb"[..], |i| token(i, b'a')).into_inner();
-        assert_eq!(r, (&b"bbb"[..], Ok(vec![])));
-        let r: (_, Result<Vec<_>, _>) = many(&b"abb"[..], |i| token(i, b'a')).into_inner();
-        assert_eq!(r, (&b"bb"[..], Ok(vec![b'a'])));
-        let r: (_, Result<Vec<_>, _>) = many(&b"aab"[..], |i| token(i, b'a')).into_inner();
-        assert_eq!(r, (&b"b"[..], Ok(vec![b'a', b'a'])));
+        let r: (_, Result<Vec<_>, _>) = many(|| token(b'a')).parse(&b"bbb"[..]); assert_eq!(r, (&b"bbb"[..], Ok(vec![])));
+        let r: (_, Result<Vec<_>, _>) = many(|| token(b'a')).parse(&b"abb"[..]); assert_eq!(r, (&b"bb"[..], Ok(vec![b'a'])));
+        let r: (_, Result<Vec<_>, _>) = many(|| token(b'a')).parse(&b"aab"[..]); assert_eq!(r, (&b"b"[..], Ok(vec![b'a', b'a'])));
     }
 
     #[test]
     fn many1_test() {
-        let r: (_, Result<Vec<u8>, _>) = many1(&b""[..], |i| i.err("the error")).into_inner();
-        assert_eq!(r, (&b""[..], Err("the error")));
-        let r: (_, Result<Vec<u8>, _>) = many1(&b"abc"[..], |i| i.err("the error")).into_inner();
-        assert_eq!(r, (&b"abc"[..], Err("the error")));
+        let r: (_, Result<Vec<u8>, _>) = many1(|| err("the error")).parse(&b""[..]); assert_eq!(r, (&b""[..], Err("the error")));
+        let r: (_, Result<Vec<u8>, _>) = many1(|| err("the error")).parse(&b"abc"[..]); assert_eq!(r, (&b"abc"[..], Err("the error")));
 
-        let r: (_, Result<Vec<_>, _>) = many1(&b""[..], |i| token(i, b'a')).into_inner();
-        assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
-        let r: (_, Result<Vec<_>, _>) = many1(&b"a"[..], |i| token(i, b'a')).into_inner();
-        assert_eq!(r, (&b""[..], Ok(vec![b'a'])));
-        let r: (_, Result<Vec<_>, _>) = many1(&b"aa"[..], |i| token(i, b'a')).into_inner();
-        assert_eq!(r, (&b""[..], Ok(vec![b'a', b'a'])));
+        let r: (_, Result<Vec<_>, _>) = many1(|| token(b'a')).parse(&b""[..]); assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = many1(|| token(b'a')).parse(&b"a"[..]); assert_eq!(r, (&b""[..], Ok(vec![b'a'])));
+        let r: (_, Result<Vec<_>, _>) = many1(|| token(b'a')).parse(&b"aa"[..]); assert_eq!(r, (&b""[..], Ok(vec![b'a', b'a'])));
 
-        let r: (_, Result<Vec<_>, _>) = many1(&b"bbb"[..], |i| token(i, b'a')).into_inner();
-        assert_eq!(r, (&b"bbb"[..], Err(Error::expected(b'a'))));
-        let r: (_, Result<Vec<_>, _>) = many1(&b"abb"[..], |i| token(i, b'a')).into_inner();
-        assert_eq!(r, (&b"bb"[..], Ok(vec![b'a'])));
-        let r: (_, Result<Vec<_>, _>) = many1(&b"aab"[..], |i| token(i, b'a')).into_inner();
-        assert_eq!(r, (&b"b"[..], Ok(vec![b'a', b'a'])));
+        let r: (_, Result<Vec<_>, _>) = many1(|| token(b'a')).parse(&b"bbb"[..]); assert_eq!(r, (&b"bbb"[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = many1(|| token(b'a')).parse(&b"abb"[..]); assert_eq!(r, (&b"bb"[..], Ok(vec![b'a'])));
+        let r: (_, Result<Vec<_>, _>) = many1(|| token(b'a')).parse(&b"aab"[..]); assert_eq!(r, (&b"b"[..], Ok(vec![b'a', b'a'])));
     }
 
     #[test]
     fn count_test() {
-        let r: (_, Result<Vec<u8>, _>) = count(&b""[..], 3, |i| i.err("the error")).into_inner();
-        assert_eq!(r, (&b""[..], Err("the error")));
+        let r: (_, Result<Vec<u8>, _>) = count(3, || err("the error")).parse(&b""[..]); assert_eq!(r, (&b""[..], Err("the error")));
 
-        let r: (_, Result<Vec<_>, _>) = count(&b""[..], 3, |i| token(i, b'a')).into_inner();
-        assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
-        let r: (_, Result<Vec<_>, _>) = count(&b"a"[..], 3, |i| token(i, b'a')).into_inner();
-        assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
-        let r: (_, Result<Vec<_>, _>) = count(&b"aa"[..], 3, |i| token(i, b'a')).into_inner();
-        assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
-        let r: (_, Result<Vec<_>, _>) = count(&b"aaa"[..], 3, |i| token(i, b'a')).into_inner();
-        assert_eq!(r, (&b""[..], Ok(vec![b'a', b'a', b'a'])));
-        let r: (_, Result<Vec<_>, _>) = count(&b"aaaa"[..], 3, |i| token(i, b'a')).into_inner();
-        assert_eq!(r, (&b"a"[..], Ok(vec![b'a', b'a', b'a'])));
+        let r: (_, Result<Vec<_>, _>) = count(3, || token(b'a')).parse(&b""[..]); assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = count(3, || token(b'a')).parse(&b"a"[..]); assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = count(3, || token(b'a')).parse(&b"aa"[..]); assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = count(3, || token(b'a')).parse(&b"aaa"[..]); assert_eq!(r, (&b""[..], Ok(vec![b'a', b'a', b'a'])));
+        let r: (_, Result<Vec<_>, _>) = count(3, || token(b'a')).parse(&b"aaaa"[..]); assert_eq!(r, (&b"a"[..], Ok(vec![b'a', b'a', b'a'])));
     }
 
+// FIXME: Update
+/*
     #[test]
     fn skip_many1_test() {
         assert_eq!(skip_many1(&b"bc"[..], |i| i.err::<(), _>("error")).into_inner(), (&b"bc"[..], Err("error")));
@@ -403,104 +369,71 @@ mod test {
         let r: ParseResult<_, Vec<_>, _> = many_till(&b"abcd"[..], |i| if n == 0 { n += 1; any(i).map_err(|_| Error::expected(b'i')) } else { i.err(Error::expected(b'@')) }, |i| token(i, b'c'));
         assert_eq!(r.into_inner(), (&b"bcd"[..], Err(Error::expected(b'@'))));
     }
+    */
 
     #[test]
     fn matched_by_test() {
-        assert_eq!(matched_by(&b"abc"[..], any).into_inner(), (&b"bc"[..], Ok((&b"a"[..], b'a'))));
-        assert_eq!(matched_by(&b"abc"[..], |i| i.err::<(), _>("my error")).into_inner(), (&b"abc"[..], Err("my error")));
-        assert_eq!(matched_by(&b"abc"[..], |i| any(i).map_err(|_| "any error").then(|i| i.err::<(), _>("my error"))).into_inner(), (&b"bc"[..], Err("my error")));
-        assert_eq!(matched_by(&b""[..], any).into_inner(), (&b""[..], Err(Error::unexpected())));
+        assert_eq!(matched_by(any()).parse(&b"abc"[..]), (&b"bc"[..], Ok((&b"a"[..], b'a'))));
+        assert_eq!(matched_by(err::<(), _>("my error")).parse(&b"abc"[..], ), (&b"abc"[..], Err("my error")));
+        assert_eq!(matched_by(any().map_err(|_| "any error").then(err::<(), _>("my error"))).parse(&b"abc"[..]), (&b"bc"[..], Err("my error")));
+        assert_eq!(matched_by(any()).parse(&b""[..]), (&b""[..], Err(Error::unexpected())));
     }
 
     #[test]
     fn sep_by_test() {
-        assert_eq!(sep_by(&b""[..],      any, |i| token(i, b';')).into_inner(), (&b""[..],   Ok(vec![])));
-        assert_eq!(sep_by(&b"a"[..],     any, |i| token(i, b';')).into_inner(), (&b""[..],   Ok(vec![b'a'])));
-        assert_eq!(sep_by(&b"a;c"[..],   any, |i| token(i, b';')).into_inner(), (&b""[..],   Ok(vec![b'a', b'c'])));
-        assert_eq!(sep_by(&b"a;c;"[..],  any, |i| token(i, b';')).into_inner(), (&b";"[..],  Ok(vec![b'a', b'c'])));
-        assert_eq!(sep_by(&b"abc"[..],   any, |i| token(i, b';')).into_inner(), (&b"bc"[..], Ok(vec![b'a'])));
-        assert_eq!(sep_by(&b"a;bc"[..],  any, |i| token(i, b';')).into_inner(), (&b"c"[..],  Ok(vec![b'a', b'b'])));
-        assert_eq!(sep_by(&b"abc"[..],   any, |i| token(i, b';')).into_inner(), (&b"bc"[..], Ok(vec![b'a'])));
-        assert_eq!(sep_by(&b"a;bc"[..],  any, |i| token(i, b';')).into_inner(), (&b"c"[..],  Ok(vec![b'a', b'b'])));
+        assert_eq!(sep_by(any, || token(b';')).parse(&b""[..]), (&b""[..],   Ok(vec![])));
+        assert_eq!(sep_by(any, || token(b';')).parse(&b"a"[..]), (&b""[..],   Ok(vec![b'a'])));
+        assert_eq!(sep_by(any, || token(b';')).parse(&b"a;c"[..]), (&b""[..],   Ok(vec![b'a', b'c'])));
+        assert_eq!(sep_by(any, || token(b';')).parse(&b"a;c;"[..]), (&b";"[..],  Ok(vec![b'a', b'c'])));
+        assert_eq!(sep_by(any, || token(b';')).parse(&b"abc"[..]), (&b"bc"[..], Ok(vec![b'a'])));
+        assert_eq!(sep_by(any, || token(b';')).parse(&b"a;bc"[..]), (&b"c"[..],  Ok(vec![b'a', b'b'])));
+        assert_eq!(sep_by(any, || token(b';')).parse(&b"abc"[..]), (&b"bc"[..], Ok(vec![b'a'])));
+        assert_eq!(sep_by(any, || token(b';')).parse(&b"a;bc"[..]), (&b"c"[..],  Ok(vec![b'a', b'b'])));
 
-        assert_eq!(sep_by(&b"b"[..], |i| token(i, b'a'), |i| token(i, b';')).into_inner(), (&b"b"[..], Ok(vec![])));
-        assert_eq!(sep_by(&b"a--c-"[..], any, |i| string(i, b"--")).into_inner(), (&b"-"[..], Ok(vec![b'a', b'c'])));
+        assert_eq!(sep_by(|| token(b'a'), || token(b';')).parse(&b"b"[..]), (&b"b"[..], Ok(vec![])));
+        assert_eq!(sep_by(any, || string(b"--")).parse(&b"a--c-"[..]), (&b"-"[..], Ok(vec![b'a', b'c'])));
 
         // Incomplete becasue there might be another separator or item to be read
-        let r: ParseResult<_, Vec<_>, _> = sep_by(&b""[..], any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
-
-        let r: ParseResult<_, Vec<_>, _> = sep_by(&b"a"[..], any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), (&b""[..], Ok(vec![b'a'])));
-
-        let r: ParseResult<_, Vec<_>, _> = sep_by(&b"a;"[..], any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), (&b";"[..], Ok(vec![b'a'])));
-
-        let r: ParseResult<_, Vec<_>, _> = sep_by(&b"a;c"[..], any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), (&b""[..], Ok(vec![b'a', b'c'])));
-
-        let r: ParseResult<_, Vec<_>, _> = sep_by(&b"a;c;"[..], any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), (&b";"[..], Ok(vec![b'a', b'c'])));
-
-        let r: ParseResult<_, Vec<_>, _> = sep_by(&b"a--c-"[..], any, |i| string(i, b"--"));
-        assert_eq!(r.into_inner(), (&b"-"[..], Ok(vec![b'a', b'c'])));
-
-        let r: ParseResult<_, Vec<_>, _> = sep_by(&b"aaa--a"[..], |i| string(i, b"aaa"), |i| string(i, b"--"));
-        assert_eq!(r.into_inner(), (&b"--a"[..], Ok(vec![&b"aaa"[..]])));
+        let r: (_, Result<Vec<_>, _>) = sep_by(any, || token(b';')).parse(&b""[..]); assert_eq!(r, (&b""[..], Ok(vec![])));
+        let r: (_, Result<Vec<_>, _>) = sep_by(any, || token(b';')).parse(&b"a"[..]); assert_eq!(r, (&b""[..], Ok(vec![b'a'])));
+        let r: (_, Result<Vec<_>, _>) = sep_by(any, || token(b';')).parse(&b"a;"[..]); assert_eq!(r, (&b";"[..], Ok(vec![b'a'])));
+        let r: (_, Result<Vec<_>, _>) = sep_by(any, || token(b';')).parse(&b"a;c"[..]); assert_eq!(r, (&b""[..], Ok(vec![b'a', b'c'])));
+        let r: (_, Result<Vec<_>, _>) = sep_by(any, || token(b';')).parse(&b"a;c;"[..]); assert_eq!(r, (&b";"[..], Ok(vec![b'a', b'c'])));
+        let r: (_, Result<Vec<_>, _>) = sep_by(any, || string(b"--")).parse(&b"a--c-"[..]);  assert_eq!(r, (&b"-"[..], Ok(vec![b'a', b'c'])));
+        let r: (_, Result<Vec<_>, _>) = sep_by(|| string(b"aaa"), || string(b"--")).parse(&b"aaa--a"[..]); assert_eq!(r, (&b"--a"[..], Ok(vec![&b"aaa"[..]])));
     }
 
     #[test]
     fn sep_by1_test() {
-        let r: ParseResult<_, Vec<_>, _> = sep_by1(&b""[..], any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), (&b""[..], Err(Error::unexpected())));
+        let r: (_, Result<Vec<_>, _>)  = sep_by1(any,               || token(b';')).parse(&b""[..]); assert_eq!(r, (&b""[..], Err(Error::unexpected())));
+        let r: (_, Result<Vec<()>, _>) = sep_by1(|| err("my err"),  || token(b';').map_err(|_| "token_err")).parse(&b"b"[..]); assert_eq!(r, (&b"b"[..], Err("my err")));
+        let r: (_, Result<Vec<_>, _>)  = sep_by1(any,               || token(b';')).parse(&b""[..]); assert_eq!(r, (&b""[..], Err(Error::unexpected())));
+        let r: (_, Result<Vec<_>, _>)  = sep_by1(|| token(b'a'), || token(b';')).parse(&b"b"[..]); assert_eq!(r, (&b"b"[..], Err(Error::expected(b'a'))));
 
-        let r: ParseResult<_, Vec<()>, _> = sep_by1(&b"b"[..], |i| i.err("my err"), |i| token(i, b';').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), (&b"b"[..], Err("my err")));
+        assert_eq!(sep_by1(any, || token(b';')).parse(&b"a"[..]),       (&b""[..],   Ok(vec![b'a'])));
+        assert_eq!(sep_by1(any, || token(b';')).parse(&b"a;c"[..]),     (&b""[..],   Ok(vec![b'a', b'c'])));
+        assert_eq!(sep_by1(any, || token(b';')).parse(&b"a;c;"[..]),    (&b";"[..],  Ok(vec![b'a', b'c'])));
+        assert_eq!(sep_by1(any, || string(b"--")).parse(&b"a--c-"[..]), (&b"-"[..],  Ok(vec![b'a', b'c'])));
+        assert_eq!(sep_by1(any, || token(b';')).parse(&b"abc"[..]),     (&b"bc"[..], Ok(vec![b'a'])));
+        assert_eq!(sep_by1(any, || token(b';')).parse(&b"a;bc"[..]),    (&b"c"[..],  Ok(vec![b'a', b'b'])));
 
-        let r: ParseResult<_, Vec<_>, _> = sep_by1(&b""[..], any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), (&b""[..], Err(Error::unexpected())));
-
-        let r: ParseResult<_, Vec<_>, _> = sep_by1(&b"b"[..], |i| token(i, b'a'), |i| token(i, b';'));
-        assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'a'))));
-
-        assert_eq!(sep_by1(&b"a"[..],     any, |i| token(i, b';')).into_inner(),   (&b""[..],   Ok(vec![b'a'])));
-        assert_eq!(sep_by1(&b"a;c"[..],   any, |i| token(i, b';')).into_inner(),   (&b""[..],   Ok(vec![b'a', b'c'])));
-        assert_eq!(sep_by1(&b"a;c;"[..],  any, |i| token(i, b';')).into_inner(),   (&b";"[..],  Ok(vec![b'a', b'c'])));
-        assert_eq!(sep_by1(&b"a--c-"[..], any, |i| string(i, b"--")).into_inner(), (&b"-"[..],  Ok(vec![b'a', b'c'])));
-        assert_eq!(sep_by1(&b"abc"[..],   any, |i| token(i, b';')).into_inner(),   (&b"bc"[..], Ok(vec![b'a'])));
-        assert_eq!(sep_by1(&b"a;bc"[..],  any, |i| token(i, b';')).into_inner(),   (&b"c"[..],  Ok(vec![b'a', b'b'])));
-
-        assert_eq!(sep_by1(&b"abc"[..],  any, |i| token(i, b';')).into_inner(), (&b"bc"[..], Ok(vec![b'a'])));
-        assert_eq!(sep_by1(&b"a;bc"[..], any, |i| token(i, b';')).into_inner(), (&b"c"[..],  Ok(vec![b'a', b'b'])));
+        assert_eq!(sep_by1(any, || token(b';')).parse(&b"abc"[..]), (&b"bc"[..], Ok(vec![b'a'])));
+        assert_eq!(sep_by1(any, || token(b';')).parse(&b"a;bc"[..]), (&b"c"[..],  Ok(vec![b'a', b'b'])));
 
         // Incomplete becasue there might be another separator or item to be read
-        let r: ParseResult<_, Vec<_>, _> = sep_by1(&b""[..], any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), (&b""[..], Err(Error::unexpected())));
-
-        let r: ParseResult<_, Vec<_>, _> = sep_by1(&b"a"[..], any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), (&b""[..], Ok(vec![b'a'])));
-
-        let r: ParseResult<_, Vec<_>, _> = sep_by1(&b"a;"[..], any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), (&b";"[..], Ok(vec![b'a'])));
-
-        let r: ParseResult<_, Vec<_>, _> = sep_by1(&b"a;c"[..], any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), (&b""[..], Ok(vec![b'a', b'c'])));
-
-        let r: ParseResult<_, Vec<_>, _> = sep_by1(&b"a;c;"[..], any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), (&b";"[..], Ok(vec![b'a', b'c'])));
-
-        let r: ParseResult<_, Vec<_>, _> = sep_by1(&b"a--c-"[..], any, |i| string(i, b"--"));
-        assert_eq!(r.into_inner(), (&b"-"[..], Ok(vec![b'a', b'c'])));
-
-        let r: ParseResult<_, Vec<_>, _> = sep_by1(&b"aaa--a"[..], |i| string(i, b"aaa"), |i| string(i, b"--"));
-        assert_eq!(r.into_inner(), (&b"--a"[..], Ok(vec![&b"aaa"[..]])));
+        let r: (_, Result<Vec<_>, _>) = sep_by1(any, || token(b';')).parse(&b""[..]); assert_eq!(r, (&b""[..], Err(Error::unexpected())));
+        let r: (_, Result<Vec<_>, _>) = sep_by1(any, || token(b';')).parse(&b"a"[..]); assert_eq!(r, (&b""[..], Ok(vec![b'a'])));
+        let r: (_, Result<Vec<_>, _>) = sep_by1(any, || token(b';')).parse(&b"a;"[..]); assert_eq!(r, (&b";"[..], Ok(vec![b'a'])));
+        let r: (_, Result<Vec<_>, _>) = sep_by1(any, || token(b';')).parse(&b"a;c"[..]); assert_eq!(r, (&b""[..], Ok(vec![b'a', b'c'])));
+        let r: (_, Result<Vec<_>, _>) = sep_by1(any, || token(b';')).parse(&b"a;c;"[..]); assert_eq!(r, (&b";"[..], Ok(vec![b'a', b'c'])));
+        let r: (_, Result<Vec<_>, _>) = sep_by1(any, || string(b"--")).parse(&b"a--c-"[..]); assert_eq!(r, (&b"-"[..], Ok(vec![b'a', b'c'])));
+        let r: (_, Result<Vec<_>, _>) = sep_by1(|| string(b"aaa"), || string(b"--")).parse(&b"aaa--a"[..]); assert_eq!(r, (&b"--a"[..], Ok(vec![&b"aaa"[..]])));
     }
 
     #[test]
     fn look_ahead_test() {
-        assert_eq!(look_ahead(&b"abc"[..], any).into_inner(), (&b"abc"[..], Ok(b'a')));
-        assert_eq!(look_ahead(&b"a"[..], |i| string(i, b"abc")).into_inner(), (&b"a"[..], Err(Error::expected(b'b'))));
-        assert_eq!(look_ahead(&b"aa"[..], |i| token(i, b'a').then(|i| token(i, b'b')).map_err(|_| "err")).into_inner(), (&b"aa"[..], Err("err")));
+        assert_eq!(look_ahead(any()).parse(&b"abc"[..]), (&b"abc"[..], Ok(b'a')));
+        assert_eq!(look_ahead(string(b"abc")).parse(&b"a"[..]), (&b"a"[..], Err(Error::expected(b'b'))));
+        assert_eq!(look_ahead(token(b'a').then(token(b'b')).map_err(|_| "err")).parse(&b"aa"[..]), (&b"aa"[..], Err("err")));
     }
 }
-*/
