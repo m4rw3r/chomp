@@ -1046,6 +1046,8 @@ impl<I, F, S, P, Q> FnMut<()> for SepByInnerParserCtor<I, F, S>
             MaybeAParser::parser((self.sep)())
         }
         else {
+            self.item = true;
+
             MaybeAParser::none()
         }.then((self.f)())
     }
