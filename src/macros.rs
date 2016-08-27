@@ -455,9 +455,9 @@ macro_rules! __parse_internal {
     // The four versions are needed to allow the empty case (no tailing allowed on the empty
     // case), _, $pat and $ident:$ty.
     ( @BIND((_)                         $($exp:tt)+) )              => {  __parse_internal!{@EXPR() $($exp)* } };
-    ( @BIND((_)                         $($exp:tt)+) $($tail:tt)+ ) => { (__parse_internal!{@EXPR() $($exp)* }).bind(|_| __parse_internal!{$($tail)* }) };
-    ( @BIND(($name:pat)                 $($exp:tt)+) $($tail:tt)+ ) => { (__parse_internal!{@EXPR() $($exp)* }).bind(|$name| __parse_internal!{$($tail)* }) };
-    ( @BIND(($name:ident : $name_ty:ty) $($exp:tt)+) $($tail:tt)+ ) => { (__parse_internal!{@EXPR() $($exp)* }).bind(|$name : $name_ty| __parse_internal!{$($tail)* }) };
+    ( @BIND((_)                         $($exp:tt)+) $($tail:tt)+ ) => { (__parse_internal!{@EXPR() $($exp)* }).bind(move |_| __parse_internal!{$($tail)* }) };
+    ( @BIND(($name:pat)                 $($exp:tt)+) $($tail:tt)+ ) => { (__parse_internal!{@EXPR() $($exp)* }).bind(move |$name| __parse_internal!{$($tail)* }) };
+    ( @BIND(($name:ident : $name_ty:ty) $($exp:tt)+) $($tail:tt)+ ) => { (__parse_internal!{@EXPR() $($exp)* }).bind(move |$name : $name_ty| __parse_internal!{$($tail)* }) };
 
     // Term ::= Ret
     //        | Err
@@ -486,24 +486,24 @@ macro_rules! __parse_internal {
     // Expr ::= ExprAlt
     ( @EXPR($($lhs:tt)*) )                          => { __parse_internal!{@EXPR_ALT() $($lhs)*} };
     //        | ExprAlt ">>" Expr
-    ( @EXPR($($lhs:tt)*) >> $($tail:tt)* )          => { (__parse_internal!{@EXPR_ALT() $($lhs)*}).bind(|_| __parse_internal!{@EXPR() $($tail)*}) };
+    ( @EXPR($($lhs:tt)*) >> $($tail:tt)* )          => { (__parse_internal!{@EXPR_ALT() $($lhs)*}).bind(move |_| __parse_internal!{@EXPR() $($tail)*}) };
     // recurse until >> or end
     // unrolled:
     // ( @EXPR($($lhs:tt)*) $t1:tt $($tail:tt)* )      => { __parse_internal!{@EXPR($($lhs)* $t1) $($tail)*} };
     ( @EXPR($($lhs:tt)*) $t1:tt )                                                               => {  __parse_internal!{@EXPR_ALT() $($lhs)* $t1} };
-    ( @EXPR($($lhs:tt)*) $t1:tt >> $($tail:tt)* )                                               => { (__parse_internal!{@EXPR_ALT() $($lhs)* $t1}).bind(|_| __parse_internal!{@EXPR() $($tail)*}) };
+    ( @EXPR($($lhs:tt)*) $t1:tt >> $($tail:tt)* )                                               => { (__parse_internal!{@EXPR_ALT() $($lhs)* $t1}).bind(move |_| __parse_internal!{@EXPR() $($tail)*}) };
     ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt )                                                        => {  __parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2} };
-    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt >> $($tail:tt)* )                                        => { (__parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2}).bind(|_| __parse_internal!{@EXPR() $($tail)*}) };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt >> $($tail:tt)* )                                        => { (__parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2}).bind(move |_| __parse_internal!{@EXPR() $($tail)*}) };
     ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt )                                                 => {  __parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3} };
-    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt >> $($tail:tt)* )                                 => { (__parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3}).bind(|_| __parse_internal!{@EXPR() $($tail)*}) };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt >> $($tail:tt)* )                                 => { (__parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3}).bind(move |_| __parse_internal!{@EXPR() $($tail)*}) };
     ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt )                                          => {  __parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4} };
-    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt >> $($tail:tt)* )                          => { (__parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4}).bind(|_| __parse_internal!{@EXPR() $($tail)*}) };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt >> $($tail:tt)* )                          => { (__parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4}).bind(move |_| __parse_internal!{@EXPR() $($tail)*}) };
     ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt )                                   => {  __parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4 $t5} };
-    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt >> $($tail:tt)* )                   => { (__parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4 $t5}).bind(|_| __parse_internal!{@EXPR() $($tail)*}) };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt >> $($tail:tt)* )                   => { (__parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4 $t5}).bind(move |_| __parse_internal!{@EXPR() $($tail)*}) };
     ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt )                            => {  __parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6} };
-    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt >> $($tail:tt)* )            => { (__parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6}).bind(|_| __parse_internal!{@EXPR() $($tail)*}) };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt >> $($tail:tt)* )            => { (__parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6}).bind(move |_| __parse_internal!{@EXPR() $($tail)*}) };
     ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt )                     => {  __parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7} };
-    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt >> $($tail:tt)* )     => { (__parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7}).bind(|_| __parse_internal!{@EXPR() $($tail)*}) };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt >> $($tail:tt)* )     => { (__parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7}).bind(move |_| __parse_internal!{@EXPR() $($tail)*}) };
     ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt $t8:tt $($tail:tt)* ) => {  __parse_internal!{@EXPR($($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7 $t8) $($tail)*} };
 
     // ExprAlt ::= ExprSkip
