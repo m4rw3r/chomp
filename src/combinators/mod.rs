@@ -111,8 +111,6 @@ pub fn many1<I: Input, F, T, P>(f: F) -> impl Parser<I, Output=T, Error=P::Error
     bounded::many(1.., f)
 }
 
-// FIXME
-/*
 /// Applies the parser `R` zero or more times, separated by the parser `F`. All matches from `R`
 /// will be collected into the type `T: FromIterator`.
 ///
@@ -130,14 +128,16 @@ pub fn many1<I: Input, F, T, P>(f: F) -> impl Parser<I, Output=T, Error=P::Error
 /// assert_eq!(r, Ok(vec![91, 03, 20]));
 /// ```
 #[inline]
-pub fn sep_by<I: Input, T, R, F>(p: R, sep: F) -> impl Parser<I, Output=T, Error=R::Error>
-  where T: FromIterator<R::Output>,
+pub fn sep_by<I, T, R, F, P, Q>(p: R, sep: F) -> impl Parser<I, Output=T, Error=P::Error>
+  where I: Input,
+        T: FromIterator<P::Output>,
         //E: From<N>,
-        R: Parser<I>,
-        F: Parser<I, Error=R::Error> {
-    bounded::sep_by_unbounded(p, sep)
+        R: FnMut() -> P,
+        F: FnMut() -> Q,
+        P: Parser<I>,
+        Q: Parser<I, Error=P::Error> {
+    bounded::sep_by(.., p, sep)
 }
-
 
 /// Applies the parser `R` one or more times, separated by the parser `F`. All matches from `R`
 /// will be collected into the type `T: FromIterator`.
@@ -156,14 +156,19 @@ pub fn sep_by<I: Input, T, R, F>(p: R, sep: F) -> impl Parser<I, Output=T, Error
 /// assert_eq!(r, Ok(vec![91, 03, 20]));
 /// ```
 #[inline]
-pub fn sep_by1<I: Input, T, R, F>(p: R, sep: F) -> impl Parser<I, Output=T, Error=R::Error>
-  where T: FromIterator<R::Output>,
+pub fn sep_by1<I, T, R, F, P, Q>(p: R, sep: F) -> impl Parser<I, Output=T, Error=P::Error>
+  where I: Input,
+        T: FromIterator<P::Output>,
         //E: From<N>,
-        R: Parser<I>,
-        F: Parser<I, Error=R::Error> {
-    bounded::sep_by_from(1, p, sep)
+        R: FnMut() -> P,
+        F: FnMut() -> Q,
+        P: Parser<I>,
+        Q: Parser<I, Error=P::Error> {
+    bounded::sep_by(1.., p, sep)
 }
 
+// FIXME
+/*
 /// Applies the parser `R` multiple times until the parser `F` succeeds and returns a
 /// `T: FromIterator` populated by the values yielded by `R`. Consumes the matched part of `F`.
 ///
