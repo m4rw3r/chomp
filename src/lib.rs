@@ -229,7 +229,7 @@ extern crate debugtrace;
 mod macros;
 // mod parse;
 
-// pub mod ascii;
+pub mod ascii;
 pub mod buffer;
 pub mod combinators;
 pub mod parsers;
