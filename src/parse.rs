@@ -1,15 +1,4 @@
-use types::{Input, ParseResult};
-use primitives::{
-    IntoInner,
-    Primitives,
-};
-
-/// Runs the supplied parser over the input.
-pub fn run_parser<I, F, T, E>(input: I, parser: F) -> (I, Result<T, E>)
-  where I: Input,
-        F: FnOnce(I) -> ParseResult<I, T, E> {
-    parser(input).into_inner()
-}
+use types::{Input, Parser};
 
 /// Runs the given parser on the supplied finite input.
 ///
@@ -46,20 +35,21 @@ pub fn run_parser<I, F, T, E>(input: I, parser: F) -> (I, Result<T, E>)
 ///            Err((&b" and more"[..], Error::new())));
 /// # }
 /// ```
-pub fn parse_only<'a, I, T, E, F>(parser: F, input: &'a [I]) -> Result<T, (&'a [I], E)>
+#[inline]
+pub fn parse_only<'a, I, F>(parser: F, input: &'a [I]) -> Result<F::Output, (&'a [I], F::Error)>
   where I: Copy + PartialEq,
-        F: FnOnce(&'a [I]) -> ParseResult<&'a [I], T, E> {
-    match parser(input).into_inner() {
-        (_, Ok(t))      => Ok(t),
+        F: Parser<&'a [I]> {
+    match parser.parse(input) {
+        (_,     Ok(t))  => Ok(t),
         (mut b, Err(e)) => Err((b.consume_remaining(), e)),
     }
 }
 
 /// Runs the given parser on the supplied string.
-pub fn parse_only_str<'a, T, E, F>(parser: F, input: &'a str) -> Result<T, (&'a str, E)>
-  where F: FnOnce(&'a str) -> ParseResult<&'a str, T, E> {
-    match parser(input).into_inner() {
-        (_, Ok(t))      => Ok(t),
+pub fn parse_only_str<'a, F>(parser: F, input: &'a str) -> Result<F::Output, (&'a str, F::Error)>
+  where F: Parser<&'a str> {
+    match parser.parse(input) {
+        (_,     Ok(t))  => Ok(t),
         (mut b, Err(e)) => Err((b.consume_remaining(), e)),
     }
 }
@@ -67,50 +57,41 @@ pub fn parse_only_str<'a, T, E, F>(parser: F, input: &'a str) -> Result<T, (&'a 
 #[cfg(test)]
 mod test {
     use types::Input;
-    use primitives::Primitives;
     use super::*;
 
     #[test]
     fn inspect_input() {
-        let mut input = None;
-
         assert_eq!(parse_only(|i| {
-            input = Some(i.iter().cloned().collect());
+            assert_eq!(i, b"the input");
 
-            i.ret::<_, ()>("the result")
+            (i, Ok::<&'static str, ()>("the result"))
         }, b"the input"), Ok("the result"));
-
-        assert_eq!(input, Some(b"the input".to_vec()));
     }
 
     #[test]
     fn err() {
         assert_eq!(parse_only(|mut i| {
-            i.consume(4);
+            Input::consume(&mut i, 4);
 
-            i.err::<(), _>("my error")
+            (i, Err::<(), &'static str>("my error"))
         }, b"the input"), Err((&b"input"[..], "my error")));
     }
 
     #[test]
     fn inspect_input_str() {
-        let mut input = None;
-
         assert_eq!(parse_only_str(|i| {
-            input = Some(i.to_owned());
+            assert_eq!(i, "the input");
 
-            i.ret::<_, ()>("the result")
+            (i, Ok::<_, ()>("the result"))
         }, "the input"), Ok("the result"));
-
-        assert_eq!(input, Some("the input".to_owned()));
     }
 
     #[test]
     fn err_str() {
         assert_eq!(parse_only_str(|mut i| {
-            i.consume(4);
+            Input::consume(&mut i, 4);
 
-            i.err::<(), _>("my error")
+            (i, Err::<(), _>("my error"))
         }, "the input"), Err(("input", "my error")));
     }
 }

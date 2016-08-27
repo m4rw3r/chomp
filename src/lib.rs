@@ -227,18 +227,16 @@ extern crate debugtrace;
 
 #[macro_use]
 mod macros;
-// mod parse;
+mod parse;
 
 pub mod ascii;
 pub mod buffer;
 pub mod combinators;
 pub mod parsers;
-// pub mod primitives;
 pub mod types;
 
-// pub use parse::parse_only;
-// pub use parse::parse_only_str;
-// pub use parse::run_parser;
+pub use parse::parse_only;
+pub use parse::parse_only_str;
 
 /// Basic prelude.
 pub mod prelude {
@@ -286,6 +284,6 @@ pub mod prelude {
         U8Input,
         Parser,
     };
-    //pub use parse_only;
-    //pub use parse_only_str;
+    pub use parse_only;
+    pub use parse_only_str;
 }
