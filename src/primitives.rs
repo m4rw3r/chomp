@@ -94,6 +94,21 @@ pub trait Primitives: Input {
         self._consume_remaining(Guard(()))
     }
 
+    /// Runs the closure `F` on the tokens *in order* until it returns false, all tokens up to that
+    /// token will be discarded from the current input.
+    ///
+    /// MUST never run the closure more than once on the exact same token.
+    ///
+    /// If the end of the input is reached, the whole input is discarded.
+    ///
+    /// Note: Default implementation uses `consume_while` and makes the assumption that it will
+    /// optimize away the resulting `Self::Buffer`.
+    #[inline(always)]
+    fn skip_while<F>(&mut self, f: F)
+      where F: FnMut(Self::Token) -> bool {
+        self._skip_while(Guard(()), f)
+    }
+
     /// Marks the current position to be able to backtrack to it using `restore`.
     #[inline(always)]
     fn mark(&self) -> Self::Marker {

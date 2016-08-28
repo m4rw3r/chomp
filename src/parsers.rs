@@ -230,6 +230,21 @@ pub fn take_while1<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Buffer>
     }
 }
 
+/// Skips over tokens in the input until `f` returns false.
+///
+/// ```
+/// use chomp::prelude::{parse_only, skip_while};
+///
+/// assert_eq!(parse_only(|i| skip_while(i, |c| c == b'a'), &b"aaabc"[..]), Ok(()));
+/// ```
+#[inline]
+pub fn skip_while<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, ()>
+  where F: FnMut(I::Token) -> bool {
+    i.skip_while(f);
+
+    i.ret(())
+}
+
 /// Matches all items until ``f`` returns true, all items to that point will be returned as a slice
 /// upon success.
 ///

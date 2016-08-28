@@ -239,6 +239,14 @@ pub trait Input: Sized {
     #[doc(hidden)]
     fn _consume_remaining(&mut self, Guard) -> Self::Buffer;
 
+    /// **Primitive:** See `Primitives::skip_while` for documentation.
+    #[inline]
+    #[doc(hidden)]
+    fn _skip_while<F>(&mut self, g: Guard, f: F)
+      where F: FnMut(Self::Token) -> bool {
+        self._consume_while(g, f);
+    }
+
     /// **Primitive:** See `Primitives::mark` for documentation.
     #[inline]
     #[doc(hidden)]
