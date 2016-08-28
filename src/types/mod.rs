@@ -164,8 +164,9 @@ pub trait Input: Sized {
     fn consume(&mut self, n: usize) -> Option<Self::Buffer>;
 
     /// Runs the closure `F` on the tokens *in order* until it returns false, all tokens up to that
-    /// token will be returned as a buffer and discarded from the current input. MUST never run the
-    /// closure more than once on the exact same token.
+    /// token will be returned as a buffer and discarded from the current input.
+    ///
+    /// MUST never run the closure more than once on the exact same token.
     ///
     /// If the end of the input is reached, the whole input is returned.
     ///
