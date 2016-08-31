@@ -848,6 +848,11 @@ mod test {
         let r: ParseResult<_, Vec<_>, _> = many(&b""[..], 0..0, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
         let r: ParseResult<_, Vec<_>, _> = many(&b"a"[..], 0..0, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"a"[..], Ok(vec![])));
 
+        let r: ParseResult<_, Vec<_>, _> = many(&b""[..], 2..2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"a"[..], 2..2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aa"[..], 2..2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![b'a', b'a'])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aaa"[..], 2..2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"a"[..], Ok(vec![b'a', b'a'])));
+
         let r: ParseResult<_, Vec<_>, _> = many(&b""[..], 2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
         let r: ParseResult<_, Vec<_>, _> = many(&b"a"[..], 2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
         let r: ParseResult<_, Vec<_>, _> = many(&b"aa"[..], 2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![b'a', b'a'])));
@@ -959,6 +964,8 @@ mod test {
         let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..], 1..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"c"[..], Err(Error::expected(b'b'))));
         let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..], 1..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..]])));
         let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..], 2..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"c"[..], Err(Error::expected(b'b'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababac"[..], 2..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababac"[..], 2..2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
     }
 
     #[test]
@@ -1006,6 +1013,7 @@ mod test {
     #[test]
     fn skip_range_to() {
         let r = skip_many(&b""[..],  ..0, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
+        let r = skip_many(&b"b"[..], ..0, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Ok(())));
         let r = skip_many(&b"a"[..], ..0, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"a"[..], Ok(())));
 
         let r = skip_many(&b""[..],    ..3, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
@@ -1021,6 +1029,13 @@ mod test {
 
     #[test]
     fn skip_range_from() {
+        let r = skip_many(&b""[..],    0.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
+        let r = skip_many(&b"a"[..],   0.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
+        let r = skip_many(&b"aa"[..],  0.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
+
+        let r = skip_many(&b""[..],    1.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r = skip_many(&b"a"[..],   0.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
+
         let r = skip_many(&b""[..],    2.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
         let r = skip_many(&b"a"[..],   2.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
         let r = skip_many(&b"aa"[..],  2.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
@@ -1037,6 +1052,11 @@ mod test {
         let r = skip_many(&b""[..],  0..0, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
         let r = skip_many(&b"a"[..], 0..0, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"a"[..], Ok(())));
 
+        let r = skip_many(&b""[..],     2..2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r = skip_many(&b"a"[..],    2..2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r = skip_many(&b"aa"[..],   2..2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
+        let r = skip_many(&b"aaa"[..],  2..2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
+
         let r = skip_many(&b""[..],     2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
         let r = skip_many(&b"a"[..],    2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
         let r = skip_many(&b"aa"[..],   2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
@@ -1052,6 +1072,10 @@ mod test {
 
     #[test]
     fn skip_exact() {
+        let r = skip_many(&b""[..],     0, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..],   Ok(())));
+        let r = skip_many(&b"a"[..],    0, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"a"[..],  Ok(())));
+        let r = skip_many(&b""[..],     1, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..],   Err(Error::expected(b'a'))));
+        let r = skip_many(&b"a"[..],    1, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..],   Ok(())));
         let r = skip_many(&b""[..],     2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..],   Err(Error::expected(b'a'))));
         let r = skip_many(&b"a"[..],    2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..],   Err(Error::expected(b'a'))));
         let r = skip_many(&b"aa"[..],   2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..],   Ok(())));
