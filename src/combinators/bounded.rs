@@ -409,51 +409,64 @@ impl<I, F, P> BoundedSkipMany<I, F, P::Error> for RangeFrom<usize>
     }
 }
 
-/*
-impl BoundedRange for RangeFrom<usize> {
+many_till_iter! {
+    doc: "Parser iterating over a `RangeFrom` and ending with a final parser, created by `many_till(n.., ...)`",
+    struct_name: ManyTillRangeFromParser,
+    state:       usize,
+
+    size_hint(self) {
+        (self.data, None)
+    }
+
+    next(self) {
+        pre {
+            if self.data == 0 {
+                // We have reached minimum, we can attempt to end now
+                iter_till_end_test!(self);
+            }
+        }
+        on {
+            // TODO: Replace with saturating sub
+            self.data = if self.data == 0 { 0 } else { self.data - 1 };
+        }
+    }
+
+    => result {
+        // Got all occurrences of the parser
+        (s, 0, EndStateTill::EndSuccess) => (s, Ok(result)),
+        // Did not reach minimum or a failure, propagate
+        (s, _, EndStateTill::Error(e))   => (s, Err(e)),
+        (_, _, EndStateTill::Incomplete) => unreachable!(),
+        // We cannot reach this since we only run the end test once we have reached the
+        // minimum number of matches
+        (_, _, EndStateTill::EndSuccess) => unreachable!()
+    }
+}
+
+impl<I: Input, F, G, P, Q, T> BoundedManyTill<I, F, G, T, P::Error> for RangeFrom<usize>
+  where I: Input,
+        F: FnMut() -> P,
+        G: FnMut() -> Q,
+        P: Parser<I>,
+        Q: Parser<I, Error=P::Error>,
+        T: FromIterator<P::Output> {
+    /// The parser type returned by `many_till`.
+    type ManyTillParser = ManyTillRangeFromParser<I, F, G, P, Q, T>;
+
     #[inline]
-    fn many_till<I: Input, T, E, R, F, U, N, V>(self, i: I, p: R, end: F) -> ParseResult<I, T, E>
-      where T: FromIterator<U>,
-            E: From<N>,
-            R: FnMut(I) -> ParseResult<I, U, E>,
-            F: FnMut(I) -> ParseResult<I, V, N> {
-        run_iter_till!{
-            input:  i,
-            parser: p,
-            end:    end,
+    fn many_till(self, f: F, g: G) -> Self::ManyTillParser {
+        ManyTillRangeFromParser {
+            p_ctor: f,
+            q_ctor: g,
             // Range is closed on left side, unbounded on right
-            state:  usize: self.start,
-
-            size_hint(self) {
-                (self.data, None)
-            }
-
-            next(self) {
-                pre {
-                    if self.data == 0 {
-                        // We have reached minimum, we can attempt to end now
-                        iter_till_end_test!(self);
-                    }
-                }
-                on {
-                    self.data = self.data.saturating_sub(1);
-                }
-            }
-
-            => result : T {
-                // Got all occurrences of the parser
-                (s, 0, EndStateTill::EndSuccess) => s.ret(result),
-                // Did not reach minimum or a failure, propagate
-                (s, _, EndStateTill::Error(e))   => s.err(e),
-                (_, _, EndStateTill::Incomplete) => unreachable!(),
-                // We cannot reach this since we only run the end test once we have reached the
-                // minimum number of matches
-                (_, _, EndStateTill::EndSuccess) => unreachable!()
-            }
+            data:   self.start,
+            _i:     PhantomData,
+            _p:     PhantomData,
+            _q:     PhantomData,
+            _t:     PhantomData,
         }
     }
 }
-*/
 
 many_iter!{
     doc:         "Parser iterating over a `RangeFull`, created using `many(.., p)`.",
@@ -541,42 +554,55 @@ impl<I, F, P> BoundedSkipMany<I, F, P::Error> for RangeFull
     }
 }
 
-/*
-impl BoundedRange for RangeFull {
+many_till_iter! {
+    doc: "Parser iterating over a `RangeFull` and ending with a final parser, created by `many_till(.., ...)`",
+    struct_name: ManyTillRangeFullParser,
+    state:       (),
+
+    size_hint(self) {
+        (0, None)
+    }
+
+    next(self) {
+        pre {
+            // Can end at any time
+            iter_till_end_test!(self);
+        }
+        on  {}
+    }
+
+    => result {
+        (s, (), EndStateTill::EndSuccess) => (s, Ok(result)),
+        (s, (), EndStateTill::Error(e))   => (s, Err(e)),
+        // Nested parser incomplete, propagate if not at end
+        (_, (), EndStateTill::Incomplete) => unreachable!()
+    }
+}
+
+impl<I: Input, F, G, P, Q, T> BoundedManyTill<I, F, G, T, P::Error> for RangeFull
+  where I: Input,
+        F: FnMut() -> P,
+        G: FnMut() -> Q,
+        P: Parser<I>,
+        Q: Parser<I, Error=P::Error>,
+        T: FromIterator<P::Output> {
+    /// The parser type returned by `many_till`.
+    type ManyTillParser = ManyTillRangeFullParser<I, F, G, P, Q, T>;
+
     #[inline]
-    fn many_till<I: Input, T, E, R, F, U, N, V>(self, i: I, p: R, end: F) -> ParseResult<I, T, E>
-      where T: FromIterator<U>,
-            E: From<N>,
-            R: FnMut(I) -> ParseResult<I, U, E>,
-            F: FnMut(I) -> ParseResult<I, V, N> {
-        run_iter_till!{
-            input:  i,
-            parser: p,
-            end:    end,
-            state:  (): (),
-
-            size_hint(self) {
-                (0, None)
-            }
-
-            next(self) {
-                pre {
-                    // Can end at any time
-                    iter_till_end_test!(self);
-                }
-                on  {}
-            }
-
-            => result : T {
-                (s, (), EndStateTill::EndSuccess)    => s.ret(result),
-                (s, (), EndStateTill::Error(e))      => s.err(e),
-                // Nested parser incomplete, propagate if not at end
-                (_, (), EndStateTill::Incomplete) => unreachable!()
-            }
+    fn many_till(self, f: F, g: G) -> Self::ManyTillParser {
+        ManyTillRangeFullParser {
+            p_ctor: f,
+            q_ctor: g,
+            data:   (),
+            _i:     PhantomData,
+            _p:     PhantomData,
+            _q:     PhantomData,
+            _t:     PhantomData,
         }
     }
 }
-*/
+
 many_iter!{
     doc:         "Parser iterating over a `RangeTo`, created using `many(..n, p)`.",
     struct_name: ManyRangeToParser,
@@ -687,66 +713,79 @@ impl<I, F, P> BoundedSkipMany<I, F, P::Error> for RangeTo<usize>
     }
 }
 
-/*
-impl BoundedRange for RangeTo<usize> {
+many_till_iter! {
+    doc: "Parser iterating over a `RangeTo` and ending with a final parser, created by `many_till(..m, ...)`",
+    struct_name: ManyTillRangeToParser,
+    state:       usize,
+
+    size_hint(self) {
+        (0, Some(self.data))
+    }
+
+    next(self) {
+        pre {
+            // TODO: Remove the branches here (ie. take + unwrap)
+            let i = self.buf.take().expect("Iter.buf was None");
+            let m = i.mark();
+
+            match (self.data, (self.end)().parse(i)) {
+                // We can always end
+                (_, (b, Ok(_)))  => {
+                    self.buf   = Some(b);
+                    self.state = EndStateTill::EndSuccess;
+
+                    return None
+                },
+                // We have reached end, end must match or it is an error
+                (0, (b, Err(e))) => {
+                    self.buf   = Some(b);
+                    self.state = EndStateTill::Error(From::from(e));
+
+                    return None;
+                },
+                // Failed to end, restore and continue since we can parse more
+                (_, (b, Err(_))) => self.buf = Some(b.restore(m)),
+            }
+        }
+        on {
+            self.data -= 1;
+        }
+    }
+
+    => result {
+        // Got all occurrences of the parser since we have no minimum bound
+        (s, _, EndStateTill::EndSuccess) => (s, Ok(result)),
+        // Did not reach minimum or a failure, propagate
+        (s, _, EndStateTill::Error(e))   => (s, Err(e)),
+        (_, _, EndStateTill::Incomplete) => unreachable!(),
+    }
+}
+
+impl<I: Input, F, G, P, Q, T> BoundedManyTill<I, F, G, T, P::Error> for RangeTo<usize>
+  where I: Input,
+        F: FnMut() -> P,
+        G: FnMut() -> Q,
+        P: Parser<I>,
+        Q: Parser<I, Error=P::Error>,
+        T: FromIterator<P::Output> {
+    /// The parser type returned by `many_till`.
+    type ManyTillParser = ManyTillRangeToParser<I, F, G, P, Q, T>;
+
     #[inline]
-    fn many_till<I: Input, T, E, R, F, U, N, V>(self, i: I, p: R, end: F) -> ParseResult<I, T, E>
-      where T: FromIterator<U>,
-            E: From<N>,
-            R: FnMut(I) -> ParseResult<I, U, E>,
-            F: FnMut(I) -> ParseResult<I, V, N> {
-        run_iter_till!{
-            input:  i,
-            parser: p,
-            end:    end,
+    fn many_till(self, f: F, g: G) -> Self::ManyTillParser {
+        ManyTillRangeToParser {
+            p_ctor: f,
+            q_ctor: g,
             // [0, self.end)
-            state:  usize: max(self.end, 1) - 1,
-
-            size_hint(self) {
-                (0, Some(self.data))
-            }
-
-            next(self) {
-                pre {
-                    // TODO: Remove the branches here (ie. take + unwrap)
-                    let i = self.buf.take().expect("Iter.buf was None");
-                    let m = i.mark();
-
-                    match (self.data, (self.end)(i).into_inner()) {
-                        // We can always end
-                        (_, (b, Ok(_))) => {
-                            self.buf   = Some(b);
-                            self.state = EndStateTill::EndSuccess;
-
-                            return None
-                        },
-                        // We have reached end, end must match or it is an error
-                        (0, (b, Err(e)))      => {
-                            self.buf   = Some(b);
-                            self.state = EndStateTill::Error(From::from(e));
-
-                            return None;
-                        },
-                        // Failed to end, restore and continue since we can parse more
-                        (_, (b, Err(_)))      => self.buf = Some(b.restore(m)),
-                    }
-                }
-                on {
-                    self.data -= 1;
-                }
-            }
-
-            => result : T {
-                // Got all occurrences of the parser since we have no minimum bound
-                (s, _, EndStateTill::EndSuccess)    => s.ret(result),
-                // Did not reach minimum or a failure, propagate
-                (s, _, EndStateTill::Error(e))   => s.err(e),
-                (_, _, EndStateTill::Incomplete) => unreachable!(),
-            }
+            // TODO: saturating sub
+            data:   max(self.end, 1) - 1,
+            _i:     PhantomData,
+            _p:     PhantomData,
+            _q:     PhantomData,
+            _t:     PhantomData,
         }
     }
 }
-*/
 
 many_iter!{
     doc:         "Parser iterating over a `usize`, created using `many(n, p)`.",
@@ -854,64 +893,79 @@ impl<I, F, P> BoundedSkipMany<I, F, P::Error> for usize
     }
 }
 
-/*
-impl BoundedRange for usize {
+many_till_iter! {
+    doc: "Parser iterating `usize` times and ending with a final parser, created by `many_till(n, ...)`",
+    struct_name: ManyTillUsizeParser,
+    state:       usize,
+
+    size_hint(self) {
+        (self.data, Some(self.data))
+    }
+
+    next(self) {
+        pre {
+            if self.data == 0 {
+                // Reached exact, MUST end here:
+
+                // TODO: Remove the branches here (ie. take + unwrap)
+                let i = self.buf.take().expect("Iter.buf was None");
+
+                match (self.end)().parse(i) {
+                    (b, Ok(_)) => {
+                        self.buf   = Some(b);
+                        self.state = EndStateTill::EndSuccess;
+                    },
+                    // Failed to end, restore and continue
+                    (b, Err(e))      => {
+                        self.buf   = Some(b);
+                        self.state = EndStateTill::Error(e);
+                    },
+                }
+
+                return None;
+            }
+        }
+        on {
+            self.data -= 1;
+        }
+    }
+
+    => result {
+        // Got all occurrences of the parser
+        (s, 0, EndStateTill::EndSuccess) => (s, Ok(result)),
+        // Did not reach minimum or a failure, propagate
+        (s, _, EndStateTill::Error(e))   => (s, Err(e)),
+        (_, n, EndStateTill::Incomplete) => panic!("This is unreachable, incomplete, n: {:?}", n),
+        // We cannot reach this since we only run the end test once we have reached the
+        // minimum number of matches
+        (_, _, EndStateTill::EndSuccess) => unreachable!()
+    }
+}
+
+impl<I: Input, F, G, P, Q, T> BoundedManyTill<I, F, G, T, P::Error> for usize
+  where I: Input,
+        F: FnMut() -> P,
+        G: FnMut() -> Q,
+        P: Parser<I>,
+        Q: Parser<I, Error=P::Error>,
+        T: FromIterator<P::Output> {
+    /// The parser type returned by `many_till`.
+    type ManyTillParser = ManyTillUsizeParser<I, F, G, P, Q, T>;
+
     #[inline]
-    fn many_till<I: Input, T, E, R, F, U, N, V>(self, i: I, p: R, end: F) -> ParseResult<I, T, E>
-      where T: FromIterator<U>,
-            E: From<N>,
-            R: FnMut(I) -> ParseResult<I, U, E>,
-            F: FnMut(I) -> ParseResult<I, V, N> {
-        run_iter_till!{
-            input:  i,
-            parser: p,
-            end:    end,
-            state:  usize: self,
-
-            size_hint(self) {
-                (self.data, Some(self.data))
-            }
-
-            next(self) {
-                pre {
-                    if self.data == 0 {
-                        // TODO: Remove the branches here (ie. take + unwrap)
-                        let i = self.buf.take().expect("Iter.buf was None");
-
-                        match (self.end)(i).into_inner() {
-                            (b, Ok(_))  => {
-                                self.buf   = Some(b);
-                                self.state = EndStateTill::EndSuccess;
-                            },
-                            // Failed to end, restore and continue
-                            (b, Err(e)) => {
-                                self.buf   = Some(b);
-                                self.state = EndStateTill::Error(From::from(e));
-                            },
-                        }
-
-                        return None;
-                    }
-                }
-                on {
-                    self.data -= 1;
-                }
-            }
-
-            => result : T {
-                // Got all occurrences of the parser
-                (s, 0, EndStateTill::EndSuccess)    => s.ret(result),
-                // Did not reach minimum or a failure, propagate
-                (s, _, EndStateTill::Error(e))      => s.err(e),
-                (_, _, EndStateTill::Incomplete) => unreachable!(),
-                // We cannot reach this since we only run the end test once we have reached the
-                // minimum number of matches
-                (_, _, EndStateTill::EndSuccess)    => unreachable!()
-            }
+    fn many_till(self, f: F, g: G) -> Self::ManyTillParser {
+        ManyTillUsizeParser {
+            p_ctor: f,
+            q_ctor: g,
+            data:   self,
+            _i:     PhantomData,
+            _p:     PhantomData,
+            _q:     PhantomData,
+            _t:     PhantomData,
         }
     }
 }
-*/
+
 /// Applies the parser `F` multiple times until it fails or the maximum value of the range has
 /// been reached, collecting the successful values into a `T: FromIterator`.
 ///
@@ -1025,6 +1079,7 @@ pub fn sep_by<I, T, F, G, P, Q, R>(r: R, f: F, sep: G) -> R::ManyParser
 // Due to the requirement of BoundedMany to be able to specify a concrete type for the function (F)
 // parameter we need to have a type we can describe and not a closure for the type of the sep-by
 // inner parser
+// TODO: Implement as a trait for `ParserConstructor`?
 pub struct SepByInnerParserCtor<I, F, S> {
     item: bool,
     f:    F,
@@ -1182,6 +1237,11 @@ mod test {
         let r = many(0..0, || token(b'a')); assert_eq!(r.parse(&b""[..]),   (&b""[..], Ok(vec![])));
         let r = many(0..0, || token(b'a')); assert_eq!(r.parse(&b"a"[..]),  (&b"a"[..], Ok(vec![])));
 
+        let r: (_, Result<Vec<_>, _>) = many(2..2, || token(b'a')).parse(&b""[..])    ; assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = many(2..2, || token(b'a')).parse(&b"a"[..])   ; assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = many(2..2, || token(b'a')).parse(&b"aa"[..])  ; assert_eq!(r, (&b""[..], Ok(vec![b'a', b'a'])));
+        let r: (_, Result<Vec<_>, _>) = many(2..2, || token(b'a')).parse(&b"aaa"[..])  ; assert_eq!(r, (&b"a"[..], Ok(vec![b'a', b'a'])));
+
         let r: (_, Result<Vec<_>, _>) = many(2..4, || token(b'a')).parse(&b""[..])    ; assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
         let r: (_, Result<Vec<_>, _>) = many(2..4, || token(b'a')).parse(&b"a"[..])   ; assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
         let r: (_, Result<Vec<_>, _>) = many(2..4, || token(b'a')).parse(&b"aa"[..])  ; assert_eq!(r, (&b""[..], Ok(vec![b'a', b'a'])));
@@ -1230,52 +1290,49 @@ mod test {
         let r: (_, Result<Vec<_>, _>) = many(2, || string(b"ab")).parse(&b"ababa"[..])  ; assert_eq!(r, (&b"a"[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
     }
 
-    // FIXME
-    /*
     #[test]
     fn many_till_range_full() {
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..],        .., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..],      .., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..],    .., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..]])));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababac"[..],  .., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababab"[..],  .., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abababa"[..], .., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'b'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(.., || string(b"ab"), || string(b"ac")).parse(&b""[..]);        assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(.., || string(b"ab"), || string(b"ac")).parse(&b"ac"[..]);      assert_eq!(r, (&b""[..], Ok(vec![])));
+        let r: (_, Result<Vec<_>, _>) = many_till(.., || string(b"ab"), || string(b"ac")).parse(&b"abac"[..]);    assert_eq!(r, (&b""[..], Ok(vec![&b"ab"[..]])));
+        let r: (_, Result<Vec<_>, _>) = many_till(.., || string(b"ab"), || string(b"ac")).parse(&b"ababac"[..]);  assert_eq!(r, (&b""[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
+        let r: (_, Result<Vec<_>, _>) = many_till(.., || string(b"ab"), || string(b"ac")).parse(&b"ababab"[..]);  assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(.., || string(b"ab"), || string(b"ac")).parse(&b"abababa"[..]); assert_eq!(r, (&b""[..], Err(Error::expected(b'b'))));
     }
 
     #[test]
     fn many_till_range_from() {
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..], 0.., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"a"[..], 0.., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'b'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ab"[..], 0.., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..], 0.., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..], 1.., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"c"[..], Err(Error::expected(b'b'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..], 0.., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..]])));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..], 1.., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..]])));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..], 2.., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"c"[..], Err(Error::expected(b'b'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababac"[..], 2.., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababab"[..], 2.., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abababa"[..], 2.., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'b'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(0.., || string(b"ab"), || string(b"ac")).parse(&b""[..])        ; assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(0.., || string(b"ab"), || string(b"ac")).parse(&b"a"[..])       ; assert_eq!(r, (&b""[..], Err(Error::expected(b'b'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(0.., || string(b"ab"), || string(b"ac")).parse(&b"ab"[..])      ; assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(0.., || string(b"ab"), || string(b"ac")).parse(&b"ac"[..])      ; assert_eq!(r, (&b""[..], Ok(vec![])));
+        let r: (_, Result<Vec<_>, _>) = many_till(1.., || string(b"ab"), || string(b"ac")).parse(&b"ac"[..])      ; assert_eq!(r, (&b"c"[..], Err(Error::expected(b'b'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(0.., || string(b"ab"), || string(b"ac")).parse(&b"abac"[..])    ; assert_eq!(r, (&b""[..], Ok(vec![&b"ab"[..]])));
+        let r: (_, Result<Vec<_>, _>) = many_till(1.., || string(b"ab"), || string(b"ac")).parse(&b"abac"[..])    ; assert_eq!(r, (&b""[..], Ok(vec![&b"ab"[..]])));
+        let r: (_, Result<Vec<_>, _>) = many_till(2.., || string(b"ab"), || string(b"ac")).parse(&b"abac"[..])    ; assert_eq!(r, (&b"c"[..], Err(Error::expected(b'b'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(2.., || string(b"ab"), || string(b"ac")).parse(&b"ababac"[..])  ; assert_eq!(r, (&b""[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
+        let r: (_, Result<Vec<_>, _>) = many_till(2.., || string(b"ab"), || string(b"ac")).parse(&b"ababab"[..])  ; assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(2.., || string(b"ab"), || string(b"ac")).parse(&b"abababa"[..]) ; assert_eq!(r, (&b""[..], Err(Error::expected(b'b'))));
     }
 
     #[test]
     fn many_till_range_to() {
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..],         ..0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"b"[..],        ..0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'a'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"a"[..],        ..0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'c'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..],       ..0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..],         ..1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..],       ..1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..],     ..2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..]])));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..],         ..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..],       ..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..],     ..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..]])));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababac"[..],   ..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abababac"[..], ..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"bac"[..], Err(Error::expected(b'c'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababab"[..],   ..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'c'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababa"[..],    ..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'c'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abababa"[..],  ..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"ba"[..], Err(Error::expected(b'c'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(..0, || string(b"ab"), || string(b"ac")).parse(&b""[..])         ; assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(..0, || string(b"ab"), || string(b"ac")).parse(&b"b"[..])        ; assert_eq!(r, (&b"b"[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(..0, || string(b"ab"), || string(b"ac")).parse(&b"a"[..])        ; assert_eq!(r, (&b""[..], Err(Error::expected(b'c'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(..0, || string(b"ab"), || string(b"ac")).parse(&b"ac"[..])       ; assert_eq!(r, (&b""[..], Ok(vec![])));
+        let r: (_, Result<Vec<_>, _>) = many_till(..1, || string(b"ab"), || string(b"ac")).parse(&b""[..])         ; assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(..1, || string(b"ab"), || string(b"ac")).parse(&b"ac"[..])       ; assert_eq!(r, (&b""[..], Ok(vec![])));
+        let r: (_, Result<Vec<_>, _>) = many_till(..2, || string(b"ab"), || string(b"ac")).parse(&b"abac"[..])     ; assert_eq!(r, (&b""[..], Ok(vec![&b"ab"[..]])));
+        let r: (_, Result<Vec<_>, _>) = many_till(..3, || string(b"ab"), || string(b"ac")).parse(&b""[..])         ; assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(..3, || string(b"ab"), || string(b"ac")).parse(&b"ac"[..])       ; assert_eq!(r, (&b""[..], Ok(vec![])));
+        let r: (_, Result<Vec<_>, _>) = many_till(..3, || string(b"ab"), || string(b"ac")).parse(&b"abac"[..])     ; assert_eq!(r, (&b""[..], Ok(vec![&b"ab"[..]])));
+        let r: (_, Result<Vec<_>, _>) = many_till(..3, || string(b"ab"), || string(b"ac")).parse(&b"ababac"[..])   ; assert_eq!(r, (&b""[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
+        let r: (_, Result<Vec<_>, _>) = many_till(..3, || string(b"ab"), || string(b"ac")).parse(&b"abababac"[..]) ; assert_eq!(r, (&b"bac"[..], Err(Error::expected(b'c'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(..3, || string(b"ab"), || string(b"ac")).parse(&b"ababab"[..])   ; assert_eq!(r, (&b"b"[..], Err(Error::expected(b'c'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(..3, || string(b"ab"), || string(b"ac")).parse(&b"ababa"[..])    ; assert_eq!(r, (&b""[..], Err(Error::expected(b'c'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(..3, || string(b"ab"), || string(b"ac")).parse(&b"abababa"[..])  ; assert_eq!(r, (&b"ba"[..], Err(Error::expected(b'c'))));
     }
-    */
 
     #[test]
     fn many_till_range() {
@@ -1304,6 +1361,39 @@ mod test {
         let r: (_, Result<Vec<_>, _>) = many_till(1..3, || string(b"ab"), || string(b"ac")).parse(&b"ac"[..]);   assert_eq!(r, (&b"c"[..], Err(Error::expected(b'b'))));
         let r: (_, Result<Vec<_>, _>) = many_till(1..3, || string(b"ab"), || string(b"ac")).parse(&b"abac"[..]); assert_eq!(r, (&b""[..], Ok(vec![&b"ab"[..]])));
         let r: (_, Result<Vec<_>, _>) = many_till(2..3, || string(b"ab"), || string(b"ac")).parse(&b"abac"[..]); assert_eq!(r, (&b"c"[..], Err(Error::expected(b'b'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(2..3, || string(b"ab"), || string(b"ac")).parse(&b"ababac"[..]); assert_eq!(r, (&b""[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
+        let r: (_, Result<Vec<_>, _>) = many_till(2..2, || string(b"ab"), || string(b"ac")).parse(&b"ababac"[..]); assert_eq!(r, (&b""[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
+    }
+
+    #[test]
+    fn many_till_exact() {
+        let r: (_, Result<Vec<_>, _>) = many_till(0, || string(b"ab"), || string(b"ac")).parse(&b""[..]);        assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(0, || string(b"ab"), || string(b"ac")).parse(&b"a"[..]);       assert_eq!(r, (&b""[..], Err(Error::expected(b'c'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(0, || string(b"ab"), || string(b"ac")).parse(&b"ac"[..]);      assert_eq!(r, (&b""[..], Ok(vec![])));
+        let r: (_, Result<Vec<_>, _>) = many_till(0, || string(b"ab"), || string(b"ac")).parse(&b"aca"[..]);     assert_eq!(r, (&b"a"[..], Ok(vec![])));
+        let r: (_, Result<Vec<_>, _>) = many_till(0, || string(b"ab"), || string(b"ac")).parse(&b"acab"[..]);    assert_eq!(r, (&b"ab"[..], Ok(vec![])));
+        let r: (_, Result<Vec<_>, _>) = many_till(0, || string(b"ab"), || string(b"ac")).parse(&b"ab"[..]);      assert_eq!(r, (&b"b"[..], Err(Error::expected(b'c'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(0, || string(b"ab"), || string(b"ac")).parse(&b"abac"[..]);    assert_eq!(r, (&b"bac"[..], Err(Error::expected(b'c'))));
+
+        let r: (_, Result<Vec<_>, _>) = many_till(1, || string(b"ab"), || string(b"ac")).parse(&b""[..]);        assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(1, || string(b"ab"), || string(b"ac")).parse(&b"a"[..]);       assert_eq!(r, (&b""[..], Err(Error::expected(b'b'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(1, || string(b"ab"), || string(b"ac")).parse(&b"ac"[..]);      assert_eq!(r, (&b"c"[..], Err(Error::expected(b'b'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(1, || string(b"ab"), || string(b"ac")).parse(&b"ab"[..]);      assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(1, || string(b"ab"), || string(b"ac")).parse(&b"aba"[..]);     assert_eq!(r, (&b""[..], Err(Error::expected(b'c'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(1, || string(b"ab"), || string(b"ac")).parse(&b"abab"[..]);    assert_eq!(r, (&b"b"[..], Err(Error::expected(b'c'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(1, || string(b"ab"), || string(b"ac")).parse(&b"abac"[..]);    assert_eq!(r, (&b""[..], Ok(vec![&b"ab"[..]])));
+
+        let r: (_, Result<Vec<_>, _>) = many_till(2, || string(b"ab"), || string(b"ac")).parse(&b""[..]);         assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(2, || string(b"ab"), || string(b"ac")).parse(&b"a"[..]);        assert_eq!(r, (&b""[..], Err(Error::expected(b'b'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(2, || string(b"ab"), || string(b"ac")).parse(&b"ac"[..]);       assert_eq!(r, (&b"c"[..], Err(Error::expected(b'b'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(2, || string(b"ab"), || string(b"ac")).parse(&b"ab"[..]);       assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(2, || string(b"ab"), || string(b"ac")).parse(&b"aba"[..]);      assert_eq!(r, (&b""[..], Err(Error::expected(b'b'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(2, || string(b"ab"), || string(b"ac")).parse(&b"abab"[..]);     assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(2, || string(b"ab"), || string(b"ac")).parse(&b"abac"[..]);     assert_eq!(r, (&b"c"[..], Err(Error::expected(b'b'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(2, || string(b"ab"), || string(b"ac")).parse(&b"ababa"[..]);    assert_eq!(r, (&b""[..], Err(Error::expected(b'c'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(2, || string(b"ab"), || string(b"ac")).parse(&b"ababac"[..]);   assert_eq!(r, (&b""[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
+        let r: (_, Result<Vec<_>, _>) = many_till(2, || string(b"ab"), || string(b"ac")).parse(&b"ababab"[..]);   assert_eq!(r, (&b"b"[..], Err(Error::expected(b'c'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(2, || string(b"ab"), || string(b"ac")).parse(&b"abababac"[..]); assert_eq!(r, (&b"bac"[..], Err(Error::expected(b'c'))));
     }
 
     #[test]
@@ -1320,7 +1410,14 @@ mod test {
     #[test]
     fn skip_range_to() {
         let r = skip_many(..0, || token(b'a')); assert_eq!(r.parse(&b""[..] ), (&b""[..], Ok(())));
+        let r = skip_many(..0, || token(b'a')); assert_eq!(r.parse(&b"b"[..] ), (&b"b"[..], Ok(())));
         let r = skip_many(..0, || token(b'a')); assert_eq!(r.parse(&b"a"[..]), (&b"a"[..], Ok(())));
+
+        let r = skip_many(..1, || token(b'a')); assert_eq!(r.parse(&b""[..] ), (&b""[..], Ok(())));
+        let r = skip_many(..1, || token(b'a')); assert_eq!(r.parse(&b"a"[..]), (&b"a"[..], Ok(())));
+
+        let r = skip_many(..2, || token(b'a')); assert_eq!(r.parse(&b""[..] ), (&b""[..], Ok(())));
+        let r = skip_many(..2, || token(b'a')); assert_eq!(r.parse(&b"a"[..]), (&b""[..], Ok(())));
 
         let r = skip_many(..3, || token(b'a')); assert_eq!(r.parse(&b""[..]   ), (&b""[..], Ok(())));
         let r = skip_many(..3, || token(b'a')); assert_eq!(r.parse(&b"a"[..]  ), (&b""[..], Ok(())));
@@ -1335,6 +1432,10 @@ mod test {
 
     #[test]
     fn skip_range_from() {
+        let r = skip_many(0.., || token(b'a')); assert_eq!(r.parse(&b""[..] ), (&b""[..], Ok(())));
+        let r = skip_many(0.., || token(b'a')); assert_eq!(r.parse(&b"a"[..] ), (&b""[..], Ok(())));
+        let r = skip_many(0.., || token(b'a')); assert_eq!(r.parse(&b"aa"[..] ), (&b""[..], Ok(())));
+
         let r = skip_many(2.., || token(b'a')); assert_eq!(r.parse(&b""[..]   ), (&b""[..], Err(Error::expected(b'a'))));
         let r = skip_many(2.., || token(b'a')); assert_eq!(r.parse(&b"a"[..]  ), (&b""[..], Err(Error::expected(b'a'))));
         let r = skip_many(2.., || token(b'a')); assert_eq!(r.parse(&b"aa"[..] ), (&b""[..], Ok(())));
@@ -1351,6 +1452,11 @@ mod test {
         let r = skip_many(0..0, || token(b'a')); assert_eq!(r.parse(&b""[..] ), (&b""[..], Ok(())));
         let r = skip_many(0..0, || token(b'a')); assert_eq!(r.parse(&b"a"[..]), (&b"a"[..], Ok(())));
 
+        let r = skip_many(2..2, || token(b'a')).parse(&b""[..]    ) ; assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r = skip_many(2..2, || token(b'a')).parse(&b"a"[..]   ) ; assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r = skip_many(2..2, || token(b'a')).parse(&b"aa"[..]  ) ; assert_eq!(r, (&b""[..], Ok(())));
+        let r = skip_many(2..2, || token(b'a')).parse(&b"aaa"[..] ) ; assert_eq!(r, (&b"a"[..], Ok(())));
+
         let r = skip_many(2..4, || token(b'a')).parse(&b""[..]    ) ; assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
         let r = skip_many(2..4, || token(b'a')).parse(&b"a"[..]   ) ; assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
         let r = skip_many(2..4, || token(b'a')).parse(&b"aa"[..]  ) ; assert_eq!(r, (&b""[..], Ok(())));
@@ -1366,6 +1472,10 @@ mod test {
 
     #[test]
     fn skip_exact() {
+        let r = skip_many(0, || token(b'a')).parse(&b""[..]    ); assert_eq!(r, (&b""[..],   Ok(())));
+        let r = skip_many(0, || token(b'a')).parse(&b"a"[..]   ); assert_eq!(r, (&b"a"[..],   Ok(())));
+        let r = skip_many(1, || token(b'a')).parse(&b""[..]    ); assert_eq!(r, (&b""[..],   Err(Error::expected(b'a'))));
+        let r = skip_many(1, || token(b'a')).parse(&b"a"[..]   ); assert_eq!(r, (&b""[..],   Ok(())));
         let r = skip_many(2, || token(b'a')).parse(&b""[..]    ); assert_eq!(r, (&b""[..],   Err(Error::expected(b'a'))));
         let r = skip_many(2, || token(b'a')).parse(&b"a"[..]   ); assert_eq!(r, (&b""[..],   Err(Error::expected(b'a'))));
         let r = skip_many(2, || token(b'a')).parse(&b"aa"[..]  ); assert_eq!(r, (&b""[..],   Ok(())));
@@ -1389,13 +1499,9 @@ mod test {
         assert_eq!(skip_many(2..1, || token(b'a')).parse(&b"aaaab"[..]), (&b"ab"[..], Ok(())));
     }
 
-    // FIXME
-    /*
     #[test]
     #[should_panic]
     fn panic_many_till_range_lt() {
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"aaaab"[..], 2..1, |i| token(i, b'a'), |i| token(i, b'b'));
-        assert_eq!(r.into_inner(), (&b"ab"[..], Ok(vec![b'a', b'a', b'a'])));
+        let r: (_, Result<Vec<_>, _>) = many_till(2..1, || token(b'a'), || token(b'b')).parse(&b"aaaab"[..]); assert_eq!(r, (&b"ab"[..], Ok(vec![b'a', b'a', b'a'])));
     }
-    */
 }

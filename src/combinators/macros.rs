@@ -288,6 +288,10 @@ macro_rules! many_till_iter {
 /// Used in `many_till_iter!` macro to attempt to end iteration early. If the test succeeds the
 /// buffer position will be updated and the state set to `EndStateTill::EndSuccess` and a `None`
 /// will be returned, stopping the iteration. If the test fails execution continues.
+///
+/// NOTE: Only use if ending is optional.
+///
+/// TODO: Remove and incorporate in the other items.
 macro_rules! iter_till_end_test {
     ( $the_self:ident ) => { {
         // TODO: Remove the branches here (ie. take + unwrap)

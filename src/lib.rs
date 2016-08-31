@@ -268,10 +268,9 @@ pub mod prelude {
         many1,
         sep_by,
         sep_by1,
-        // FIXME
-        //many_till,
-        //skip_many,
-        //skip_many1,
+        many_till,
+        skip_many,
+        skip_many1,
         matched_by,
     };
     pub use types::{

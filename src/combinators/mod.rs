@@ -155,6 +155,7 @@ pub fn sep_by<I, T, R, F, P, Q>(p: R, sep: F) -> impl Parser<I, Output=T, Error=
 ///
 /// assert_eq!(r, Ok(vec![91, 03, 20]));
 /// ```
+// TODO: Conversion of errors?
 #[inline]
 pub fn sep_by1<I, T, R, F, P, Q>(p: R, sep: F) -> impl Parser<I, Output=T, Error=P::Error>
   where I: Input,
@@ -167,8 +168,6 @@ pub fn sep_by1<I, T, R, F, P, Q>(p: R, sep: F) -> impl Parser<I, Output=T, Error
     bounded::sep_by(1.., p, sep)
 }
 
-// FIXME
-/*
 /// Applies the parser `R` multiple times until the parser `F` succeeds and returns a
 /// `T: FromIterator` populated by the values yielded by `R`. Consumes the matched part of `F`.
 ///
@@ -183,13 +182,17 @@ pub fn sep_by1<I, T, R, F, P, Q>(p: R, sep: F) -> impl Parser<I, Output=T, Error
 ///
 /// assert_eq!(r, Ok(vec![b'a', b'b', b'c']));
 /// ```
+// TODO: Conversion of errors?
 #[inline]
-pub fn many_till<I: Input, T, R, F>(p: R, end: F) -> impl Parser<I, Output=T, Error=R::Error>
-  where T: FromIterator<R::Output>,
+pub fn many_till<I, F, G, P, Q, T>(p: F, end: G) -> impl Parser<I, Output=T, Error=P::Error>
+  where I: Input,
         //E: From<N>,
-        R: Parser<I>,
-        F: Parser<I, Error=R::Error> {
-    bounded::many_till_unbounded(p, end)
+        F: FnMut() -> P,
+        G: FnMut() -> Q,
+        P: Parser<I>,
+        Q: Parser<I, Error=P::Error>,
+        T: FromIterator<P::Output> {
+    bounded::many_till(.., p, end)
 }
 
 /// Runs the given parser until it fails, discarding matched input.
@@ -207,9 +210,11 @@ pub fn many_till<I: Input, T, R, F>(p: R, end: F) -> impl Parser<I, Output=T, Er
 /// assert_eq!(r, Ok(b'b'));
 /// ```
 #[inline]
-pub fn skip_many<I: Input, F>(f: F) -> impl Parser<I, Output=(), Error=F::Error>
-  where F: Parser<I> {
-    bounded::skip_many_unbounded(f)
+pub fn skip_many<I, F, P>(f: F) -> impl Parser<I, Output=(), Error=P::Error>
+  where I: Input,
+        F: FnMut() -> P,
+        P: Parser<I> {
+    bounded::skip_many(.., f)
 }
 
 /// Runs the given parser until it fails, discarding matched input, expects at least one match.
@@ -231,11 +236,12 @@ pub fn skip_many<I: Input, F>(f: F) -> impl Parser<I, Output=(), Error=F::Error>
 /// assert_eq!(parse_only(&p, b"bc"), Err((&b"bc"[..], Error::expected(b'a'))));
 /// ```
 #[inline]
-pub fn skip_many1<I: Input, F>(f: F) -> impl Parser<I, Output=(), Error=F::Error>
-  where F: Parser<I> {
-    bounded::skip_many_from(1, f)
+pub fn skip_many1<I, F, P>(f: F) -> impl Parser<I, Output=(), Error=P::Error>
+  where I: Input,
+        F: FnMut() -> P,
+        P: Parser<I> {
+    bounded::skip_many(1.., f)
 }
-*/
 
 /// Returns the result of the given parser as well as the slice which matched it.
 ///
@@ -342,34 +348,34 @@ mod test {
         let r: (_, Result<Vec<_>, _>) = count(3, || token(b'a')).parse(&b"aaaa"[..]); assert_eq!(r, (&b"a"[..], Ok(vec![b'a', b'a', b'a'])));
     }
 
-// FIXME: Update
-/*
     #[test]
     fn skip_many1_test() {
-        assert_eq!(skip_many1(&b"bc"[..], |i| i.err::<(), _>("error")).into_inner(), (&b"bc"[..], Err("error")));
+        assert_eq!(skip_many1(|| err::<(), _>("error")).parse(&b"bc"[..]), (&b"bc"[..], Err("error")));
 
-        assert_eq!(skip_many1(&b"aabc"[..], |i| token(i, b'a')).into_inner(), (&b"bc"[..], Ok(())));
-        assert_eq!(skip_many1(&b"abc"[..],  |i| token(i, b'a')).into_inner(), (&b"bc"[..], Ok(())));
-        assert_eq!(skip_many1(&b"bc"[..],   |i| token(i, b'a')).into_inner(), (&b"bc"[..], Err(Error::expected(b'a'))));
-        assert_eq!(skip_many1(&b""[..],     |i| token(i, b'a')).into_inner(), (&b""[..], Err(Error::expected(b'a'))));
-        assert_eq!(skip_many1(&b"aaa"[..],  |i| token(i, b'a')).into_inner(), (&b""[..], Ok(())));
+        assert_eq!(skip_many1(|| token(b'a')).parse(&b"aabc"[..]), (&b"bc"[..], Ok(())));
+        assert_eq!(skip_many1(|| token(b'a')).parse(&b"abc"[..]),  (&b"bc"[..], Ok(())));
+        assert_eq!(skip_many1(|| token(b'a')).parse(&b"bc"[..]),   (&b"bc"[..], Err(Error::expected(b'a'))));
+        assert_eq!(skip_many1(|| token(b'a')).parse(&b""[..]),     (&b""[..], Err(Error::expected(b'a'))));
+        assert_eq!(skip_many1(|| token(b'a')).parse(&b"aaa"[..]),  (&b""[..], Ok(())));
     }
 
     #[test]
     fn many_till_test() {
-        assert_eq!(many_till(&b"abcd"[..], any, |i| token(i, b'c')).into_inner(), (&b"d"[..], Ok(vec![b'a', b'b'])));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abd"[..], any, |i| token(i, b'c'));
-        assert_eq!(r.into_inner(), (&b""[..], Err(Error::unexpected())));
+        assert_eq!(many_till(any, || token(b'c')).parse(&b"abcd"[..]), (&b"d"[..], Ok(vec![b'a', b'b'])));
+        let r: (_, Result<Vec<_>, _>) = many_till(any, || token(b'c')).parse(&b"abd"[..]); assert_eq!(r, (&b""[..], Err(Error::unexpected())));
 
-        let r: ParseResult<_, Vec<u8>, _> = many_till(&b"abcd"[..], |i| i.err(Error::expected(b'@')), |i| token(i, b'c'));
-        assert_eq!(r.into_inner(), (&b"abcd"[..], Err(Error::expected(b'@'))));
+        let r: (_, Result<Vec<u8>, _>) = many_till(|| err(Error::expected(b'@')), || token(b'c')).parse(&b"abcd"[..]); assert_eq!(r, (&b"abcd"[..], Err(Error::expected(b'@'))));
 
         // Variant to make sure error slice is propagated
         let mut n = 0;
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abcd"[..], |i| if n == 0 { n += 1; any(i).map_err(|_| Error::expected(b'i')) } else { i.err(Error::expected(b'@')) }, |i| token(i, b'c'));
-        assert_eq!(r.into_inner(), (&b"bcd"[..], Err(Error::expected(b'@'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(|| if n == 0 {
+            n += 1;
+            any().map_err(|_| Error::expected(b'i')).boxed()
+        } else {
+             err(Error::expected(b'@')).boxed()
+        }, || token(b'c')).parse(&b"abcd"[..]);
+        assert_eq!(r, (&b"bcd"[..], Err(Error::expected(b'@'))));
     }
-    */
 
     #[test]
     fn matched_by_test() {
