@@ -612,6 +612,72 @@ pub trait Parser<I: Input> {
         // self.bind(|t| p.map(|_| t))
         SkipParser{ p: self, q: p }
     }
+
+    /// Turns the parser into a trait object, using the `BoxedParser` type to provide inference and
+    /// guarantees that it will satisfy any `P: Parser` generic.
+    ///
+    /// Useful to unify the types different parsers when eg. returning two different parsers
+    /// depending on a condition.
+    ///
+    /// ```
+    /// use parsers::{any, token};
+    /// use types::Parser;
+    ///
+    /// let a = 3;
+    ///
+    /// let p = if a == 0 {
+    ///     any().boxed()
+    /// } else {
+    ///     token(b'a').boxed()
+    /// };
+    ///
+    /// assert_eq!(p.parse(&b"bcd"), (&b"bcd", Err(Error::expected(b'a'))));
+    /// ```
+    #[inline]
+    fn boxed(self) -> BoxedParser<I, Self::Output, Self::Error>
+      where Self: Sized + 'static {
+        Box::new(self)
+    }
+}
+
+/// The type for boxed parsers, created through `Parser::boxed`.
+pub type BoxedParser<I, T, E> = Box<BoxParser<I, Output=T, Error=E>>;
+
+/// Trait wrapping a parser to be able to destructure a `Box<BoxParser>` in a sized manner.
+/// Recommended to use the `BoxedParser` type-alias instead of `BoxParser` directly.
+pub trait BoxParser<I: Input> {
+    /// The output type of the boxed parser, analogous to `Parser::Output`.
+    type Output;
+    /// The error type of the boxed parser, analogous to `Parser::Error`.
+    type Error;
+
+    /// Allows destructuring of the box to be able to consume the wrapped contents, analogous to
+    /// `Parser::parse`.
+    #[inline]
+    fn parse_box(self: Box<Self>, i: I) -> (I, Result<Self::Output, Self::Error>);
+}
+
+impl<I, P> BoxParser<I> for P
+  where I: Input,
+        P: Parser<I> {
+    type Output = P::Output;
+    type Error  = P::Error;
+
+    #[inline]
+    fn parse_box(self: Box<Self>, i: I) -> (I, Result<P::Output, P::Error>) {
+        (*self).parse(i)
+    }
+}
+
+impl<I, T, E> Parser<I> for Box<BoxParser<I, Output=T, Error=E>>
+  where I: Input {
+    type Output = T;
+    type Error  = E;
+
+    #[inline]
+    fn parse(self, i: I) -> (I, Result<T, E>) {
+        self.parse_box(i)
+    }
 }
 
 /// Returns `t` as a success value in the parsing context.
