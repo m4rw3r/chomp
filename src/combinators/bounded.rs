@@ -118,7 +118,7 @@ many_iter!{
         }
     }
 
-    => result : T {
+    => result {
         // Got all occurrences of the parser
         // First state or reached max => do not restore to mark since it is from last
         // iteration
@@ -266,7 +266,7 @@ many_till_iter! {
         }
     }
 
-    => result : T {
+    => result {
         // Got all occurrences of the parser
         (s, (0, _), EndStateTill::EndSuccess) => (s, Ok(result)),
         // Did not reach minimum or a failure, propagate
@@ -323,7 +323,7 @@ many_iter!{
         }
     }
 
-    => result : T {
+    => result {
         // We got at least n items
         (s, 0, m, Some(_)) => (s.restore(m), Ok(result)),
         // Items still remaining, propagate
@@ -469,7 +469,7 @@ many_iter!{
         on  {}
     }
 
-    => result : T {
+    => result {
         (s, (), m, Some(_)) => (s.restore(m), Ok(result)),
         (_, _, _, None)     => unreachable!(),
     }
@@ -534,7 +534,6 @@ impl<I, F, P> BoundedSkipMany<I, F, P::Error> for RangeFull
 
     #[inline]
     fn skip_many(self, f: F) -> Self::SkipManyParser {
-        // Closed on left side
         SkipManyRangeFullParser {
             f:  f,
             _i: PhantomData,
@@ -599,7 +598,7 @@ many_iter!{
         }
     }
 
-    => result : T {
+    => result {
         // First state or reached max => do not restore to mark since it is from last
         // iteration
         (s, 0, _, _)       => (s, Ok(result)),
@@ -770,7 +769,7 @@ many_iter!{
         }
     }
 
-    => result : T {
+    => result {
         // Got exact
         (s, 0, _, _)       => (s, Ok(result)),
         // We have got too few items, propagate error

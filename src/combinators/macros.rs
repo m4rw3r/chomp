@@ -10,7 +10,7 @@ macro_rules! many_iter {
             on  $on_next:block
         }
 
-        => $result:ident : $t:ty {
+        => $result:ident {
              $($pat:pat => $arm:expr),*$(,)*
         }
     ) => {
@@ -40,7 +40,7 @@ macro_rules! many_iter {
             #[inline]
             fn parse(self, i: I) -> (I, Result<T, P::Error>) {
                 /// Iterator used to run the parser multiple times
-                struct ParserIterator<I: Input, F, P, T>
+                struct ParserIterator<I: Input, F, P>
                   where F: FnMut() -> P,
                         P: Parser<I> {
                     /// Last state of the parser
@@ -57,11 +57,10 @@ macro_rules! many_iter {
                     /// Nested state
                     data:   $data_ty,
                     _i:     PhantomData<I>,
-                    _t:     PhantomData<T>,
                     _p:     PhantomData<P>,
                 }
 
-                impl<I: Input, F, P, T> ParserIterator<I, F, P, T>
+                impl<I: Input, F, P> ParserIterator<I, F, P>
                   where F: FnMut() -> P,
                         P: Parser<I> {
                     #[inline]
@@ -71,7 +70,7 @@ macro_rules! many_iter {
                     }
                 }
 
-                impl<I: Input, F, P, T> Iterator for ParserIterator<I, F, P, T>
+                impl<I: Input, F, P> Iterator for ParserIterator<I, F, P>
                   where F: FnMut() -> P,
                         P: Parser<I> {
                     type Item = P::Output;
@@ -112,14 +111,13 @@ macro_rules! many_iter {
                 // TODO: Not always used
                 let mark = i.mark();
 
-                let mut iter = ParserIterator::<_, _, _, $t> {
+                let mut iter = ParserIterator {
                     state:       None,
                     parser_ctor: self.parser_ctor,
                     buf:         Some(i),
                     mark:        mark,
                     data:        self.data,
                     _i:          PhantomData,
-                    _t:          PhantomData,
                     _p:          PhantomData,
                 };
 
@@ -147,7 +145,7 @@ macro_rules! many_till_iter {
             on  $on_next:block
         }
 
-        => $result:ident : $t:ty {
+        => $result:ident {
              $($pat:pat => $arm:expr),*$(,)*
         }
     ) => {
@@ -277,7 +275,7 @@ macro_rules! many_till_iter {
                     _q:     PhantomData,
                 };
 
-                let $result: $t = FromIterator::from_iter(iter.by_ref());
+                let $result: T = FromIterator::from_iter(iter.by_ref());
 
                 match iter.end_state() {
                     $($pat => $arm),*
