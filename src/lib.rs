@@ -9,23 +9,22 @@
 //! For its current capabilities, you will find that Chomp performs consistently as well, if not
 //! better, than optimized C parsers, while being vastly more expressive. For an example that
 //! builds a performant HTTP parser out of smaller parsers, see
-//! [http_parser.rs](examples/http_parser.rs).
+//! [`http_parser.rs`](examples/http_parser.rs).
 //!
 //! # Example
 //!
 //! ```
 //! # #[macro_use] extern crate chomp;
 //! # fn main() {
-//! use chomp::{Input, U8Result, parse_only};
-//! use chomp::{take_while1, token};
+//! use chomp::prelude::*;
 //!
 //! #[derive(Debug, Eq, PartialEq)]
-//! struct Name<'a> {
-//!     first: &'a [u8],
-//!     last:  &'a [u8],
+//! struct Name<B: Buffer> {
+//!     first: B,
+//!     last:  B,
 //! }
 //!
-//! fn name(i: Input<u8>) -> U8Result<Name> {
+//! fn name<I: U8Input>(i: I) -> SimpleResult<I, Name<I::Buffer>> {
 //!     parse!{i;
 //!         let first = take_while1(|c| c != b' ');
 //!                     token(b' ');  // skipping this char
@@ -39,7 +38,7 @@
 //! }
 //!
 //! assert_eq!(parse_only(name, "Martin Wernstål\n".as_bytes()), Ok(Name{
-//!     first: b"Martin",
+//!     first: &b"Martin"[..],
 //!     last: "Wernstål".as_bytes()
 //! }));
 //! # }
@@ -61,7 +60,7 @@
 //! `token` parser, which matches a particular input.
 //!
 //! ```ignore
-//! fn token<I: Copy + Eq>(i: Input<I>, t: I) -> SimpleResult<I, I> {...}
+//! fn token<I: Input>(i: I, t: I::Token) -> ParseResult<I, I::Token, Error<I::Token>> { ... }
 //! ```
 //!
 //! Notice that the first argument is an `Input<I>`, and the second argument is some `I`.
@@ -82,8 +81,8 @@
 //! A very useful parser is the `satisfy` parser:
 //!
 //! ```ignore
-//! fn satisfy<I: Copy, F>(i: Input<I>, f: F) -> SimpleResult<I, I>
-//!    where F: FnOnce(I) -> bool { ... }
+//! fn satisfy<I: Input, F>(mut i: I, f: F) -> ParseResult<I, I::Token, Error<I::Token>>
+//!   where F: FnOnce(I::Token) -> bool { ... }
 //! ```
 //!
 //! Besides the input state, satisfy's only parameter is a predicate function and will succeed only
@@ -93,7 +92,7 @@
 //! ```
 //! # #[macro_use] extern crate chomp;
 //! # fn main() {
-//! # use chomp::{satisfy, parse_only};
+//! # use chomp::prelude::*;
 //! # let r = parse_only(parser!{
 //! satisfy(|c| {
 //!     match c {
@@ -112,10 +111,8 @@
 //! times on its input.
 //!
 //! ```ignore
-//! pub fn count<'a, I, T, E, F, U>(i: Input<'a, I>, num: usize, p: F) -> ParseResult<'a, I, T, E>
-//!   where I: Copy,
-//!         U: 'a,
-//!         F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
+//! pub fn count<I: Input, T, E, F, U>(i: I, num: usize, p: F) -> ParseResult<I, T, E>
+//!   where F: FnMut(I) -> ParseResult<I, U, E>,
 //!         T: FromIterator<U> { ... }
 //! ```
 //!
@@ -144,8 +141,8 @@
 //!
 //! ```
 //! # #[macro_use] extern crate chomp;
-//! # use chomp::{Input, parse_only, satisfy, string, U8Result};
-//! fn f(i: Input<u8>) -> U8Result<(u8, u8, u8)> {
+//! # use chomp::prelude::*;
+//! fn f<I: U8Input>(i: I) -> SimpleResult<I, (u8, u8, u8)> {
 //!     parse!{i;
 //!         let a = digit();
 //!         let b = digit();
@@ -154,7 +151,7 @@
 //!     }
 //! }
 //!
-//! fn digit(i: Input<u8>) -> U8Result<u8> {
+//! fn digit<I: U8Input>(i: I) -> SimpleResult<I, u8> {
 //!     satisfy(i, |c| b'0' <= c && c <= b'9').map(|c| c - b'0')
 //! }
 //! # fn main() {
@@ -201,6 +198,27 @@
 //!    The built-in `chomp::parsers::Error` type is zero-sized and carry no error-information. This
 //!    increases performance somewhat.
 
+#![warn(missing_docs,
+        trivial_casts,
+        unused_import_braces,
+        unused_qualifications)]
+
+#![cfg_attr(feature="clippy", feature(plugin))]
+#![cfg_attr(feature="clippy", plugin(clippy))]
+#![cfg_attr(feature="clippy", warn(
+    nonminimal_bool,
+    option_unwrap_used,
+    print_stdout,
+    result_unwrap_used,
+    shadow_reuse,
+    shadow_same,
+    shadow_unrelated,
+    single_match_else))]
+#![cfg_attr(feature="clippy", allow(inline_always, many_single_char_names))]
+
+#[cfg(feature = "tendril")]
+extern crate tendril;
+
 #[macro_use]
 extern crate bitflags;
 extern crate conv;
@@ -208,93 +226,64 @@ extern crate debugtrace;
 
 #[macro_use]
 mod macros;
-mod input;
 mod parse;
-mod parse_result;
 
 pub mod ascii;
 pub mod buffer;
-pub mod parsers;
 pub mod combinators;
+pub mod parsers;
+pub mod primitives;
+pub mod types;
 
-pub use combinators::{
-    count,
-    option,
-    or,
-    many,
-    many1,
-    sep_by,
-    sep_by1,
-    many_till,
-    skip_many,
-    skip_many1,
-    matched_by,
-};
-pub use parsers::{
-    any,
-    eof,
-    not_token,
-    peek,
-    peek_next,
-    satisfy,
-    satisfy_with,
-    scan,
-    string,
-    run_scanner,
-    take,
-    take_remainder,
-    take_till,
-    take_while,
-    take_while1,
-    token,
-};
-pub use parsers::Error;
-pub use input::Input;
-pub use parse::{
-    ParseError,
-    parse_only,
-};
-pub use parse_result::{
-    ParseResult,
-    SimpleResult,
-    U8Result,
-};
+pub use parse::parse_only;
+pub use parse::parse_only_str;
+pub use parse::run_parser;
 
-/// Module used to construct fundamental parsers and combinators.
-///
-/// # Primitive
-///
-/// Only used by fundamental parsers and combinators.
-pub mod primitives {
-    pub use input::{
-        InputBuffer,
-        InputClone,
+/// Basic prelude.
+pub mod prelude {
+    pub use parsers::{
+        any,
+        eof,
+        not_token,
+        peek,
+        peek_next,
+        run_scanner,
+        satisfy,
+        satisfy_with,
+        scan,
+        skip_while,
+        string,
+        take,
+        take_remainder,
+        take_till,
+        take_while,
+        take_while1,
+        token,
     };
-    pub use parse_result::{
-        IntoInner,
-        State,
+    pub use parsers::{
+        Error,
+        SimpleResult,
     };
 
-    /// Input utilities.
-    ///
-    /// # Primitive
-    ///
-    /// Only used by fundamental parsers and combinators.
-    pub mod input {
-        pub use input::{DEFAULT, END_OF_INPUT, new};
-    }
-
-    /// ParseResult utilities.
-    ///
-    /// # Primitive
-    ///
-    /// Only used by fundamental parsers and combinators.
-    ///
-    /// # Note
-    ///
-    /// Prefer to use ``Input::ret``, ``Input::err`` or ``Input::incomplete`` instead of using
-    /// ``parse_result::new``.
-    pub mod parse_result {
-        pub use parse_result::new;
-    }
+    pub use combinators::{
+        count,
+        option,
+        or,
+        many,
+        many1,
+        sep_by,
+        sep_by1,
+        many_till,
+        skip_many,
+        skip_many1,
+        matched_by,
+    };
+    pub use types::{
+        Buffer,
+        Input,
+        U8Input,
+        ParseResult,
+    };
+    pub use parse_only;
+    pub use parse_only_str;
 }

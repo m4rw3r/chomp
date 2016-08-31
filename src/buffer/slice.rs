@@ -1,20 +1,17 @@
-use primitives::input;
-use primitives::{State, InputBuffer, IntoInner};
+use primitives::IntoInner;
 
-use {Input, ParseResult};
-use buffer::{IntoStream, StreamError, Stream};
+use types::{Input, ParseResult};
+use buffer::{InputBuf, StreamError, Stream};
 
 /// Stream implementation for immutable slices.
 ///
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use chomp::{token, take};
-/// use chomp::buffer::{IntoStream, Stream};
+/// use chomp::parsers::{token, take};
+/// use chomp::buffer::{SliceStream, Stream};
 ///
-/// let i = b"foo";
-///
-/// let r = i.into_stream().parse(parser!{
+/// let r = SliceStream::new(b"foo").parse(parser!{
 ///     token(b'f');
 ///     take(2)
 /// });
@@ -26,12 +23,10 @@ use buffer::{IntoStream, StreamError, Stream};
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use chomp::{token, many, take};
-/// use chomp::buffer::{IntoStream, Stream};
+/// use chomp::prelude::{token, many, take};
+/// use chomp::buffer::{SliceStream, Stream};
 ///
-/// let i = b"foofoo";
-///
-/// let r = i.into_stream().parse(parser!{many(parser!{
+/// let r = SliceStream::new(b"foofoo").parse(parser!{many(parser!{
 ///     token(b'f');
 ///     take(2)
 /// })});
@@ -68,43 +63,40 @@ impl<'i, I: 'i> SliceStream<'i, I> {
     }
 }
 
-impl<'a, 'i, I: 'i> IntoStream<'a, 'i> for &'i [I] {
-    type Item = I;
-    type Into = SliceStream<'i, I>;
+impl<'a, 'i, I: 'i + Copy + PartialEq> Stream<'a, 'i> for SliceStream<'i, I> {
+    type Input = InputBuf<'i, I>;
 
     #[inline]
-    fn into_stream(self) -> SliceStream<'i, I> {
-        SliceStream::new(self)
-    }
-}
-
-impl<'a, 'i, I: 'i> Stream<'a, 'i> for SliceStream<'i, I> {
-    type Item = I;
-
-    #[inline]
-    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, StreamError<'i, Self::Item, E>>
-      where F: FnOnce(Input<'i, Self::Item>) -> ParseResult<'i, Self::Item, T, E>,
+    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, StreamError<<Self::Input as Input>::Buffer, E>>
+      where F: FnOnce(Self::Input) -> ParseResult<Self::Input, T, E>,
             T: 'i,
             E: 'i {
+        use primitives::Primitives;
+
         if self.is_empty() {
             return Err(StreamError::EndOfInput);
         }
 
-        match f(input::new(input::END_OF_INPUT, &self.slice[self.pos..])).into_inner() {
-            State::Data(remainder, data) => {
+        match f(InputBuf::new(&self.slice[self.pos..])).into_inner() {
+            (remainder, Ok(data)) => {
                 // TODO: Do something neater with the remainder
-                self.pos += self.len() - remainder.buffer().len();
+                self.pos += self.len() - remainder.len();
 
                 Ok(data)
             },
-            State::Error(remainder, err) => {
-                // TODO: Do something neater with the remainder
-                // TODO: Detail this behaviour, maybe make it configurable
-                self.pos += self.len() - remainder.len();
+            (mut remainder, Err(err)) => {
+                if remainder.is_incomplete() {
+                    Err(StreamError::Incomplete)
+                } else {
+                    // TODO: Do something neater with the remainder
+                    // TODO: Detail this behaviour, maybe make it configurable
+                    let r = remainder.len();
 
-                Err(StreamError::ParseError(remainder, err))
+                    self.pos += self.len() - r;
+
+                    Err(StreamError::ParseError(remainder.consume_remaining(), err))
+                }
             },
-            State::Incomplete(n) => Err(StreamError::Incomplete(n + self.len())),
         }
     }
 }

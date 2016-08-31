@@ -1,16 +1,28 @@
 /// Macro emulating `do`-notation for the parser monad, automatically threading the linear type.
 ///
-/// ```ignore
+/// ```
+/// # #[macro_use] extern crate chomp;
+/// # fn main() {
+/// # use chomp::prelude::*;
+/// # fn parser<I: Input>(i: I, _s: &str) -> ParseResult<I, (), ()> { i.ret(()) }
+/// # fn other_parser<I: Input>(i: I) -> ParseResult<I, u8, ()> { i.ret(23) }
+/// # fn do_something(_i: u8) -> u32 { 23 }
+/// # let input = &b"foo"[..];
+/// # let _r: ParseResult<_, _, ()> =
 /// parse!{input;
 ///                 parser("parameter");
 ///     let value = other_parser();
 ///
-///     ret do_something(value);
+///     ret do_something(value)
 /// }
+/// # ;
+/// # let _r: ParseResult<_, _, ()> =
 /// // is equivalent to:
 /// parser(input, "parameter").bind(|i, _|
 ///     other_parser(i).bind(|i, value|
 ///         i.ret(do_something(value))))
+/// # ;
+/// # }
 /// ```
 ///
 /// # Examples
@@ -20,28 +32,29 @@
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use chomp::{Error, parse_only};
-/// use chomp::{take_while1, token};
+/// use chomp::prelude::{Buffer, Error, Input, ParseResult, parse_only, take_while1, token};
 ///
 /// #[derive(Debug, Eq, PartialEq)]
-/// struct Name<'a> {
-///     first: &'a [u8],
-///     last:  &'a [u8],
+/// struct Name<B: Buffer> {
+///     first: B,
+///     last:  B,
 /// }
 ///
-/// let r = |i| parse!{i;
-///     let first = take_while1(|c| c != b' ');
-///                 token(b' ');
-///     let last  = take_while1(|c| c != b'\n');
+/// fn parser<I: Input<Token=u8>>(i: I) -> ParseResult<I, Name<I::Buffer>, Error<I::Token>> {
+///     parse!{i;
+///         let first = take_while1(|c| c != b' ');
+///                     token(b' ');
+///         let last  = take_while1(|c| c != b'\n');
 ///
-///     ret @ _, Error<_>: Name{
-///         first: first,
-///         last:  last,
+///         ret @ _, Error<u8>: Name{
+///             first: first,
+///             last:  last,
+///         }
 ///     }
-/// };
+/// }
 ///
-/// assert_eq!(parse_only(r, "Martin Wernstål\n".as_bytes()), Ok(Name{
-///     first: b"Martin",
+/// assert_eq!(parse_only(parser, "Martin Wernstål\n".as_bytes()), Ok(Name{
+///     first: &b"Martin"[..],
 ///     last: "Wernstål".as_bytes()
 /// }));
 /// # }
@@ -53,10 +66,10 @@
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use chomp::{Input, U8Result, parse_only, string, token};
+/// use chomp::prelude::{U8Input, Input, SimpleResult, parse_only, string, token};
 /// use chomp::ascii::decimal;
 ///
-/// fn parse_ip(i: Input<u8>) -> U8Result<(u8, u8, u8, u8)> {
+/// fn parse_ip<I: U8Input>(i: I) -> SimpleResult<I, (u8, u8, u8, u8)> {
 ///     parse!{i;
 ///                 string(b"ip:");
 ///         let a = decimal() <* token(b'.');
@@ -77,7 +90,7 @@
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use chomp::{parse_only, string};
+/// use chomp::prelude::{parse_only, string};
 ///
 /// #[derive(Debug, Eq, PartialEq)]
 /// enum Log {
@@ -143,8 +156,8 @@
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
 /// # use chomp::ascii::decimal;
-/// # use chomp::{parse_only, Input, token, U8Result};
-/// # fn my_parser(i: Input<u8>) -> U8Result<u32> {
+/// # use chomp::prelude::{parse_only, U8Input, Input, token, SimpleResult};
+/// # fn my_parser<I: U8Input>(i: I) -> SimpleResult<I, u32> {
 /// parse!{i;
 ///     token(b':');
 ///     let n: u32 = decimal();
@@ -186,9 +199,9 @@
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// # use chomp::{parse_only, Input, U8Result};
-/// # fn my_parser(i: Input<u8>) -> U8Result<&'static str> {
-/// fn do_it<'i, 'a>(i: Input<'i, u8>, s: &'a str) -> U8Result<'i, &'a str> { i.ret(s) }
+/// # use chomp::prelude::{parse_only, U8Input, SimpleResult};
+/// # fn my_parser<I: U8Input>(i: I) -> SimpleResult<I, &'static str> {
+/// fn do_it<'a, I: U8Input>(i: I, s: &'a str) -> SimpleResult<I, &'a str> { i.ret(s) }
 ///
 /// parse!{i;
 ///     do_it("second parameter")
@@ -206,8 +219,8 @@
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// # use chomp::{parse_only, ParseError};
-/// let r: Result<_, ParseError<_, ()>> = parse_only(
+/// # use chomp::prelude::{parse_only, Input};
+/// let r: Result<_, (_, ())> = parse_only(
 ///     parser!{ ret "some success data" },
 ///     b"input data"
 /// );
@@ -216,7 +229,7 @@
 /// # }
 /// ```
 ///
-/// In the example above the `Result<_, ParseError<_, ()>>` type-annotation is required since `ret`
+/// In the example above the `Result<_, (_, ())>` type-annotation is required since `ret`
 /// leaves the error type `E` free which means that the `parser!` expression above cannot infer the
 /// error type without the annotation. `ret` and `end` both provide a mechanism to supply this
 /// information inline:
@@ -224,10 +237,10 @@
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// # use chomp::{parse_only, ParseError};
+/// # use chomp::prelude::{parse_only, Input};
 /// let r = parse_only(parser!{ err @ u32, _: "some error data" }, b"input data");
 ///
-/// assert_eq!(r, Err(ParseError::Error(b"input data", "some error data")));
+/// assert_eq!(r, Err((&b"input data"[..], "some error data")));
 /// # }
 /// ```
 ///
@@ -243,8 +256,8 @@
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// # use chomp::{parse_only, Input, ParseResult};
-/// fn other_parser(i: Input<u8>) -> ParseResult<u8, &'static str, &'static str> {
+/// # use chomp::prelude::{parse_only, Input, ParseResult};
+/// fn other_parser<I: Input>(i: I) -> ParseResult<I, &'static str, &'static str> {
 ///     i.ret("Success!")
 /// }
 ///
@@ -253,7 +266,7 @@
 /// let p = parser!{
 ///     state -> match condition {
 ///         true  => other_parser(state),
-///         false => state.err("failure"),
+///         false => Input::err(state, "failure"),
 ///     }
 /// };
 ///
@@ -278,7 +291,7 @@
 ///    ```
 ///    # #[macro_use] extern crate chomp;
 ///    # fn main() {
-///    # use chomp::ascii::decimal; use chomp::{parse_only, token};
+///    # use chomp::ascii::decimal; use chomp::prelude::{parse_only, token};
 ///    let p = parser!{ decimal() <* token(b';') };
 ///
 ///    assert_eq!(parse_only(p, b"123;"), Ok(123u32));
@@ -293,7 +306,7 @@
 ///    ```
 ///    # #[macro_use] extern crate chomp;
 ///    # fn main() {
-///    # use chomp::{parse_only, token};
+///    # use chomp::prelude::{parse_only, token};
 ///    let p = parser!{ token(b'a') <|> token(b'b') };
 ///
 ///    assert_eq!(parse_only(p, b"b"), Ok(b'b'));
@@ -308,7 +321,7 @@
 ///    ```
 ///    # #[macro_use] extern crate chomp;
 ///    # fn main() {
-///    # use chomp::{parse_only, token};
+///    # use chomp::prelude::{parse_only, token};
 ///    let p = parser!{ token(b'a') >> token(b';') };
 ///
 ///    assert_eq!(parse_only(p, b"a;"), Ok(b';'));
@@ -325,8 +338,8 @@
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// # use chomp::{parse_only};
-/// let p = parser!{ (i -> i.err("foo")) <|> (i -> i.ret("bar")) };
+/// # use chomp::prelude::{Input, parse_only};
+/// let p = parser!{ (i -> Input::err(i, "foo")) <|> (i -> Input::ret(i, "bar")) };
 ///
 /// assert_eq!(parse_only(p, b"a;"), Ok("bar"));
 /// # }
@@ -482,21 +495,21 @@ macro_rules! __parse_internal {
     // recurse until >> or end
     // unrolled:
     // ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $($tail:tt)* )      => { __parse_internal!{@EXPR($input; $($lhs)* $t1) $($tail)*} };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt )                                                               => { __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1} };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt >> $($tail:tt)* )                                               => { __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1}.bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt )                                                        => { __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2} };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt >> $($tail:tt)* )                                        => { __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2}.bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt )                                                 => { __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3} };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt >> $($tail:tt)* )                                 => { __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3}.bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt )                                          => { __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4} };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt >> $($tail:tt)* )                          => { __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4}.bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt )                                   => { __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5} };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt >> $($tail:tt)* )                   => { __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5}.bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt )                            => { __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6} };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt >> $($tail:tt)* )            => { __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6}.bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt )                     => { __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7} };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt >> $($tail:tt)* )     => { __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7}.bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt $t8:tt $($tail:tt)* ) => { __parse_internal!{@EXPR($input; $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7 $t8) $($tail)*} };
+    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt )                                                               => {  __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1} };
+    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt >> $($tail:tt)* )                                               => { (__parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1}).bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
+    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt )                                                        => {  __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2} };
+    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt >> $($tail:tt)* )                                        => { (__parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2}).bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
+    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt )                                                 => {  __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3} };
+    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt >> $($tail:tt)* )                                 => { (__parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3}).bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
+    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt )                                          => {  __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4} };
+    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt >> $($tail:tt)* )                          => { (__parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4}).bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
+    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt )                                   => {  __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5} };
+    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt >> $($tail:tt)* )                   => { (__parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5}).bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
+    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt )                            => {  __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6} };
+    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt >> $($tail:tt)* )            => { (__parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6}).bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
+    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt )                     => {  __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7} };
+    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt >> $($tail:tt)* )     => { (__parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7}).bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
+    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt $t8:tt $($tail:tt)* ) => {  __parse_internal!{@EXPR($input; $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7 $t8) $($tail)*} };
 
     // ExprAlt ::= ExprSkip
     ( @EXPR_ALT($input:expr; $($lhs:tt)*) )                      => { __parse_internal!{@EXPR_SKIP($input;) $($lhs)*} };
@@ -589,7 +602,7 @@ macro_rules! __parse_internal {
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use chomp::{parse_only, string};
+/// use chomp::prelude::{parse_only, string};
 ///
 /// let r = parser!{ string(b"ab") <|> string(b"ac") };
 ///

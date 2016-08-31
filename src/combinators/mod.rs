@@ -7,21 +7,26 @@ pub mod bounded;
 
 use std::iter::FromIterator;
 
-use {ParseResult, Input};
+use types::{
+    ParseResult,
+    Input,
+};
 
-use primitives::State;
-use primitives::{IntoInner, InputBuffer, InputClone};
+use primitives::{
+    IntoInner,
+    Primitives,
+};
 
-/// Applies the parser ``p`` exactly ``num`` times collecting all items into `T: FromIterator`.
+/// Applies the parser `p` exactly `num` times collecting all items into `T: FromIterator`.
 ///
 /// ```
-/// use chomp::{U8Result, ParseError, Error, Input, parse_only, count, token, take_remainder};
+/// use chomp::prelude::*;
 ///
-/// fn parse(i: Input<u8>) -> U8Result<Vec<u8>> {
+/// fn parse<I: U8Input>(i: I) -> SimpleResult<I, Vec<u8>> {
 ///     count(i, 2, |i| token(i, b'a'))
 /// }
 ///
-/// assert_eq!(parse_only(parse, b"a  "), Err(ParseError::Error(b"  ", Error::expected(b'a'))));
+/// assert_eq!(parse_only(parse, b"a  "), Err((&b"  "[..], Error::expected(b'a'))));
 /// assert_eq!(parse_only(parse, b"aa "), Ok(vec![b'a', b'a']));
 ///
 /// let with_remainder = |i| parse(i).bind(|i, d| take_remainder(i).map(|r| (r, d)));
@@ -29,23 +34,21 @@ use primitives::{IntoInner, InputBuffer, InputClone};
 /// assert_eq!(parse_only(with_remainder, b"aaa"), Ok((&b"a"[..], vec![b'a', b'a'])));
 /// ```
 #[inline]
-pub fn count<'a, I, T, E, F, U>(i: Input<'a, I>, num: usize, p: F) -> ParseResult<'a, I, T, E>
-  where I: Copy,
-        U: 'a,
-        F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
+pub fn count<I: Input, T, E, F, U>(i: I, num: usize, p: F) -> ParseResult<I, T, E>
+  where F: FnMut(I) -> ParseResult<I, U, E>,
         T: FromIterator<U> {
     bounded::many(i, num, p)
 }
 
-/// Tries the parser ``f``, on success it yields the parsed value, on failure ``default`` will be
+/// Tries the parser `f`, on success it yields the parsed value, on failure `default` will be
 /// yielded instead.
 ///
 /// Incomplete state is propagated. Backtracks on error.
 ///
 /// ```
-/// use chomp::{Input, U8Result, parse_only, option, token};
+/// use chomp::prelude::{U8Input, SimpleResult, parse_only, option, token};
 ///
-/// fn f(i: Input<u8>) -> U8Result<u8> {
+/// fn f<I: U8Input>(i: I) -> SimpleResult<I, u8> {
 ///     option(i, |i| token(i, b'a'), b'd')
 /// }
 ///
@@ -53,21 +56,17 @@ pub fn count<'a, I, T, E, F, U>(i: Input<'a, I>, num: usize, p: F) -> ParseResul
 /// assert_eq!(parse_only(f, b"bbc"), Ok(b'd'));
 /// ```
 #[inline]
-pub fn option<'a, I, T, E, F>(i: Input<'a, I>, f: F, default: T) -> ParseResult<'a, I, T, E>
-  where I: 'a + Copy,
-        F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E> {
-    match f(i.clone()).into_inner() {
-        State::Data(b, d)    => b.ret(d),
-        State::Error(_, _)   => i.ret(default),
-        State::Incomplete(n) => if i.is_last_slice() {
-            i.ret(default)
-        } else {
-            i.incomplete(n)
-        },
+pub fn option<I: Input, T, E, F>(i: I, f: F, default: T) -> ParseResult<I, T, E>
+  where F: FnOnce(I) -> ParseResult<I, T, E> {
+    let m = i.mark();
+
+    match f(i).into_inner() {
+        (b, Ok(d))  => b.ret(d),
+        (b, Err(_)) => b.restore(m).ret(default),
     }
 }
 
-/// Tries to match the parser ``f``, if ``f`` fails it tries ``g``. Returns the success value of
+/// Tries to match the parser `f`, if `f` fails it tries `g`. Returns the success value of
 /// the first match, otherwise the error of the last one if both fail.
 ///
 /// Incomplete state is propagated from the first one to report incomplete.
@@ -76,7 +75,7 @@ pub fn option<'a, I, T, E, F>(i: Input<'a, I>, f: F, default: T) -> ParseResult<
 /// and its alternation operator (`<|>`).
 ///
 /// ```
-/// use chomp::{ParseError, Error, parse_only, or, token};
+/// use chomp::prelude::{Error, parse_only, or, token};
 ///
 /// let p = |i| or(i,
 ///             |i| token(i, b'a'),
@@ -84,33 +83,27 @@ pub fn option<'a, I, T, E, F>(i: Input<'a, I>, f: F, default: T) -> ParseResult<
 ///
 /// assert_eq!(parse_only(&p, b"abc"), Ok(b'a'));
 /// assert_eq!(parse_only(&p, b"bbc"), Ok(b'b'));
-/// assert_eq!(parse_only(&p, b"cbc"), Err(ParseError::Error(b"cbc", Error::expected(b'b'))));
+/// assert_eq!(parse_only(&p, b"cbc"), Err((&b"cbc"[..], Error::expected(b'b'))));
 /// ```
 #[inline]
-pub fn or<'a, I, T, E, F, G>(i: Input<'a, I>, f: F, g: G) -> ParseResult<'a, I, T, E>
-  where F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E>,
-        G: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E> {
-    match f(i.clone()).into_inner() {
-        State::Data(b, d)    => b.ret(d),
-        State::Error(_, _)   => g(i),
-        State::Incomplete(n) => if i.is_last_slice() {
-            g(i)
-        } else {
-            i.incomplete(n)
-        },
+pub fn or<I: Input, T, E, F, G>(i: I, f: F, g: G) -> ParseResult<I, T, E>
+  where F: FnOnce(I) -> ParseResult<I, T, E>,
+        G: FnOnce(I) -> ParseResult<I, T, E> {
+    let m = i.mark();
+
+    match f(i).into_inner() {
+        (b, Ok(d))  => b.ret(d),
+        (b, Err(_)) => g(b.restore(m)),
     }
 }
 
-/// Parses many instances of ``f`` until it does no longer match, collecting all matches into the
+/// Parses many instances of `f` until it does no longer match, collecting all matches into the
 /// type `T: FromIterator`.
-///
-/// Note: If the last parser succeeds on the last input item then this parser is still considered
-/// incomplete if the input flag END_OF_INPUT is not set as there might be more data to fill.
 ///
 /// Note: Allocates data.
 ///
 /// ```
-/// use chomp::{parse_only, token, many, take_while1};
+/// use chomp::prelude::{parse_only, token, many, take_while1};
 ///
 /// let r: Result<Vec<_>, _> = parse_only(|i| many(i,
 ///     |i| take_while1(i, |c| c != b',' && c != b' ')
@@ -121,15 +114,13 @@ pub fn or<'a, I, T, E, F, G>(i: Input<'a, I>, f: F, g: G) -> ParseResult<'a, I, 
 /// assert_eq!(r, Ok(vec![&b"a"[..], &b"bc"[..]]));
 /// ```
 #[inline]
-pub fn many<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
-  where I: Copy,
-        U: 'a,
-        F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
+pub fn many<I: Input, T, E, F, U>(i: I, f: F) -> ParseResult<I, T, E>
+  where F: FnMut(I) -> ParseResult<I, U, E>,
         T: FromIterator<U> {
     bounded::many(i, .., f)
 }
 
-/// Parses at least one instance of ``f`` and continues until it does no longer match, collecting
+/// Parses at least one instance of `f` and continues until it does no longer match, collecting
 /// all matches into the type `T: FromIterator`.
 ///
 /// Note: If the last parser succeeds on the last input item then this parser is still considered
@@ -138,20 +129,18 @@ pub fn many<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E
 /// Note: Allocates data.
 ///
 /// ```
-/// use chomp::{ParseError, Error, parse_only, token, many1, take_while1};
+/// use chomp::prelude::{Error, parse_only, token, many1, take_while1};
 ///
 /// let p = |i| many1(i, |i| take_while1(i, |c| c != b',' && c != b' ')
 ///             .bind(|i, c| token(i, b',')
 ///                          .map(|_| c)));
 ///
-/// assert_eq!(parse_only(&p, b"a "), Err(ParseError::Error(b" ", Error::expected(b','))));
+/// assert_eq!(parse_only(&p, b"a "), Err((&b" "[..], Error::expected(b','))));
 /// assert_eq!(parse_only(&p, b"a, "), Ok(vec![&b"a"[..]]));
 /// ```
 #[inline]
-pub fn many1<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
-  where I: Copy,
-        U: 'a,
-        F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
+pub fn many1<I: Input, T, E, F, U>(i: I, f: F) -> ParseResult<I, T, E>
+  where F: FnMut(I) -> ParseResult<I, U, E>,
         T: FromIterator<U> {
     bounded::many(i, 1.., f)
 }
@@ -165,7 +154,7 @@ pub fn many1<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, 
 /// Incomplete will be propagated from `R` if end of input has not been read.
 ///
 /// ```
-/// use chomp::{parse_only, sep_by, token};
+/// use chomp::prelude::{parse_only, sep_by, token};
 /// use chomp::ascii::decimal;
 ///
 /// let r: Result<Vec<u8>, _> = parse_only(|i| sep_by(i, decimal, |i| token(i, b';')), b"91;03;20");
@@ -173,15 +162,11 @@ pub fn many1<'a, I, T, E, F, U>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, 
 /// assert_eq!(r, Ok(vec![91, 03, 20]));
 /// ```
 #[inline]
-pub fn sep_by<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, p: R, sep: F) -> ParseResult<'a, I, T, E>
-  where I: Copy,
-        U: 'a,
-        V: 'a,
-        N: 'a,
-        T: FromIterator<U>,
+pub fn sep_by<I: Input, T, E, R, F, U, N, V>(i: I, p: R, sep: F) -> ParseResult<I, T, E>
+  where T: FromIterator<U>,
         E: From<N>,
-        R: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
-        F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
+        R: FnMut(I) -> ParseResult<I, U, E>,
+        F: FnMut(I) -> ParseResult<I, V, N> {
     bounded::sep_by(i, .., p, sep)
 }
 
@@ -195,7 +180,7 @@ pub fn sep_by<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, p: R, sep: F) -> Pars
 /// Incomplete will be propagated from `R` if end of input has not been read.
 ///
 /// ```
-/// use chomp::{parse_only, sep_by1, token};
+/// use chomp::prelude::{parse_only, sep_by1, token};
 /// use chomp::ascii::decimal;
 ///
 /// let r: Result<Vec<u8>, _> = parse_only(|i| sep_by1(i, decimal, |i| token(i, b';')), b"91;03;20");
@@ -203,15 +188,11 @@ pub fn sep_by<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, p: R, sep: F) -> Pars
 /// assert_eq!(r, Ok(vec![91, 03, 20]));
 /// ```
 #[inline]
-pub fn sep_by1<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, p: R, sep: F) -> ParseResult<'a, I, T, E>
-  where I: Copy,
-        U: 'a,
-        V: 'a,
-        N: 'a,
-        T: FromIterator<U>,
+pub fn sep_by1<I: Input, T, E, R, F, U, N, V>(i: I, p: R, sep: F) -> ParseResult<I, T, E>
+  where T: FromIterator<U>,
         E: From<N>,
-        R: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
-        F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
+        R: FnMut(I) -> ParseResult<I, U, E>,
+        F: FnMut(I) -> ParseResult<I, V, N> {
     bounded::sep_by(i, 1.., p, sep)
 }
 
@@ -223,21 +204,18 @@ pub fn sep_by1<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, p: R, sep: F) -> Par
 /// Errors from `R` are propagated.
 ///
 /// ```
-/// use chomp::{parse_only, many_till, any, token};
+/// use chomp::prelude::{parse_only, many_till, any, token};
 ///
 /// let r: Result<Vec<u8>, _> = parse_only(|i| many_till(i, any, |i| token(i, b';')), b"abc;def");
 ///
 /// assert_eq!(r, Ok(vec![b'a', b'b', b'c']));
 /// ```
 #[inline]
-pub fn many_till<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, p: R, end: F) -> ParseResult<'a, I, T, E>
-  where I: Copy,
-        U: 'a,
-        V: 'a,
-        N: 'a,
-        T: FromIterator<U>,
-        R: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
-        F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
+pub fn many_till<I: Input, T, E, R, F, U, N, V>(i: I, p: R, end: F) -> ParseResult<I, T, E>
+  where T: FromIterator<U>,
+        E: From<N>,
+        R: FnMut(I) -> ParseResult<I, U, E>,
+        F: FnMut(I) -> ParseResult<I, V, N> {
     bounded::many_till(i, .., p, end)
 }
 
@@ -245,20 +223,19 @@ pub fn many_till<'a, I, T, E, R, F, U, N, V>(i: Input<'a, I>, p: R, end: F) -> P
 ///
 /// Incomplete state will be propagated.
 ///
-/// This is more efficient compared to using ``many`` and then just discarding the result as
-/// ``many`` allocates a separate data structure to contain the data before proceeding.
+/// This is more efficient compared to using `many` and then just discarding the result as
+/// `many` allocates a separate data structure to contain the data before proceeding.
 ///
 /// ```
-/// use chomp::{parse_only, skip_many, token};
+/// use chomp::prelude::{parse_only, skip_many, token};
 ///
 /// let r = parse_only(|i| skip_many(i, |i| token(i, b'a')).then(|i| token(i, b'b')), b"aaaabc");
 ///
 /// assert_eq!(r, Ok(b'b'));
 /// ```
 #[inline]
-pub fn skip_many<'a, I, T, E, F>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, (), E>
-  where T: 'a,
-        F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+pub fn skip_many<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, (), E>
+  where F: FnMut(I) -> ParseResult<I, T, E> {
     bounded::skip_many(i, .., f)
 }
 
@@ -267,56 +244,52 @@ pub fn skip_many<'a, I, T, E, F>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, ()
 /// Incomplete state will be propagated. Will propagate the error if it occurs during the first
 /// attempt.
 ///
-/// This is more efficient compared to using ``many1`` and then just discarding the result as
-/// ``many1`` allocates a separate data structure to contain the data before proceeding.
+/// This is more efficient compared to using `many1` and then just discarding the result as
+/// `many1` allocates a separate data structure to contain the data before proceeding.
 ///
 /// ```
-/// use chomp::{ParseError, Error, parse_only, skip_many1, token};
+/// use chomp::prelude::{Error, parse_only, skip_many1, token};
 ///
 /// let p = |i| skip_many1(i, |i| token(i, b'a')).bind(|i, _| token(i, b'b'));
 ///
 /// assert_eq!(parse_only(&p, b"aaaabc"), Ok(b'b'));
 /// assert_eq!(parse_only(&p, b"abc"), Ok(b'b'));
 ///
-/// assert_eq!(parse_only(&p, b"bc"), Err(ParseError::Error(b"bc", Error::expected(b'a'))));
+/// assert_eq!(parse_only(&p, b"bc"), Err((&b"bc"[..], Error::expected(b'a'))));
 /// ```
 #[inline]
-pub fn skip_many1<'a, I, T, E, F>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, (), E>
-  where T: 'a, F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+pub fn skip_many1<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, (), E>
+  where F: FnMut(I) -> ParseResult<I, T, E> {
     bounded::skip_many(i, 1.., f)
 }
 
 /// Returns the result of the given parser as well as the slice which matched it.
 ///
 /// ```
-/// use chomp::{parse_only, matched_by};
+/// use chomp::prelude::{parse_only, matched_by};
 /// use chomp::ascii::decimal;
 ///
 /// assert_eq!(parse_only(|i| matched_by(i, decimal), b"123"), Ok((&b"123"[..], 123u32)));
 /// ```
 #[inline]
-pub fn matched_by<'a, I, T, E, F>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, (&'a [I], T), E>
-  where T: 'a,
-        F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E> {
-    let buf = i.buffer();
+pub fn matched_by<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, (I::Buffer, T), E>
+  where F: FnOnce(I) -> ParseResult<I, T, E> {
+    let m = i.mark();
 
-    match f(i.clone()).into_inner() {
-        State::Data(b, t) => {
-            // b is remainder, find out how much the parser used
-            let diff = buf.len() - b.buffer().len();
-            let n    = &buf[..diff];
+    match f(i).into_inner() {
+        (mut b, Ok(t)) => {
+            let n = b.consume_from(m);
 
             b.ret((n, t))
         },
-        State::Error(b, e)   => i.replace(b).err(e),
-        State::Incomplete(n) => i.incomplete(n),
+        (b, Err(e))   => b.err(e),
     }
 }
 
 /// Applies the parser `F` without consuming any input.
 ///
 /// ```
-/// use chomp::{parse_only, take};
+/// use chomp::prelude::{parse_only, take};
 /// use chomp::combinators::look_ahead;
 ///
 /// let p = |i| look_ahead(i, |i| take(i, 4)).bind(|i, t| take(i, 7).map(|u| (t, u)));
@@ -324,260 +297,229 @@ pub fn matched_by<'a, I, T, E, F>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, (
 /// assert_eq!(parse_only(p, b"testing"), Ok((&b"test"[..], &b"testing"[..])));
 /// ```
 #[inline]
-pub fn look_ahead<'a, I, T, E, F>(i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
-  where F: FnOnce(Input<'a, I>) -> ParseResult<'a, I, T, E> {
-    match f(i.clone()).into_inner() {
-        State::Data(_, t)    => i.ret(t),
-        State::Error(b, t)   => i.replace(b).err(t),
-        State::Incomplete(n) => i.incomplete(n),
+pub fn look_ahead<I: Input, T, E, F>(i: I, f: F) -> ParseResult<I, T, E>
+  where F: FnOnce(I) -> ParseResult<I, T, E> {
+    let m = i.mark();
+
+    match f(i).into_inner() {
+        (b, Ok(t))  => b.restore(m).ret(t),
+        (b, Err(t)) => b.restore(m).err(t),
     }
 }
 
 #[cfg(test)]
 mod test {
-    use ParseResult;
-    use primitives::State;
-    use primitives::input::{new, DEFAULT, END_OF_INPUT};
+    use types::{Input, ParseResult};
     use primitives::IntoInner;
     use super::*;
 
-    use parsers::{any, take, token, string};
+    use parsers::{Error, any, take, token, string};
 
     #[test]
     fn option_test() {
-        assert_eq!(option(new(DEFAULT, b""), any, b'-').into_inner(), State::Incomplete(1));
-        assert_eq!(option(new(DEFAULT, b"a"), any, b'-').into_inner(), State::Data(new(DEFAULT, b""), b'a'));
-        assert_eq!(option(new(DEFAULT, b""), |i| take(i, 2).map(ToOwned::to_owned), vec![]).into_inner(), State::Incomplete(2));
-        assert_eq!(option(new(DEFAULT, b"a"), |i| take(i, 2).map(ToOwned::to_owned), vec![]).into_inner(), State::Incomplete(1));
-        assert_eq!(option(new(DEFAULT, b"ab"), |i| take(i, 2).map(ToOwned::to_owned), vec![]).into_inner(), State::Data(new(DEFAULT, b""), vec![b'a', b'b']));
+        assert_eq!(option(&b""[..],   any, b'-').into_inner(), (&b""[..], Ok(b'-')));
+        assert_eq!(option(&b"a"[..],  any, b'-').into_inner(), (&b""[..], Ok(b'a')));
+        assert_eq!(option(&b""[..],   |i| take(i, 2).map(ToOwned::to_owned), vec![]).into_inner(), (&b""[..], Ok(vec![])));
+        assert_eq!(option(&b"a"[..],  |i| take(i, 2).map(ToOwned::to_owned), vec![]).into_inner(), (&b"a"[..], Ok(vec![])));
+        assert_eq!(option(&b"ab"[..], |i| take(i, 2).map(ToOwned::to_owned), vec![]).into_inner(), (&b""[..], Ok(vec![b'a', b'b'])));
 
-        assert_eq!(option(new(DEFAULT, b"a"), |i| token(i, b' ').map_err(|_| "token_err"), b'-').into_inner(), State::Data(new(DEFAULT, b"a"), b'-'));
-
-        assert_eq!(option(new(END_OF_INPUT, b""), any, b'-').into_inner(), State::Data(new(END_OF_INPUT, b""), b'-'));
-        assert_eq!(option(new(END_OF_INPUT, b"a"), any, b'-').into_inner(), State::Data(new(END_OF_INPUT, b""), b'a'));
-        assert_eq!(option(new(END_OF_INPUT, b""), |i| take(i, 2).map(ToOwned::to_owned), vec![]).into_inner(), State::Data(new(END_OF_INPUT, b""), vec![]));
-        assert_eq!(option(new(END_OF_INPUT, b"a"), |i| take(i, 2).map(ToOwned::to_owned), vec![]).into_inner(), State::Data(new(END_OF_INPUT, b"a"), vec![]));
-        assert_eq!(option(new(END_OF_INPUT, b"ab"), |i| take(i, 2).map(ToOwned::to_owned), vec![]).into_inner(), State::Data(new(END_OF_INPUT, b""), vec![b'a', b'b']));
-
-        assert_eq!(option(new(END_OF_INPUT, b"a"), |i| token(i, b' ').map_err(|_| "token_err"), b'-').into_inner(), State::Data(new(END_OF_INPUT, b"a"), b'-'));
+        assert_eq!(option(&b"a"[..], |i| token(i, b' ').map_err(|_| "token_err"), b'-').into_inner(), (&b"a"[..], Ok(b'-')));
     }
 
     #[test]
     fn or_test() {
-        assert_eq!(or(new(DEFAULT, b""), any, any).into_inner(), State::Incomplete(1));
-        assert_eq!(or(new(DEFAULT, b"a"), any, any).into_inner(), State::Data(new(DEFAULT, b""), b'a'));
-        assert_eq!(or(new(DEFAULT, b"a"), |i| take(i, 2), |i| take(i, 1)).into_inner(), State::Incomplete(1));
-        assert_eq!(or(new(DEFAULT, b"ab"), |i| take(i, 2), |i| take(i, 1)).into_inner(), State::Data(new(DEFAULT, b""), &b"ab"[..]));
-        assert_eq!(or(new(DEFAULT, b"a"), |i| token(i, b'a'), |i| token(i, b'b')).into_inner(), State::Data(new(DEFAULT, b""), b'a'));
-        assert_eq!(or(new(DEFAULT, b"b"), |i| token(i, b'a'), |i| token(i, b'b')).into_inner(), State::Data(new(DEFAULT, b""), b'b'));
-        assert_eq!(or(new(DEFAULT, b"c"), |i| token(i, b'a').map_err(|_| "a err"), |i| token(i, b'b').map_err(|_| "b err")).into_inner(), State::Error(b"c", "b err"));
-
-        assert_eq!(or(new(END_OF_INPUT, b""), any, any).into_inner(), State::Incomplete(1));
-        assert_eq!(or(new(END_OF_INPUT, b"a"), any, any).into_inner(), State::Data(new(END_OF_INPUT, b""), b'a'));
-        assert_eq!(or(new(END_OF_INPUT, b"a"), |i| take(i, 2), |i| take(i, 1)).into_inner(), State::Data(new(END_OF_INPUT, b""), &b"a"[..]));
-        assert_eq!(or(new(END_OF_INPUT, b"ab"), |i| take(i, 2), |i| take(i, 1)).into_inner(), State::Data(new(END_OF_INPUT, b""), &b"ab"[..]));
-        assert_eq!(or(new(END_OF_INPUT, b"a"), |i| token(i, b'a'), |i| token(i, b'b')).into_inner(), State::Data(new(END_OF_INPUT, b""), b'a'));
-        assert_eq!(or(new(END_OF_INPUT, b"b"), |i| token(i, b'a'), |i| token(i, b'b')).into_inner(), State::Data(new(END_OF_INPUT, b""), b'b'));
-        assert_eq!(or(new(END_OF_INPUT, b"c"), |i| token(i, b'a').map_err(|_| "a err"), |i| token(i, b'b').map_err(|_| "b err")).into_inner(), State::Error(b"c", "b err"));
+        assert_eq!(or(&b""[..],  any, any).into_inner(), (&b""[..], Err(Error::unexpected())));
+        assert_eq!(or(&b"a"[..], any, any).into_inner(), (&b""[..], Ok(b'a')));
+        assert_eq!(or(&b"a"[..],  |i| take(i, 2), |i| take(i, 1)).into_inner(), (&b""[..], Ok(&b"a"[..])));
+        assert_eq!(or(&b"ab"[..], |i| take(i, 2), |i| take(i, 1)).into_inner(), (&b""[..], Ok(&b"ab"[..])));
+        assert_eq!(or(&b"a"[..],  |i| token(i, b'a'), |i| token(i, b'b')).into_inner(), (&b""[..], Ok(b'a')));
+        assert_eq!(or(&b"b"[..],  |i| token(i, b'a'), |i| token(i, b'b')).into_inner(), (&b""[..], Ok(b'b')));
+        assert_eq!(or(&b"c"[..],  |i| token(i, b'a').map_err(|_| "a err"), |i| token(i, b'b').map_err(|_| "b err")).into_inner(), (&b"c"[..], Err("b err")));
     }
 
     #[test]
     fn many_test() {
-        let r: State<_, Vec<_>, _> = many(new(DEFAULT, b""), |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Incomplete(1));
-        let r: State<_, Vec<_>, _> = many(new(DEFAULT, b"a"), |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Incomplete(1));
-        let r: State<_, Vec<_>, _> = many(new(DEFAULT, b"aa"), |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Incomplete(1));
+        let r: (_, Result<Vec<u8>, _>) = many(&b""[..], |i| i.err("the error")).into_inner();
+        assert_eq!(r, (&b""[..], Ok(vec![])));
+        let r: (_, Result<Vec<u8>, _>) = many(&b"abc"[..], |i| i.err("the error")).into_inner();
+        assert_eq!(r, (&b"abc"[..], Ok(vec![])));
 
-        let r: State<_, Vec<_>, _> = many(new(DEFAULT, b"bbb"), |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Data(new(DEFAULT, b"bbb"), vec![]));
-        let r: State<_, Vec<_>, _> = many(new(DEFAULT, b"abb"), |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Data(new(DEFAULT, b"bb"), vec![b'a']));
-        let r: State<_, Vec<_>, _> = many(new(DEFAULT, b"aab"), |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Data(new(DEFAULT, b"b"), vec![b'a', b'a']));
+        let r: (_, Result<Vec<_>, _>) = many(&b""[..], |i| token(i, b'a')).into_inner();
+        assert_eq!(r, (&b""[..], Ok(vec![])));
+        let r: (_, Result<Vec<_>, _>) = many(&b"a"[..], |i| token(i, b'a')).into_inner();
+        assert_eq!(r, (&b""[..], Ok(vec![b'a'])));
+        let r: (_, Result<Vec<_>, _>) = many(&b"aa"[..], |i| token(i, b'a')).into_inner();
+        assert_eq!(r, (&b""[..], Ok(vec![b'a', b'a'])));
 
-        let r: State<_, Vec<_>, _> = many(new(END_OF_INPUT, b""), |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Data(new(END_OF_INPUT, b""), vec![]));
-        let r: State<_, Vec<_>, _> = many(new(END_OF_INPUT, b"a"), |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Data(new(END_OF_INPUT, b""), vec![b'a']));
-        let r: State<_, Vec<_>, _> = many(new(END_OF_INPUT, b"aa"), |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Data(new(END_OF_INPUT, b""), vec![b'a', b'a']));
-
-        let r: State<_, Vec<_>, _> = many(new(END_OF_INPUT, b"aab"), |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Data(new(END_OF_INPUT, b"b"), vec![b'a', b'a']));
+        let r: (_, Result<Vec<_>, _>) = many(&b"bbb"[..], |i| token(i, b'a')).into_inner();
+        assert_eq!(r, (&b"bbb"[..], Ok(vec![])));
+        let r: (_, Result<Vec<_>, _>) = many(&b"abb"[..], |i| token(i, b'a')).into_inner();
+        assert_eq!(r, (&b"bb"[..], Ok(vec![b'a'])));
+        let r: (_, Result<Vec<_>, _>) = many(&b"aab"[..], |i| token(i, b'a')).into_inner();
+        assert_eq!(r, (&b"b"[..], Ok(vec![b'a', b'a'])));
     }
 
     #[test]
     fn many1_test() {
-        let r: State<_, Vec<_>, _> = many1(new(DEFAULT, b""), |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Incomplete(1));
-        let r: State<_, Vec<_>, _> = many1(new(DEFAULT, b"a"), |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Incomplete(1));
-        let r: State<_, Vec<_>, _> = many1(new(DEFAULT, b"aa"), |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Incomplete(1));
+        let r: (_, Result<Vec<u8>, _>) = many1(&b""[..], |i| i.err("the error")).into_inner();
+        assert_eq!(r, (&b""[..], Err("the error")));
+        let r: (_, Result<Vec<u8>, _>) = many1(&b"abc"[..], |i| i.err("the error")).into_inner();
+        assert_eq!(r, (&b"abc"[..], Err("the error")));
 
-        let r: State<_, Vec<_>, _> = many1(new(DEFAULT, b"bbb"), |i| token(i, b'a').map_err(|_| "token_error")).into_inner();
-        assert_eq!(r, State::Error(b"bbb", "token_error"));
-        let r: State<_, Vec<_>, _> = many1(new(DEFAULT, b"abb"), |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Data(new(DEFAULT, b"bb"), vec![b'a']));
-        let r: State<_, Vec<_>, _> = many1(new(DEFAULT, b"aab"), |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Data(new(DEFAULT, b"b"), vec![b'a', b'a']));
+        let r: (_, Result<Vec<_>, _>) = many1(&b""[..], |i| token(i, b'a')).into_inner();
+        assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = many1(&b"a"[..], |i| token(i, b'a')).into_inner();
+        assert_eq!(r, (&b""[..], Ok(vec![b'a'])));
+        let r: (_, Result<Vec<_>, _>) = many1(&b"aa"[..], |i| token(i, b'a')).into_inner();
+        assert_eq!(r, (&b""[..], Ok(vec![b'a', b'a'])));
 
-        let r: State<_, Vec<_>, _> = many1(new(END_OF_INPUT, b""), |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Incomplete(1));
-        let r: State<_, Vec<_>, _> = many1(new(END_OF_INPUT, b"a"), |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Data(new(END_OF_INPUT, b""), vec![b'a']));
-        let r: State<_, Vec<_>, _> = many1(new(END_OF_INPUT, b"aa"), |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Data(new(END_OF_INPUT, b""), vec![b'a', b'a']));
-
-        let r: State<_, Vec<_>, _> = many1(new(END_OF_INPUT, b"aab"), |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Data(new(END_OF_INPUT, b"b"), vec![b'a', b'a']));
+        let r: (_, Result<Vec<_>, _>) = many1(&b"bbb"[..], |i| token(i, b'a')).into_inner();
+        assert_eq!(r, (&b"bbb"[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = many1(&b"abb"[..], |i| token(i, b'a')).into_inner();
+        assert_eq!(r, (&b"bb"[..], Ok(vec![b'a'])));
+        let r: (_, Result<Vec<_>, _>) = many1(&b"aab"[..], |i| token(i, b'a')).into_inner();
+        assert_eq!(r, (&b"b"[..], Ok(vec![b'a', b'a'])));
     }
 
     #[test]
     fn count_test() {
-        let r: State<_, Vec<_>, _> = count(new(DEFAULT, b""), 3,  |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Incomplete(1));
-        let r: State<_, Vec<_>, _> = count(new(DEFAULT, b"a"), 3,  |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Incomplete(1));
-        let r: State<_, Vec<_>, _> = count(new(DEFAULT, b"aa"), 3,  |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Incomplete(1));
-        let r: State<_, Vec<_>, _> = count(new(DEFAULT, b"aaa"), 3,  |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Data(new(DEFAULT, b""), vec![b'a', b'a', b'a']));
-        let r: State<_, Vec<_>, _> = count(new(DEFAULT, b"aaaa"), 3,  |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Data(new(DEFAULT, b"a"), vec![b'a', b'a', b'a']));
+        let r: (_, Result<Vec<u8>, _>) = count(&b""[..], 3, |i| i.err("the error")).into_inner();
+        assert_eq!(r, (&b""[..], Err("the error")));
 
-        let r: State<_, Vec<_>, _> = count(new(END_OF_INPUT, b""), 3,  |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Incomplete(1));
-        let r: State<_, Vec<_>, _> = count(new(END_OF_INPUT, b"a"), 3,  |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Incomplete(1));
-        let r: State<_, Vec<_>, _> = count(new(END_OF_INPUT, b"aa"), 3,  |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Incomplete(1));
-        let r: State<_, Vec<_>, _> = count(new(END_OF_INPUT, b"aaa"), 3,  |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Data(new(END_OF_INPUT, b""), vec![b'a', b'a', b'a']));
-        let r: State<_, Vec<_>, _> = count(new(END_OF_INPUT, b"aaaa"), 3,  |i| token(i, b'a')).into_inner();
-        assert_eq!(r, State::Data(new(END_OF_INPUT, b"a"), vec![b'a', b'a', b'a']));
+        let r: (_, Result<Vec<_>, _>) = count(&b""[..], 3, |i| token(i, b'a')).into_inner();
+        assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = count(&b"a"[..], 3, |i| token(i, b'a')).into_inner();
+        assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = count(&b"aa"[..], 3, |i| token(i, b'a')).into_inner();
+        assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = count(&b"aaa"[..], 3, |i| token(i, b'a')).into_inner();
+        assert_eq!(r, (&b""[..], Ok(vec![b'a', b'a', b'a'])));
+        let r: (_, Result<Vec<_>, _>) = count(&b"aaaa"[..], 3, |i| token(i, b'a')).into_inner();
+        assert_eq!(r, (&b"a"[..], Ok(vec![b'a', b'a', b'a'])));
     }
 
     #[test]
     fn skip_many1_test() {
-        assert_eq!(skip_many1(new(DEFAULT, b"aabc"), |i| token(i, b'a')).into_inner(), State::Data(new(DEFAULT, b"bc"), ()));
-        assert_eq!(skip_many1(new(DEFAULT, b"abc"), |i| token(i, b'a')).into_inner(), State::Data(new(DEFAULT, b"bc"), ()));
-        assert_eq!(skip_many1(new(DEFAULT, b"bc"), |i| i.err::<(), _>("error")).into_inner(), State::Error(b"bc", "error"));
-        assert_eq!(skip_many1(new(DEFAULT, b"aaa"), |i| token(i, b'a')).into_inner(), State::Incomplete(1));
-        assert_eq!(skip_many1(new(END_OF_INPUT, b"aabc"), |i| token(i, b'a')).into_inner(), State::Data(new(END_OF_INPUT, b"bc"), ()));
-        assert_eq!(skip_many1(new(END_OF_INPUT, b"abc"), |i| token(i, b'a')).into_inner(), State::Data(new(END_OF_INPUT, b"bc"), ()));
-        assert_eq!(skip_many1(new(END_OF_INPUT, b"bc"), |i| i.err::<(), _>("error")).into_inner(), State::Error(b"bc", "error"));
-        assert_eq!(skip_many1(new(END_OF_INPUT, b"aaa"), |i| token(i, b'a')).into_inner(), State::Data(new(END_OF_INPUT, b""), ()));
+        assert_eq!(skip_many1(&b"bc"[..], |i| i.err::<(), _>("error")).into_inner(), (&b"bc"[..], Err("error")));
+
+        assert_eq!(skip_many1(&b"aabc"[..], |i| token(i, b'a')).into_inner(), (&b"bc"[..], Ok(())));
+        assert_eq!(skip_many1(&b"abc"[..],  |i| token(i, b'a')).into_inner(), (&b"bc"[..], Ok(())));
+        assert_eq!(skip_many1(&b"bc"[..],   |i| token(i, b'a')).into_inner(), (&b"bc"[..], Err(Error::expected(b'a'))));
+        assert_eq!(skip_many1(&b""[..],     |i| token(i, b'a')).into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        assert_eq!(skip_many1(&b"aaa"[..],  |i| token(i, b'a')).into_inner(), (&b""[..], Ok(())));
     }
 
     #[test]
     fn many_till_test() {
-        assert_eq!(many_till(new(DEFAULT, b"abcd"), any, |i| token(i, b'c')).into_inner(), State::Data(new(DEFAULT, b"d"), vec![b'a', b'b']));
-        let r: ParseResult<_, Vec<_>, _> = many_till(new(DEFAULT, b"abd"), any, |i| token(i, b'c'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        assert_eq!(many_till(&b"abcd"[..], any, |i| token(i, b'c')).into_inner(), (&b"d"[..], Ok(vec![b'a', b'b'])));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abd"[..], any, |i| token(i, b'c'));
+        assert_eq!(r.into_inner(), (&b""[..], Err(Error::unexpected())));
 
-        let r: ParseResult<_, Vec<u8>, _> = many_till(new(DEFAULT, b"abcd"), |i| i.err(()), |i| token(i, b'c'));
-        assert_eq!(r.into_inner(), State::Error(b"abcd", ()));
+        let r: ParseResult<_, Vec<u8>, _> = many_till(&b"abcd"[..], |i| i.err(Error::expected(b'@')), |i| token(i, b'c'));
+        assert_eq!(r.into_inner(), (&b"abcd"[..], Err(Error::expected(b'@'))));
 
         // Variant to make sure error slice is propagated
         let mut n = 0;
-        let r: ParseResult<_, Vec<_>, _> = many_till(new(DEFAULT, b"abcd"), |i| if n == 0 { n += 1; any(i).map_err(|_| "any err") } else { i.err("the error") }, |i| token(i, b'c'));
-        assert_eq!(r.into_inner(), State::Error(b"bcd", "the error"));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abcd"[..], |i| if n == 0 { n += 1; any(i).map_err(|_| Error::expected(b'i')) } else { i.err(Error::expected(b'@')) }, |i| token(i, b'c'));
+        assert_eq!(r.into_inner(), (&b"bcd"[..], Err(Error::expected(b'@'))));
     }
 
     #[test]
     fn matched_by_test() {
-        assert_eq!(matched_by(new(DEFAULT, b"abc"), any).into_inner(), State::Data(new(DEFAULT, b"bc"), (&b"a"[..], b'a')));
-        assert_eq!(matched_by(new(DEFAULT, b"abc"), |i| i.err::<(), _>("my error")).into_inner(), State::Error(&b"abc"[..], "my error"));
-        assert_eq!(matched_by(new(DEFAULT, b"abc"), |i| any(i).map_err(|_| "any error").then(|i| i.err::<(), _>("my error"))).into_inner(), State::Error(&b"bc"[..], "my error"));
-        assert_eq!(matched_by(new(DEFAULT, b""), any).into_inner(), State::Incomplete(1));
+        assert_eq!(matched_by(&b"abc"[..], any).into_inner(), (&b"bc"[..], Ok((&b"a"[..], b'a'))));
+        assert_eq!(matched_by(&b"abc"[..], |i| i.err::<(), _>("my error")).into_inner(), (&b"abc"[..], Err("my error")));
+        assert_eq!(matched_by(&b"abc"[..], |i| any(i).map_err(|_| "any error").then(|i| i.err::<(), _>("my error"))).into_inner(), (&b"bc"[..], Err("my error")));
+        assert_eq!(matched_by(&b""[..], any).into_inner(), (&b""[..], Err(Error::unexpected())));
     }
 
     #[test]
     fn sep_by_test() {
-        assert_eq!(sep_by(new(END_OF_INPUT, b""), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b""), vec![]));
-        assert_eq!(sep_by(new(END_OF_INPUT, b"b"), |i| token(i, b'a'), |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b"b"), vec![]));
-        assert_eq!(sep_by(new(END_OF_INPUT, b"a"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b""), vec![b'a']));
-        assert_eq!(sep_by(new(END_OF_INPUT, b"a;c"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b""), vec![b'a', b'c']));
-        assert_eq!(sep_by(new(END_OF_INPUT, b"a;c;"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b";"), vec![b'a', b'c']));
-        assert_eq!(sep_by(new(END_OF_INPUT, b"a--c-"), any, |i| string(i, b"--")).into_inner(), State::Data(new(END_OF_INPUT, b"-"), vec![b'a', b'c']));
-        assert_eq!(sep_by(new(END_OF_INPUT, b"abc"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b"bc"), vec![b'a']));
-        assert_eq!(sep_by(new(END_OF_INPUT, b"a;bc"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b"c"), vec![b'a', b'b']));
+        assert_eq!(sep_by(&b""[..],      any, |i| token(i, b';')).into_inner(), (&b""[..],   Ok(vec![])));
+        assert_eq!(sep_by(&b"a"[..],     any, |i| token(i, b';')).into_inner(), (&b""[..],   Ok(vec![b'a'])));
+        assert_eq!(sep_by(&b"a;c"[..],   any, |i| token(i, b';')).into_inner(), (&b""[..],   Ok(vec![b'a', b'c'])));
+        assert_eq!(sep_by(&b"a;c;"[..],  any, |i| token(i, b';')).into_inner(), (&b";"[..],  Ok(vec![b'a', b'c'])));
+        assert_eq!(sep_by(&b"abc"[..],   any, |i| token(i, b';')).into_inner(), (&b"bc"[..], Ok(vec![b'a'])));
+        assert_eq!(sep_by(&b"a;bc"[..],  any, |i| token(i, b';')).into_inner(), (&b"c"[..],  Ok(vec![b'a', b'b'])));
+        assert_eq!(sep_by(&b"abc"[..],   any, |i| token(i, b';')).into_inner(), (&b"bc"[..], Ok(vec![b'a'])));
+        assert_eq!(sep_by(&b"a;bc"[..],  any, |i| token(i, b';')).into_inner(), (&b"c"[..],  Ok(vec![b'a', b'b'])));
 
-        assert_eq!(sep_by(new(DEFAULT, b"abc"), any, |i| token(i, b';')).into_inner(), State::Data(new(DEFAULT, b"bc"), vec![b'a']));
-        assert_eq!(sep_by(new(DEFAULT, b"a;bc"), any, |i| token(i, b';')).into_inner(), State::Data(new(DEFAULT, b"c"), vec![b'a', b'b']));
+        assert_eq!(sep_by(&b"b"[..], |i| token(i, b'a'), |i| token(i, b';')).into_inner(), (&b"b"[..], Ok(vec![])));
+        assert_eq!(sep_by(&b"a--c-"[..], any, |i| string(i, b"--")).into_inner(), (&b"-"[..], Ok(vec![b'a', b'c'])));
 
         // Incomplete becasue there might be another separator or item to be read
-        let r: ParseResult<_, Vec<_>, _> = sep_by(new(DEFAULT, b""), any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        let r: ParseResult<_, Vec<_>, _> = sep_by(&b""[..], any, |i| token(i, b';'));
+        assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
 
-        let r: ParseResult<_, Vec<_>, _> = sep_by(new(DEFAULT, b"a"), any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        let r: ParseResult<_, Vec<_>, _> = sep_by(&b"a"[..], any, |i| token(i, b';'));
+        assert_eq!(r.into_inner(), (&b""[..], Ok(vec![b'a'])));
 
-        let r: ParseResult<_, Vec<_>, _> = sep_by(new(DEFAULT, b"a;"), any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        let r: ParseResult<_, Vec<_>, _> = sep_by(&b"a;"[..], any, |i| token(i, b';'));
+        assert_eq!(r.into_inner(), (&b";"[..], Ok(vec![b'a'])));
 
-        let r: ParseResult<_, Vec<_>, _> = sep_by(new(DEFAULT, b"a;c"), any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        let r: ParseResult<_, Vec<_>, _> = sep_by(&b"a;c"[..], any, |i| token(i, b';'));
+        assert_eq!(r.into_inner(), (&b""[..], Ok(vec![b'a', b'c'])));
 
-        let r: ParseResult<_, Vec<_>, _> = sep_by(new(DEFAULT, b"a;c;"), any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        let r: ParseResult<_, Vec<_>, _> = sep_by(&b"a;c;"[..], any, |i| token(i, b';'));
+        assert_eq!(r.into_inner(), (&b";"[..], Ok(vec![b'a', b'c'])));
 
-        let r: ParseResult<_, Vec<_>, _> = sep_by(new(DEFAULT, b"a--c-"), any, |i| string(i, b"--"));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        let r: ParseResult<_, Vec<_>, _> = sep_by(&b"a--c-"[..], any, |i| string(i, b"--"));
+        assert_eq!(r.into_inner(), (&b"-"[..], Ok(vec![b'a', b'c'])));
 
-        let r: ParseResult<_, Vec<_>, _> = sep_by(new(DEFAULT, b"aaa--a"), |i| string(i, b"aaa"), |i| string(i, b"--"));
-        assert_eq!(r.into_inner(), State::Incomplete(2));
-
+        let r: ParseResult<_, Vec<_>, _> = sep_by(&b"aaa--a"[..], |i| string(i, b"aaa"), |i| string(i, b"--"));
+        assert_eq!(r.into_inner(), (&b"--a"[..], Ok(vec![&b"aaa"[..]])));
     }
 
     #[test]
     fn sep_by1_test() {
-        let r: ParseResult<_, Vec<_>, _> = sep_by1(new(END_OF_INPUT, b""), any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        let r: ParseResult<_, Vec<_>, _> = sep_by1(&b""[..], any, |i| token(i, b';'));
+        assert_eq!(r.into_inner(), (&b""[..], Err(Error::unexpected())));
 
-        let r: ParseResult<_, Vec<()>, _> = sep_by1(new(END_OF_INPUT, b"b"), |i| i.err("my err"), |i| token(i, b';').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "my err"));
+        let r: ParseResult<_, Vec<()>, _> = sep_by1(&b"b"[..], |i| i.err("my err"), |i| token(i, b';').map_err(|_| "token_err"));
+        assert_eq!(r.into_inner(), (&b"b"[..], Err("my err")));
 
-        assert_eq!(sep_by1(new(END_OF_INPUT, b"a"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b""), vec![b'a']));
-        assert_eq!(sep_by1(new(END_OF_INPUT, b"a;c"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b""), vec![b'a', b'c']));
-        assert_eq!(sep_by1(new(END_OF_INPUT, b"a;c;"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b";"), vec![b'a', b'c']));
-        assert_eq!(sep_by1(new(END_OF_INPUT, b"a--c-"), any, |i| string(i, b"--")).into_inner(), State::Data(new(END_OF_INPUT, b"-"), vec![b'a', b'c']));
-        assert_eq!(sep_by1(new(END_OF_INPUT, b"abc"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b"bc"), vec![b'a']));
-        assert_eq!(sep_by1(new(END_OF_INPUT, b"a;bc"), any, |i| token(i, b';')).into_inner(), State::Data(new(END_OF_INPUT, b"c"), vec![b'a', b'b']));
+        let r: ParseResult<_, Vec<_>, _> = sep_by1(&b""[..], any, |i| token(i, b';'));
+        assert_eq!(r.into_inner(), (&b""[..], Err(Error::unexpected())));
 
-        assert_eq!(sep_by1(new(DEFAULT, b"abc"), any, |i| token(i, b';')).into_inner(), State::Data(new(DEFAULT, b"bc"), vec![b'a']));
-        assert_eq!(sep_by1(new(DEFAULT, b"a;bc"), any, |i| token(i, b';')).into_inner(), State::Data(new(DEFAULT, b"c"), vec![b'a', b'b']));
+        let r: ParseResult<_, Vec<_>, _> = sep_by1(&b"b"[..], |i| token(i, b'a'), |i| token(i, b';'));
+        assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'a'))));
+
+        assert_eq!(sep_by1(&b"a"[..],     any, |i| token(i, b';')).into_inner(),   (&b""[..],   Ok(vec![b'a'])));
+        assert_eq!(sep_by1(&b"a;c"[..],   any, |i| token(i, b';')).into_inner(),   (&b""[..],   Ok(vec![b'a', b'c'])));
+        assert_eq!(sep_by1(&b"a;c;"[..],  any, |i| token(i, b';')).into_inner(),   (&b";"[..],  Ok(vec![b'a', b'c'])));
+        assert_eq!(sep_by1(&b"a--c-"[..], any, |i| string(i, b"--")).into_inner(), (&b"-"[..],  Ok(vec![b'a', b'c'])));
+        assert_eq!(sep_by1(&b"abc"[..],   any, |i| token(i, b';')).into_inner(),   (&b"bc"[..], Ok(vec![b'a'])));
+        assert_eq!(sep_by1(&b"a;bc"[..],  any, |i| token(i, b';')).into_inner(),   (&b"c"[..],  Ok(vec![b'a', b'b'])));
+
+        assert_eq!(sep_by1(&b"abc"[..],  any, |i| token(i, b';')).into_inner(), (&b"bc"[..], Ok(vec![b'a'])));
+        assert_eq!(sep_by1(&b"a;bc"[..], any, |i| token(i, b';')).into_inner(), (&b"c"[..],  Ok(vec![b'a', b'b'])));
 
         // Incomplete becasue there might be another separator or item to be read
-        let r: ParseResult<_, Vec<_>, _> = sep_by1(new(DEFAULT, b""), any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        let r: ParseResult<_, Vec<_>, _> = sep_by1(&b""[..], any, |i| token(i, b';'));
+        assert_eq!(r.into_inner(), (&b""[..], Err(Error::unexpected())));
 
-        let r: ParseResult<_, Vec<_>, _> = sep_by1(new(DEFAULT, b"a"), any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        let r: ParseResult<_, Vec<_>, _> = sep_by1(&b"a"[..], any, |i| token(i, b';'));
+        assert_eq!(r.into_inner(), (&b""[..], Ok(vec![b'a'])));
 
-        let r: ParseResult<_, Vec<_>, _> = sep_by1(new(DEFAULT, b"a;"), any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        let r: ParseResult<_, Vec<_>, _> = sep_by1(&b"a;"[..], any, |i| token(i, b';'));
+        assert_eq!(r.into_inner(), (&b";"[..], Ok(vec![b'a'])));
 
-        let r: ParseResult<_, Vec<_>, _> = sep_by1(new(DEFAULT, b"a;c"), any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        let r: ParseResult<_, Vec<_>, _> = sep_by1(&b"a;c"[..], any, |i| token(i, b';'));
+        assert_eq!(r.into_inner(), (&b""[..], Ok(vec![b'a', b'c'])));
 
-        let r: ParseResult<_, Vec<_>, _> = sep_by1(new(DEFAULT, b"a;c;"), any, |i| token(i, b';'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        let r: ParseResult<_, Vec<_>, _> = sep_by1(&b"a;c;"[..], any, |i| token(i, b';'));
+        assert_eq!(r.into_inner(), (&b";"[..], Ok(vec![b'a', b'c'])));
 
-        let r: ParseResult<_, Vec<_>, _> = sep_by1(new(DEFAULT, b"a--c-"), any, |i| string(i, b"--"));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        let r: ParseResult<_, Vec<_>, _> = sep_by1(&b"a--c-"[..], any, |i| string(i, b"--"));
+        assert_eq!(r.into_inner(), (&b"-"[..], Ok(vec![b'a', b'c'])));
 
-        let r: ParseResult<_, Vec<_>, _> = sep_by1(new(DEFAULT, b"aaa--a"), |i| string(i, b"aaa"), |i| string(i, b"--"));
-        assert_eq!(r.into_inner(), State::Incomplete(2));
+        let r: ParseResult<_, Vec<_>, _> = sep_by1(&b"aaa--a"[..], |i| string(i, b"aaa"), |i| string(i, b"--"));
+        assert_eq!(r.into_inner(), (&b"--a"[..], Ok(vec![&b"aaa"[..]])));
     }
 
     #[test]
     fn look_ahead_test() {
-        assert_eq!(look_ahead(new(DEFAULT, b"abc"), any).into_inner(), State::Data(new(DEFAULT, b"abc"), b'a'));
-        assert_eq!(look_ahead(new(DEFAULT, b"a"), |i| string(i, b"abc")).into_inner(), State::Incomplete(2));
-        assert_eq!(look_ahead(new(DEFAULT, b"aa"), |i| token(i, b'a').then(|i| token(i, b'b')).map_err(|_| "err")).into_inner(), State::Error(b"a", "err"));
+        assert_eq!(look_ahead(&b"abc"[..], any).into_inner(), (&b"abc"[..], Ok(b'a')));
+        assert_eq!(look_ahead(&b"a"[..], |i| string(i, b"abc")).into_inner(), (&b"a"[..], Err(Error::expected(b'b'))));
+        assert_eq!(look_ahead(&b"aa"[..], |i| token(i, b'a').then(|i| token(i, b'b')).map_err(|_| "err")).into_inner(), (&b"aa"[..], Err("err")));
     }
 }

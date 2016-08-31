@@ -7,7 +7,8 @@
 //!
 //! ```
 //! use chomp::combinators::bounded::many;
-//! use chomp::{parse_only, any};
+//! use chomp::parse_only;
+//! use chomp::parsers::any;
 //!
 //! // Read any character 2 or 3 times
 //! let r: Result<Vec<_>, _> = parse_only(|i| many(i, 2..4, any), b"abcd");
@@ -25,11 +26,13 @@ use std::ops::{
 };
 use std::cmp::max;
 
-use {Input, ParseResult};
-use primitives::{InputClone, InputBuffer, IntoInner, State};
+use types::{Input, ParseResult};
+use primitives::{Primitives, IntoInner};
 
 /// Trait for applying a parser multiple times based on a range.
 pub trait BoundedRange {
+    // TODO: Update documentation regarding input state. Incomplete will point to the last
+    // successful parsed data. mark a backtrack point to be able to restart parsing.
     /// Applies the parser `F` multiple times until it fails or the maximum value of the range has
     /// been reached, collecting the successful values into a `T: FromIterator`.
     ///
@@ -47,10 +50,8 @@ pub trait BoundedRange {
     /// * If the last parser succeeds on the last input item then this parser is still considered
     ///   incomplete if the input flag END_OF_INPUT is not set as there might be more data to fill.
     #[inline]
-    fn parse_many<'a, I, T, E, F, U>(self, Input<'a, I>, F) -> ParseResult<'a, I, T, E>
-      where I: Copy,
-            U: 'a,
-            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
+    fn parse_many<I: Input, T, E, F, U>(self, I, F) -> ParseResult<I, T, E>
+      where F: FnMut(I) -> ParseResult<I, U, E>,
             T: FromIterator<U>;
 
     /// Applies the parser `F` multiple times until it fails or the maximum value of the range has
@@ -69,10 +70,10 @@ pub trait BoundedRange {
     /// * If the last parser succeeds on the last input item then this parser is still considered
     ///   incomplete if the input flag END_OF_INPUT is not set as there might be more data to fill.
     #[inline]
-    fn skip_many<'a, I, T, E, F>(self, Input<'a, I>, F) -> ParseResult<'a, I, (), E>
-      where T: 'a,
-            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E>;
+    fn skip_many<I: Input, T, E, F>(self, I, F) -> ParseResult<I, (), E>
+      where F: FnMut(I) -> ParseResult<I, T, E>;
 
+    // TODO: Fix documentation regarding incomplete
     /// Applies the parser `P` multiple times until the parser `F` succeeds and returns a value
     /// populated by the values yielded by `P`. Consumes the matched part of `F`. If `F` does not
     /// succeed within the given range `R` this combinator will propagate any failure from `P`.
@@ -89,22 +90,17 @@ pub trait BoundedRange {
     /// * If the last parser succeeds on the last input item then this combinator is still considered
     ///   incomplete unless the parser `F` matches or the lower bound has not been met.
     #[inline]
-    fn many_till<'a, I, T, E, R, F, U, N, V>(self, i: Input<'a, I>, p: R, end: F) -> ParseResult<'a, I, T, E>
-      where I: Copy,
-            U: 'a,
-            V: 'a,
-            N: 'a,
-            T: FromIterator<U>,
-            R: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
-            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N>;
+    fn many_till<I: Input, T, E, R, F, U, N, V>(self, I, R, F) -> ParseResult<I, T, E>
+      where T: FromIterator<U>,
+            E: From<N>,
+            R: FnMut(I) -> ParseResult<I, U, E>,
+            F: FnMut(I) -> ParseResult<I, V, N>;
 }
 
 impl BoundedRange for Range<usize> {
     #[inline]
-    fn parse_many<'a, I, T, E, F, U>(self, i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
-      where I: Copy,
-            U: 'a,
-            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
+    fn parse_many<I: Input, T, E, F, U>(self, i: I, f: F) -> ParseResult<I, T, E>
+      where F: FnMut(I) -> ParseResult<I, U, E>,
             T: FromIterator<U> {
         // Range does not perform this assertion
         assert!(self.start <= self.end);
@@ -113,7 +109,7 @@ impl BoundedRange for Range<usize> {
             input:  i,
             parser: f,
             // Range is closed on left side, open on right, ie. [self.start, self.end)
-            state:  (usize, usize): (self.start, max(self.end, 1) - 1),
+            state:  (usize, usize): (self.start, max(self.start, self.end.saturating_sub(1))),
 
             size_hint(self) {
                 (self.data.0, Some(self.data.1))
@@ -126,64 +122,59 @@ impl BoundedRange for Range<usize> {
                     }
                 }
                 on {
-                    self.data.0  = if self.data.0 == 0 { 0 } else { self.data.0 - 1 };
+                    self.data.0  = self.data.0.saturating_sub(1);
+                    // Can't overflow unless we do not quit when self.data.1 == 0
                     self.data.1 -= 1;
                 }
             }
 
             => result : T {
                 // Got all occurrences of the parser
-                (s, (0, 0), _) => s.ret(result),
+                // First state or reached max => do not restore to mark since it is from last
+                // iteration
+                (s, (0, 0), _, _)       => s.ret(result),
                 // Ok, last parser failed and we have reached minimum, we have iterated all.
                 // Return remainder of buffer and the collected result
-                (s, (0, _), EndState::Error(_, _))   => s.ret(result),
-                // Nested parser incomplete but reached at least minimum, propagate if not at end
-                (s, (0, _), EndState::Incomplete(n)) => if s.is_last_slice() {
-                    s.ret(result)
-                } else {
-                    s.incomplete(n)
-                },
+                (s, (0, _), m, Some(_)) => s.restore(m).ret(result),
                 // Did not reach minimum, propagate
-                (s, (_, _), EndState::Error(b, e))   => s.replace(b).err(e),
-                (s, (_, _), EndState::Incomplete(n)) => s.incomplete(n)
+                (s, (_, _), _, Some(e)) => s.err(e),
+                (_, _, _, None)         => unreachable!(),
             }
         }
     }
 
     #[inline]
-    fn skip_many<'a, I, T, E, F>(self, mut i: Input<'a, I>, mut f: F) -> ParseResult<'a, I, (), E>
-      where T: 'a,
-            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+    fn skip_many<I: Input, T, E, F>(self, mut i: I, mut f: F) -> ParseResult<I, (), E>
+      where F: FnMut(I) -> ParseResult<I, T, E> {
         // Range does not perform this assertion
         assert!(self.start <= self.end);
 
         // Closed on left side, open on right
-        let (mut min, mut max) = (self.start, max(self.end, 1) - 1);
+        let (mut min, mut max) = (self.start, max(self.start, self.end.saturating_sub(1)));
 
         loop {
             if max == 0 {
                 break;
             }
 
-            match f(i.clone()).into_inner() {
-                State::Data(b, _)    => {
-                    min  = if min == 0 { 0 } else { min - 1 };
+            let m = i.mark();
+
+            match f(i).into_inner() {
+                (b, Ok(_))    => {
+                    min  = min.saturating_sub(1);
+                    // Can't overflow unless we do not quit when max == 0
                     max -= 1;
 
                     i = b
                 },
-                State::Error(b, e)   => if min == 0 {
+                (b, Err(e))   => if min == 0 {
+                    i = b.restore(m);
+
                     break;
                 } else {
-                    // Not enough iterations
-                    return i.replace(b).err(e);
+                    // Not enough iterations, propagate
+                    return b.err(e);
                 },
-                State::Incomplete(n) => if min == 0 && i.is_last_slice() {
-                    break;
-                } else {
-                    // We have not done the minimum amount of iterations
-                    return i.incomplete(n);
-                }
             }
         }
 
@@ -191,14 +182,11 @@ impl BoundedRange for Range<usize> {
     }
 
     #[inline]
-    fn many_till<'a, I, T, E, R, F, U, N, V>(self, i: Input<'a, I>, p: R, end: F) -> ParseResult<'a, I, T, E>
-      where I: Copy,
-            U: 'a,
-            V: 'a,
-            N: 'a,
-            T: FromIterator<U>,
-            R: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
-            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
+    fn many_till<I: Input, T, E, R, F, U, N, V>(self, i: I, p: R, end: F) -> ParseResult<I, T, E>
+      where T: FromIterator<U>,
+            E: From<N>,
+            R: FnMut(I) -> ParseResult<I, U, E>,
+            F: FnMut(I) -> ParseResult<I, V, N> {
         // Range does not perform this assertion
         assert!(self.start <= self.end);
 
@@ -207,7 +195,7 @@ impl BoundedRange for Range<usize> {
             parser: p,
             end:    end,
             // Range is closed on left side, open on right, ie. [self.start, self.end)
-            state:  (usize, usize): (self.start, max(self.end, 1) - 1),
+            state:  (usize, usize): (self.start, max(self.start, self.end.saturating_sub(1))),
 
             size_hint(self) {
                 (self.data.0, Some(self.data.1))
@@ -217,19 +205,34 @@ impl BoundedRange for Range<usize> {
                 pre {
                     if self.data.0 == 0 {
                         // We have reached minimum, we can attempt to end now
-                        iter_till_end_test!(self);
-                    }
 
-                    // Maximum reached, stop iteration and check error state
-                    if self.data.1 == 0 {
-                        // Attempt to make a successful end
-                        iter_till_end_test!(self);
+                        // TODO: Remove the branches here (ie. take + unwrap)
+                        let i = self.buf.take().expect("Iter.buf was None");
+                        let m = i.mark();
 
-                        return None;
+                        match (self.data.1, (self.end)(i).into_inner()) {
+                            // We can always end
+                            (_, (b, Ok(_))) => {
+                                self.buf   = Some(b);
+                                self.state = EndStateTill::EndSuccess;
+
+                                return None
+                            },
+                            // We have reached end, end must match or it is an error
+                            (0, (b, Err(e)))      => {
+                                self.buf   = Some(b);
+                                self.state = EndStateTill::Error(From::from(e));
+
+                                return None;
+                            },
+                            // Failed to end, restore and continue since we can parse more
+                            (_, (b, Err(_)))      => self.buf = Some(b.restore(m)),
+                        }
                     }
                 }
                 on {
-                    self.data.0  = if self.data.0 == 0 { 0 } else { self.data.0 - 1 };
+                    self.data.0  = self.data.0.saturating_sub(1);
+                    // Can't overflow unless we do not quit when self.data.1 == 0
                     self.data.1 -= 1;
                 }
             }
@@ -238,8 +241,8 @@ impl BoundedRange for Range<usize> {
                 // Got all occurrences of the parser
                 (s, (0, _), EndStateTill::EndSuccess)    => s.ret(result),
                 // Did not reach minimum or a failure, propagate
-                (s, (_, _), EndStateTill::Error(b, e))   => s.replace(b).err(e),
-                (s, (_, _), EndStateTill::Incomplete(n)) => s.incomplete(n),
+                (s, (_, _), EndStateTill::Error(e))   => s.err(e),
+                (_, (_, _), EndStateTill::Incomplete) => unreachable!(),
                 // We cannot reach this since we only run the end test once we have reached the
                 // minimum number of matches
                 (_, (_, _), EndStateTill::EndSuccess)    => unreachable!()
@@ -250,10 +253,8 @@ impl BoundedRange for Range<usize> {
 
 impl BoundedRange for RangeFrom<usize> {
     #[inline]
-    fn parse_many<'a, I, T, E, F, U>(self, i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
-      where I: Copy,
-            U: 'a,
-            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
+    fn parse_many<I: Input, T, E, F, U>(self, i: I, f: F) -> ParseResult<I, T, E>
+      where F: FnMut(I) -> ParseResult<I, U, E>,
             T: FromIterator<U> {
         run_iter!{
             input:  i,
@@ -268,52 +269,43 @@ impl BoundedRange for RangeFrom<usize> {
             next(self) {
                 pre {}
                 on  {
-                    self.data = if self.data == 0 { 0 } else { self.data - 1 };
+                    self.data = self.data.saturating_sub(1);
                 }
             }
 
             => result : T {
                 // We got at least n items
-                (s, 0, EndState::Error(_, _))   => s.ret(result),
-                // Nested parser incomplete, propagate if not at end
-                (s, 0, EndState::Incomplete(n)) => if s.is_last_slice() {
-                    s.ret(result)
-                } else {
-                    s.incomplete(n)
-                },
+                (s, 0, m, Some(_))      => s.restore(m).ret(result),
                 // Items still remaining, propagate
-                (s, _, EndState::Error(b, e))   => s.replace(b).err(e),
-                (s, _, EndState::Incomplete(n)) => s.incomplete(n)
+                (s, _, _, Some(e))      => s.err(e),
+                (_, _, _, None) => unreachable!(),
             }
         }
     }
 
     #[inline]
-    fn skip_many<'a, I, T, E, F>(self, mut i: Input<'a, I>, mut f: F) -> ParseResult<'a, I, (), E>
-      where T: 'a,
-            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+    fn skip_many<I: Input, T, E, F>(self, mut i: I, mut f: F) -> ParseResult<I, (), E>
+      where F: FnMut(I) -> ParseResult<I, T, E> {
         // Closed on left side, open on right
         let mut min = self.start;
 
         loop {
-            match f(i.clone()).into_inner() {
-                State::Data(b, _)    => {
-                    min  = if min == 0 { 0 } else { min - 1 };
+            let m = i.mark();
+
+            match f(i).into_inner() {
+                (b, Ok(_))    => {
+                    min  = min.saturating_sub(1);
 
                     i = b
                 },
-                State::Error(b, e)   => if min == 0 {
+                (b, Err(e))   => if min == 0 {
+                    i = b.restore(m);
+
                     break;
                 } else {
-                    // Not enough iterations
-                    return i.replace(b).err(e);
+                    // Not enough iterations, propagate
+                    return b.err(e);
                 },
-                State::Incomplete(n) => if min == 0 && i.is_last_slice() {
-                    break;
-                } else {
-                    // We have not done the minimum amount of iterations
-                    return i.incomplete(n);
-                }
             }
         }
 
@@ -321,14 +313,11 @@ impl BoundedRange for RangeFrom<usize> {
     }
 
     #[inline]
-    fn many_till<'a, I, T, E, R, F, U, N, V>(self, i: Input<'a, I>, p: R, end: F) -> ParseResult<'a, I, T, E>
-      where I: Copy,
-            U: 'a,
-            V: 'a,
-            N: 'a,
-            T: FromIterator<U>,
-            R: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
-            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
+    fn many_till<I: Input, T, E, R, F, U, N, V>(self, i: I, p: R, end: F) -> ParseResult<I, T, E>
+      where T: FromIterator<U>,
+            E: From<N>,
+            R: FnMut(I) -> ParseResult<I, U, E>,
+            F: FnMut(I) -> ParseResult<I, V, N> {
         run_iter_till!{
             input:  i,
             parser: p,
@@ -348,19 +337,19 @@ impl BoundedRange for RangeFrom<usize> {
                     }
                 }
                 on {
-                    self.data = if self.data == 0 { 0 } else { self.data - 1 };
+                    self.data = self.data.saturating_sub(1);
                 }
             }
 
             => result : T {
                 // Got all occurrences of the parser
-                (s, 0, EndStateTill::EndSuccess)    => s.ret(result),
+                (s, 0, EndStateTill::EndSuccess) => s.ret(result),
                 // Did not reach minimum or a failure, propagate
-                (s, _, EndStateTill::Error(b, e))   => s.replace(b).err(e),
-                (s, _, EndStateTill::Incomplete(n)) => s.incomplete(n),
+                (s, _, EndStateTill::Error(e))   => s.err(e),
+                (_, _, EndStateTill::Incomplete) => unreachable!(),
                 // We cannot reach this since we only run the end test once we have reached the
                 // minimum number of matches
-                (_, _, EndStateTill::EndSuccess)    => unreachable!()
+                (_, _, EndStateTill::EndSuccess) => unreachable!()
             }
         }
     }
@@ -368,10 +357,8 @@ impl BoundedRange for RangeFrom<usize> {
 
 impl BoundedRange for RangeFull {
     #[inline]
-    fn parse_many<'a, I, T, E, F, U>(self, i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
-      where I: Copy,
-            U: 'a,
-            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
+    fn parse_many<I: Input, T, E, F, U>(self, i: I, f: F) -> ParseResult<I, T, E>
+      where F: FnMut(I) -> ParseResult<I, U, E>,
             T: FromIterator<U> {
         run_iter!{
             input:  i,
@@ -388,30 +375,25 @@ impl BoundedRange for RangeFull {
             }
 
             => result : T {
-                (s, (), EndState::Error(_, _))   => s.ret(result),
-                // Nested parser incomplete, propagate if not at end
-                (s, (), EndState::Incomplete(n)) => if s.is_last_slice() {
-                    s.ret(result)
-                } else {
-                    s.incomplete(n)
-                }
+                (s, (), m, Some(_)) => s.restore(m).ret(result),
+                (_, _, _, None)     => unreachable!(),
             }
         }
     }
 
     #[inline]
-    fn skip_many<'a, I, T, E, F>(self, mut i: Input<'a, I>, mut f: F) -> ParseResult<'a, I, (), E>
-      where T: 'a,
-            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+    fn skip_many<I: Input, T, E, F>(self, mut i: I, mut f: F) -> ParseResult<I, (), E>
+      where F: FnMut(I) -> ParseResult<I, T, E> {
         loop {
-            match f(i.clone()).into_inner() {
-                State::Data(b, _)    => i = b,
-                State::Error(_, _)   => break,
-                State::Incomplete(n) => if i.is_last_slice() {
+            let m = i.mark();
+
+            match f(i).into_inner() {
+                (b, Ok(_))  => i = b,
+                (b, Err(_)) => {
+                    i = b.restore(m);
+
                     break;
-                } else {
-                    return i.incomplete(n);
-                }
+                },
             }
         }
 
@@ -419,14 +401,11 @@ impl BoundedRange for RangeFull {
     }
 
     #[inline]
-    fn many_till<'a, I, T, E, R, F, U, N, V>(self, i: Input<'a, I>, p: R, end: F) -> ParseResult<'a, I, T, E>
-      where I: Copy,
-            U: 'a,
-            V: 'a,
-            N: 'a,
-            T: FromIterator<U>,
-            R: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
-            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
+    fn many_till<I: Input, T, E, R, F, U, N, V>(self, i: I, p: R, end: F) -> ParseResult<I, T, E>
+      where T: FromIterator<U>,
+            E: From<N>,
+            R: FnMut(I) -> ParseResult<I, U, E>,
+            F: FnMut(I) -> ParseResult<I, V, N> {
         run_iter_till!{
             input:  i,
             parser: p,
@@ -447,9 +426,9 @@ impl BoundedRange for RangeFull {
 
             => result : T {
                 (s, (), EndStateTill::EndSuccess)    => s.ret(result),
-                (s, (), EndStateTill::Error(b, e))   => s.replace(b).err(e),
+                (s, (), EndStateTill::Error(e))      => s.err(e),
                 // Nested parser incomplete, propagate if not at end
-                (s, (), EndStateTill::Incomplete(n)) => s.incomplete(n)
+                (_, (), EndStateTill::Incomplete) => unreachable!()
             }
         }
     }
@@ -457,10 +436,8 @@ impl BoundedRange for RangeFull {
 
 impl BoundedRange for RangeTo<usize> {
     #[inline]
-    fn parse_many<'a, I, T, E, F, U>(self, i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
-      where I: Copy,
-            U: 'a,
-            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
+    fn parse_many<I: Input, T, E, F, U>(self, i: I, f: F) -> ParseResult<I, T, E>
+      where F: FnMut(I) -> ParseResult<I, U, E>,
             T: FromIterator<U> {
         run_iter!{
             input:  i,
@@ -484,24 +461,19 @@ impl BoundedRange for RangeTo<usize> {
             }
 
             => result : T {
-                // Either error or incomplete after the end
-                (s, 0, _)                       => s.ret(result),
+                // First state or reached max => do not restore to mark since it is from last
+                // iteration
+                (s, 0, _, _)                       => s.ret(result),
                 // Inside of range, never outside
-                (s, _, EndState::Error(_, _))   => s.ret(result),
-                // Nested parser incomplete, propagate if not at end
-                (s, _, EndState::Incomplete(n)) => if s.is_last_slice() {
-                    s.ret(result)
-                } else {
-                    s.incomplete(n)
-                }
+                (s, _, m, Some(_))      => s.restore(m).ret(result),
+                (_, _, _, None) => unreachable!(),
             }
         }
     }
 
     #[inline]
-    fn skip_many<'a, I, T, E, F>(self, mut i: Input<'a, I>, mut f: F) -> ParseResult<'a, I, (), E>
-      where T: 'a,
-            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+    fn skip_many<I: Input, T, E, F>(self, mut i: I, mut f: F) -> ParseResult<I, (), E>
+      where F: FnMut(I) -> ParseResult<I, T, E> {
         // [0, n)
         let mut max = max(self.end, 1) - 1;
 
@@ -510,19 +482,20 @@ impl BoundedRange for RangeTo<usize> {
                 break;
             }
 
-            match f(i.clone()).into_inner() {
-                State::Data(b, _)    => {
+            let m = i.mark();
+
+            match f(i).into_inner() {
+                (b, Ok(_))    => {
                     max -= 1;
 
                     i = b
                 },
                 // Always ok to end iteration
-                State::Error(_, _)   => break,
-                State::Incomplete(n) => if i.is_last_slice() {
+                (b, Err(_))   => {
+                    i = b.restore(m);
+
                     break;
-                } else {
-                    return i.incomplete(n);
-                }
+                },
             }
         }
 
@@ -530,14 +503,11 @@ impl BoundedRange for RangeTo<usize> {
     }
 
     #[inline]
-    fn many_till<'a, I, T, E, R, F, U, N, V>(self, i: Input<'a, I>, p: R, end: F) -> ParseResult<'a, I, T, E>
-      where I: Copy,
-            U: 'a,
-            V: 'a,
-            N: 'a,
-            T: FromIterator<U>,
-            R: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
-            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
+    fn many_till<I: Input, T, E, R, F, U, N, V>(self, i: I, p: R, end: F) -> ParseResult<I, T, E>
+      where T: FromIterator<U>,
+            E: From<N>,
+            R: FnMut(I) -> ParseResult<I, U, E>,
+            F: FnMut(I) -> ParseResult<I, V, N> {
         run_iter_till!{
             input:  i,
             parser: p,
@@ -551,12 +521,27 @@ impl BoundedRange for RangeTo<usize> {
 
             next(self) {
                 pre {
-                    // Can end at any time
-                    iter_till_end_test!(self);
+                    // TODO: Remove the branches here (ie. take + unwrap)
+                    let i = self.buf.take().expect("Iter.buf was None");
+                    let m = i.mark();
 
-                    // Maximum reached, stop iteration and check error state
-                    if self.data == 0 {
-                        return None;
+                    match (self.data, (self.end)(i).into_inner()) {
+                        // We can always end
+                        (_, (b, Ok(_))) => {
+                            self.buf   = Some(b);
+                            self.state = EndStateTill::EndSuccess;
+
+                            return None
+                        },
+                        // We have reached end, end must match or it is an error
+                        (0, (b, Err(e)))      => {
+                            self.buf   = Some(b);
+                            self.state = EndStateTill::Error(From::from(e));
+
+                            return None;
+                        },
+                        // Failed to end, restore and continue since we can parse more
+                        (_, (b, Err(_)))      => self.buf = Some(b.restore(m)),
                     }
                 }
                 on {
@@ -565,25 +550,21 @@ impl BoundedRange for RangeTo<usize> {
             }
 
             => result : T {
-                // Got all occurrences of the parser
-                (s, 0, EndStateTill::EndSuccess)    => s.ret(result),
+                // Got all occurrences of the parser since we have no minimum bound
+                (s, _, EndStateTill::EndSuccess)    => s.ret(result),
                 // Did not reach minimum or a failure, propagate
-                (s, _, EndStateTill::Error(b, e))   => s.replace(b).err(e),
-                (s, _, EndStateTill::Incomplete(n)) => s.incomplete(n),
-                // We cannot reach this since we only run the end test once we have reached the
-                // minimum number of matches
-                (_, _, EndStateTill::EndSuccess)    => unreachable!()
+                (s, _, EndStateTill::Error(e))   => s.err(e),
+                (_, _, EndStateTill::Incomplete) => unreachable!(),
             }
         }
     }
 }
 
 impl BoundedRange for usize {
+    // TODO: Any way to avoid marking for backtracking here?
     #[inline]
-    fn parse_many<'a, I, T, E, F, U>(self, i: Input<'a, I>, f: F) -> ParseResult<'a, I, T, E>
-      where I: Copy,
-            U: 'a,
-            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
+    fn parse_many<I: Input, T, E, F, U>(self, i: I, f: F) -> ParseResult<I, T, E>
+      where F: FnMut(I) -> ParseResult<I, U, E>,
             T: FromIterator<U> {
         run_iter!{
             input:  i,
@@ -608,19 +589,17 @@ impl BoundedRange for usize {
 
             => result : T {
                 // Got exact
-                (s, 0, _)                       => s.ret(result),
+                (s, 0, _, _)                       => s.ret(result),
                 // We have got too few items, propagate error
-                (s, _, EndState::Error(b, e))   => s.replace(b).err(e),
-                // Nested parser incomplete, propagate
-                (s, _, EndState::Incomplete(n)) => s.incomplete(n)
+                (s, _, _, Some(e))      => s.err(e),
+                (_, _, _, None) => unreachable!(),
             }
         }
     }
 
     #[inline]
-    fn skip_many<'a, I, T, E, F>(self, mut i: Input<'a, I>, mut f: F) -> ParseResult<'a, I, (), E>
-      where T: 'a,
-            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+    fn skip_many<I: Input, T, E, F>(self, mut i: I, mut f: F) -> ParseResult<I, (), E>
+      where F: FnMut(I) -> ParseResult<I, T, E> {
         let mut n = self;
 
         loop {
@@ -628,23 +607,18 @@ impl BoundedRange for usize {
                 break;
             }
 
-            match f(i.clone()).into_inner() {
-                State::Data(b, _)    => {
+            match f(i).into_inner() {
+                (b, Ok(_))    => {
                     n -= 1;
 
                     i = b
                 },
-                State::Error(b, e)   => if n == 0 {
-                    break;
+                (b, Err(e))   => if n == 0 {
+                    unreachable!();
                 } else {
-                    // Not enough iterations
-                    return i.replace(b).err(e);
+                    // Not enough iterations, propagate
+                    return b.err(e);
                 },
-                State::Incomplete(n) => if n == 0 {
-                    break;
-                } else {
-                    return i.incomplete(n);
-                }
             }
         }
 
@@ -652,14 +626,11 @@ impl BoundedRange for usize {
     }
 
     #[inline]
-    fn many_till<'a, I, T, E, R, F, U, N, V>(self, i: Input<'a, I>, p: R, end: F) -> ParseResult<'a, I, T, E>
-      where I: Copy,
-            U: 'a,
-            V: 'a,
-            N: 'a,
-            T: FromIterator<U>,
-            R: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
-            F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
+    fn many_till<I: Input, T, E, R, F, U, N, V>(self, i: I, p: R, end: F) -> ParseResult<I, T, E>
+      where T: FromIterator<U>,
+            E: From<N>,
+            R: FnMut(I) -> ParseResult<I, U, E>,
+            F: FnMut(I) -> ParseResult<I, V, N> {
         run_iter_till!{
             input:  i,
             parser: p,
@@ -673,8 +644,20 @@ impl BoundedRange for usize {
             next(self) {
                 pre {
                     if self.data == 0 {
-                        // Attempt to make a successful end
-                        iter_till_end_test!(self);
+                        // TODO: Remove the branches here (ie. take + unwrap)
+                        let i = self.buf.take().expect("Iter.buf was None");
+
+                        match (self.end)(i).into_inner() {
+                            (b, Ok(_))  => {
+                                self.buf   = Some(b);
+                                self.state = EndStateTill::EndSuccess;
+                            },
+                            // Failed to end, restore and continue
+                            (b, Err(e)) => {
+                                self.buf   = Some(b);
+                                self.state = EndStateTill::Error(From::from(e));
+                            },
+                        }
 
                         return None;
                     }
@@ -688,8 +671,8 @@ impl BoundedRange for usize {
                 // Got all occurrences of the parser
                 (s, 0, EndStateTill::EndSuccess)    => s.ret(result),
                 // Did not reach minimum or a failure, propagate
-                (s, _, EndStateTill::Error(b, e))   => s.replace(b).err(e),
-                (s, _, EndStateTill::Incomplete(n)) => s.incomplete(n),
+                (s, _, EndStateTill::Error(e))      => s.err(e),
+                (_, _, EndStateTill::Incomplete) => unreachable!(),
                 // We cannot reach this since we only run the end test once we have reached the
                 // minimum number of matches
                 (_, _, EndStateTill::EndSuccess)    => unreachable!()
@@ -711,14 +694,10 @@ impl BoundedRange for usize {
 ///
 /// * Will allocate depending on the `FromIterator` implementation.
 /// * Will never yield more items than the upper bound of the range.
-/// * If the last parser succeeds on the last input item then this parser is still considered
-///   incomplete if the input flag END_OF_INPUT is not set as there might be more data to fill.
 #[inline]
-pub fn many<'a, I, T, E, F, U, R>(i: Input<'a, I>, r: R, f: F) -> ParseResult<'a, I, T, E>
-  where I: Copy,
-        R: BoundedRange,
-        U: 'a,
-        F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
+pub fn many<I: Input, T, E, F, U, R>(i: I, r: R, f: F) -> ParseResult<I, T, E>
+  where R: BoundedRange,
+        F: FnMut(I) -> ParseResult<I, U, E>,
         T: FromIterator<U> {
     BoundedRange::parse_many(r, i, f)
 }
@@ -735,16 +714,14 @@ pub fn many<'a, I, T, E, F, U, R>(i: Input<'a, I>, r: R, f: F) -> ParseResult<'a
 /// # Notes
 ///
 /// * Will never yield more items than the upper bound of the range.
-/// * If the last parser succeeds on the last input item then this parser is still considered
-///   incomplete if the input flag END_OF_INPUT is not set as there might be more data to fill.
 #[inline]
-pub fn skip_many<'a, I, T, E, F, R>(i: Input<'a, I>, r: R, f: F) -> ParseResult<'a, I, (), E>
-  where T: 'a,
-        R: BoundedRange,
-        F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+pub fn skip_many<I: Input, T, E, F, R>(i: I, r: R, f: F) -> ParseResult<I, (), E>
+  where R: BoundedRange,
+        F: FnMut(I) -> ParseResult<I, T, E> {
     BoundedRange::skip_many(r, i, f)
 }
 
+// TODO: Update documentation regarding incomplete behaviour
 /// Applies the parser `P` multiple times until the parser `F` succeeds and returns a value
 /// populated by the values yielded by `P`. Consumes the matched part of `F`. If `F` does not
 /// succeed within the given range `R` this combinator will propagate any failure from `P`.
@@ -757,18 +734,13 @@ pub fn skip_many<'a, I, T, E, F, R>(i: Input<'a, I>, r: R, f: F) -> ParseResult<
 ///
 /// * Will allocate depending on the `FromIterator` implementation.
 /// * Will never yield more items than the upper bound of the range.
-/// * If the last parser succeeds on the last input item then this combinator is still considered
-///   incomplete unless the parser `F` matches or the lower bound has not been met.
 #[inline]
-pub fn many_till<'a, I, T, E, R, F, U, N, P, V>(i: Input<'a, I>, r: R, p: P, end: F) -> ParseResult<'a, I, T, E>
-  where I: Copy,
-        U: 'a,
-        V: 'a,
-        N: 'a,
-        R: BoundedRange,
+pub fn many_till<I: Input, T, E, R, F, U, N, P, V>(i: I, r: R, p: P, end: F) -> ParseResult<I, T, E>
+  where R: BoundedRange,
         T: FromIterator<U>,
-        P: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
-        F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
+        E: From<N>,
+        P: FnMut(I) -> ParseResult<I, U, E>,
+        F: FnMut(I) -> ParseResult<I, V, N> {
     BoundedRange::many_till(r, i, p, end)
 }
 
@@ -785,19 +757,13 @@ pub fn many_till<'a, I, T, E, R, F, U, N, P, V>(i: Input<'a, I>, r: R, p: P, end
 ///
 /// * Will allocate depending on the `FromIterator` implementation.
 /// * Will never yield more items than the upper bound of the range.
-/// * If the last parser succeeds on the last input item then this combinator is still considered
-///   incomplete unless the parser `F` matches or the lower bound has not been met.
 #[inline]
-pub fn sep_by<'a, I, T, E, R, F, U, N, P, V>(i: Input<'a, I>, r: R, mut p: P, mut sep: F) -> ParseResult<'a, I, T, E>
-  where I: Copy,
-        U: 'a,
-        V: 'a,
-        N: 'a,
-        T: FromIterator<U>,
+pub fn sep_by<I: Input, T, E, R, F, U, N, P, V>(i: I, r: R, mut p: P, mut sep: F) -> ParseResult<I, T, E>
+  where T: FromIterator<U>,
         E: From<N>,
         R: BoundedRange,
-        P: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, E>,
-        F: FnMut(Input<'a, I>) -> ParseResult<'a, I, V, N> {
+        P: FnMut(I) -> ParseResult<I, U, E>,
+        F: FnMut(I) -> ParseResult<I, V, N> {
     // If we have parsed at least one item
     let mut item = false;
     // Add sep in front of p if we have read at least one item
@@ -814,10 +780,9 @@ pub fn sep_by<'a, I, T, E, R, F, U, N, P, V>(i: Input<'a, I>, r: R, mut p: P, mu
 
 #[cfg(test)]
 mod test {
-    use ParseResult;
-    use parsers::{any, token};
-    use primitives::input::*;
-    use primitives::{IntoInner, State};
+    use types::ParseResult;
+    use parsers::{Error, any, token, string};
+    use primitives::IntoInner;
 
     use super::{
         many,
@@ -827,471 +792,319 @@ mod test {
 
     #[test]
     fn many_range_full() {
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b""), .., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"a"), .., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"aa"), .., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"b"[..],   .., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Ok(vec![])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"ab"[..],  .., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Ok(vec![b'a'])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aab"[..], .., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Ok(vec![b'a', b'a'])));
 
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"b"), .., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"b"), vec![]));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"ab"), .., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"b"), vec![b'a']));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"aab"), .., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"b"), vec![b'a', b'a']));
+        let r: ParseResult<_, Vec<_>, _> = many(&b""[..],   .., any); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"a"[..],  .., any); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![b'a'])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aa"[..], .., any); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![b'a', b'a'])));
 
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b""), .., any);
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), vec![]));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"a"), .., any);
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), vec![b'a']));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"aa"), .., any);
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), vec![b'a', b'a']));
-
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"b"), .., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"b"), vec![]));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"ab"), .., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"b"), vec![b'a']));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"aab"), .., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"b"), vec![b'a', b'a']));
+        // Test where we error inside of the inner parser
+        let r: ParseResult<_, Vec<_>, _> = many(&b"abac"[..], .., |i| string(i, b"ab")); assert_eq!(r.into_inner(), (&b"ac"[..], Ok(vec![&b"ab"[..]])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"abac"[..], .., |i| string(i, b"ab")); assert_eq!(r.into_inner(), (&b"ac"[..], Ok(vec![&b"ab"[..]])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aba"[..],  .., |i| string(i, b"ab")); assert_eq!(r.into_inner(), (&b"a"[..], Ok(vec![&b"ab"[..]])));
     }
 
     #[test]
     fn many_range_to() {
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b""), ..0, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b""), vec![]));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"a"), ..0, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"a"), vec![]));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b""), ..0, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), vec![]));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"a"), ..0, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"a"), vec![]));
+        let r: ParseResult<_, Vec<_>, _> = many(&b""[..], ..0, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"a"[..], ..0, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"a"[..], Ok(vec![])));
 
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b""), ..1, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b""), vec![]));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"a"), ..1, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"a"), vec![]));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b""), ..1, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), vec![]));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"a"), ..1, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"a"), vec![]));
+        let r: ParseResult<_, Vec<_>, _> = many(&b""[..], ..1, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"a"[..], ..1, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"a"[..], Ok(vec![])));
 
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b""), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"a"), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"aa"), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b""), vec![b'a', b'a']));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"aaa"), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"a"), vec![b'a', b'a']));
+        let r: ParseResult<_, Vec<_>, _> = many(&b""[..], ..3, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"a"[..], ..3, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![b'a'])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aa"[..], ..3, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![b'a', b'a'])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aaa"[..], ..3, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"a"[..], Ok(vec![b'a', b'a'])));
 
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"b"), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"b"), vec![]));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"ab"), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"b"), vec![b'a']));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"aab"), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"b"), vec![b'a', b'a']));
-
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b""), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), vec![]));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"a"), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), vec![b'a']));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"aa"), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), vec![b'a', b'a']));
-
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"b"), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"b"), vec![]));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"ab"), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"b"), vec![b'a']));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"aab"), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"b"), vec![b'a', b'a']));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"aaab"), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"ab"), vec![b'a', b'a']));
+        // Test where we error inside of the inner parser
+        let r: ParseResult<_, Vec<_>, _> = many(&b"abac"[..], ..3, |i| string(i, b"ab")); assert_eq!(r.into_inner(), (&b"ac"[..], Ok(vec![&b"ab"[..]])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"abac"[..], ..3, |i| string(i, b"ab")); assert_eq!(r.into_inner(), (&b"ac"[..], Ok(vec![&b"ab"[..]])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aba"[..], ..3, |i| string(i, b"ab")); assert_eq!(r.into_inner(), (&b"a"[..], Ok(vec![&b"ab"[..]])));
     }
 
     #[test]
     fn many_range_from() {
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b""), 2.., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"a"), 2.., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"aa"), 2.., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"aaa"), 2.., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        let r: ParseResult<_, Vec<_>, _> = many(&b""[..], 2.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"a"[..], 2.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aa"[..], 2.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![b'a', b'a'])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aaa"[..], 2.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![b'a', b'a', b'a'])));
 
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"b"), 2.., |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"ab"), 2.., |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"aab"), 2.., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"b"), vec![b'a', b'a']));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"b"[..], 2.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"ab"[..], 2.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aab"[..], 2.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Ok(vec![b'a', b'a'])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aaab"[..], 2.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Ok(vec![b'a', b'a', b'a'])));
 
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b""), 2.., any);
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"a"), 2.., any);
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"aa"), 2.., any);
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), vec![b'a', b'a']));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"aaa"), 2.., any);
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), vec![b'a', b'a', b'a']));
-
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"b"), 2.., |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"ab"), 2.., |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"aab"), 2.., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"b"), vec![b'a', b'a']));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"aaab"), 2.., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"b"), vec![b'a', b'a', b'a']));
+        // Test where we error inside of the inner parser
+        let r: ParseResult<_, Vec<_>, _> = many(&b"ababac"[..], 2.., |i| string(i, b"ab")); assert_eq!(r.into_inner(), (&b"ac"[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"ababac"[..], 2.., |i| string(i, b"ab")); assert_eq!(r.into_inner(), (&b"ac"[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"ababa"[..],  2.., |i| string(i, b"ab")); assert_eq!(r.into_inner(), (&b"a"[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
     }
 
     #[test]
     fn many_range() {
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b""), 0..0, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b""), vec![]));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"a"), 0..0, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"a"), vec![]));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b""), 0..0, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), vec![]));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"a"), 0..0, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"a"), vec![]));
+        let r: ParseResult<_, Vec<_>, _> = many(&b""[..], 0..0, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"a"[..], 0..0, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"a"[..], Ok(vec![])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b""[..], 0..0, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"a"[..], 0..0, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"a"[..], Ok(vec![])));
 
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b""), 0..1, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b""), vec![]));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"a"), 0..1, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"a"), vec![]));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b""), 0..1, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), vec![]));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"a"), 0..1, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"a"), vec![]));
+        let r: ParseResult<_, Vec<_>, _> = many(&b""[..], 2..2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"a"[..], 2..2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aa"[..], 2..2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![b'a', b'a'])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aaa"[..], 2..2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"a"[..], Ok(vec![b'a', b'a'])));
 
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b""), 2..4, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"a"), 2..4, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"aa"), 2..4, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"aaa"), 2..4, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b""), vec![b'a', b'a', b'a']));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"aaaa"), 2..4, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"a"), vec![b'a', b'a', b'a']));
+        let r: ParseResult<_, Vec<_>, _> = many(&b""[..], 2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"a"[..], 2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aa"[..], 2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![b'a', b'a'])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aaa"[..], 2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![b'a', b'a', b'a'])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aaaa"[..], 2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"a"[..], Ok(vec![b'a', b'a', b'a'])));
 
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"b"), 2..4, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"ab"), 2..4, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"aab"), 2..4, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"b"), vec![b'a', b'a']));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"aaab"), 2..4, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"b"), vec![b'a', b'a', b'a']));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"aaaab"), 2..4, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"ab"), vec![b'a', b'a', b'a']));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"b"[..], 2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"ab"[..], 2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aab"[..], 2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Ok(vec![b'a', b'a'])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aaab"[..], 2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Ok(vec![b'a', b'a', b'a'])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aaaab"[..], 2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"ab"[..], Ok(vec![b'a', b'a', b'a'])));
 
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b""), 2..4, any);
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"a"), 2..4, any);
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"aa"), 2..4, any);
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), vec![b'a', b'a']));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"aaa"), 2..4, any);
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), vec![b'a', b'a', b'a']));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"aaaa"), 2..4, any);
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"a"), vec![b'a', b'a', b'a']));
-
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"b"), 2..4, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"ab"), 2..4, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"aab"), 2..4, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"b"), vec![b'a', b'a']));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"aaab"), 2..4, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"b"), vec![b'a', b'a', b'a']));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"aaaab"), 2..4, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"ab"), vec![b'a', b'a', b'a']));
+        // Test where we error inside of the inner parser
+        let r: ParseResult<_, Vec<_>, _> = many(&b"abac"[..], 1..3, |i| string(i, b"ab")); assert_eq!(r.into_inner(), (&b"ac"[..], Ok(vec![&b"ab"[..]])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"ababac"[..], 1..3, |i| string(i, b"ab")); assert_eq!(r.into_inner(), (&b"ac"[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
     }
 
     #[test]
     fn many_exact() {
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b""), 2, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"a"), 2, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"aa"), 2, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b""), vec![b'a', b'a']));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"aaa"), 2, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"a"), vec![b'a', b'a']));
+        let r: ParseResult<_, Vec<_>, _> = many(&b""[..],    0, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"a"[..],   0, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"a"[..], Ok(vec![])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aa"[..],  0, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"aa"[..], Ok(vec![])));
 
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"b"), 2, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"ab"), 2, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"aab"), 2, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"b"), vec![b'a', b'a']));
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"aaab"), 2, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"ab"), vec![b'a', b'a']));
+        let r: ParseResult<_, Vec<_>, _> = many(&b""[..],    2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"a"[..],   2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aa"[..],  2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![b'a', b'a'])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aaa"[..], 2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"a"[..], Ok(vec![b'a', b'a'])));
 
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b""), 2, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"a"), 2, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"aa"), 2, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), vec![b'a', b'a']));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"aaa"), 2, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"a"), vec![b'a', b'a']));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"b"[..],    2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"ab"[..],   2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aab"[..],  2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Ok(vec![b'a', b'a'])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aaab"[..], 2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"ab"[..], Ok(vec![b'a', b'a'])));
 
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"b"), 2, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"ab"), 2, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"aab"), 2, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"b"), vec![b'a', b'a']));
-        let r: ParseResult<_, Vec<_>, _> = many(new(END_OF_INPUT, b"aaab"), 2, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"ab"), vec![b'a', b'a']));
+        // Test where we error inside of the inner parser
+        let r: ParseResult<_, Vec<_>, _> = many(&b"abac"[..],   2, |i| string(i, b"ab")); assert_eq!(r.into_inner(), (&b"c"[..], Err(Error::expected(b'b'))));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"ababa"[..],  2, |i| string(i, b"ab")); assert_eq!(r.into_inner(), (&b"a"[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"abac"[..],   2, |i| string(i, b"ab")); assert_eq!(r.into_inner(), (&b"c"[..], Err(Error::expected(b'b'))));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"ababac"[..], 2, |i| string(i, b"ab")); assert_eq!(r.into_inner(), (&b"ac"[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"ababa"[..],  2, |i| string(i, b"ab")); assert_eq!(r.into_inner(), (&b"a"[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
+    }
+
+    #[test]
+    fn many_till_range_full() {
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..],        .., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..],      .., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..],    .., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..]])));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababac"[..],  .., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababab"[..],  .., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abababa"[..], .., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'b'))));
+    }
+
+    #[test]
+    fn many_till_range_from() {
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..], 0.., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"a"[..], 0.., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'b'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ab"[..], 0.., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..], 0.., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..], 1.., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"c"[..], Err(Error::expected(b'b'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..], 0.., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..]])));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..], 1.., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..]])));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..], 2.., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"c"[..], Err(Error::expected(b'b'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababac"[..], 2.., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababab"[..], 2.., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abababa"[..], 2.., |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'b'))));
+    }
+
+    #[test]
+    fn many_till_range_to() {
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..],         ..0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"b"[..],        ..0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"a"[..],        ..0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'c'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..],       ..0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..],         ..1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..],       ..1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..],     ..2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..]])));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..],         ..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..],       ..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..],     ..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..]])));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababac"[..],   ..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abababac"[..], ..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"bac"[..], Err(Error::expected(b'c'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababab"[..],   ..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'c'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababa"[..],    ..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'c'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abababa"[..],  ..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"ba"[..], Err(Error::expected(b'c'))));
+    }
+
+    #[test]
+    fn many_till_range() {
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..],   0..0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..],   0..0, |i| string(i, b"ab"), |i| string(i, b"cd")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'c'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"a"[..],  0..0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'c'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..], 0..0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
+
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..],   0..1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..], 0..1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ab"[..], 0..1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'c'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..], 0..1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"bac"[..], Err(Error::expected(b'c'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..],   0..2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..], 0..2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..]])));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..],         0..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"a"[..],         0..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'b'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..],       0..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abc"[..],      0..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"c"[..], Err(Error::expected(b'a'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..],     0..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..]])));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababac"[..],   0..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abababac"[..], 0..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"bac"[..], Err(Error::expected(b'c'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababa"[..],    0..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'c'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abababa"[..],  0..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"ba"[..], Err(Error::expected(b'c'))));
+
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..], 1..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"c"[..], Err(Error::expected(b'b'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..], 1..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..]])));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..], 2..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"c"[..], Err(Error::expected(b'b'))));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababac"[..], 2..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababac"[..], 2..2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
+    }
+
+    #[test]
+    fn many_till_exact() {
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..]        , 0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a')))       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"a"[..]       , 0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'c')))       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..]      , 0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![]))                       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"aca"[..]     , 0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"a"[..], Ok(vec![]))                      );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"acab"[..]    , 0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"ab"[..], Ok(vec![]))                     );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ab"[..]      , 0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'c')))      );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..]    , 0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"bac"[..], Err(Error::expected(b'c')))    );
+
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..]        , 1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a')))       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"a"[..]       , 1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'b')))       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..]      , 1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"c"[..], Err(Error::expected(b'b')))      );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ab"[..]      , 1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a')))       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"aba"[..]     , 1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'c')))       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abab"[..]    , 1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'c')))      );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..]    , 1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..]]))             );
+
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..]        , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a')))       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"a"[..]       , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'b')))       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..]      , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"c"[..], Err(Error::expected(b'b')))      );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ab"[..]      , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a')))       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"aba"[..]     , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'b')))       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abab"[..]    , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a')))       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..]    , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"c"[..], Err(Error::expected(b'b')))      );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababa"[..]   , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'c')))       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababac"[..]  , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..], &b"ab"[..]])) );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababab"[..]  , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'c')))      );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abababac"[..], 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"bac"[..], Err(Error::expected(b'c')))    );
     }
 
     #[test]
     fn skip_range_full() {
-        let r = skip_many(new(DEFAULT, b""), .., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r = skip_many(new(DEFAULT, b"a"), .., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r = skip_many(new(DEFAULT, b"aa"), .., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        let r = skip_many(&b""[..],   .., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
+        let r = skip_many(&b"a"[..],  .., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
+        let r = skip_many(&b"aa"[..], .., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
 
-        let r = skip_many(new(DEFAULT, b"b"), .., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"b"), ()));
-        let r = skip_many(new(DEFAULT, b"ab"), .., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"b"), ()));
-        let r = skip_many(new(DEFAULT, b"aab"), .., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"b"), ()));
-
-        let r = skip_many(new(END_OF_INPUT, b""), .., any);
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), ()));
-        let r = skip_many(new(END_OF_INPUT, b"a"), .., any);
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), ()));
-        let r = skip_many(new(END_OF_INPUT, b"aa"), .., any);
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), ()));
-
-        let r = skip_many(new(END_OF_INPUT, b"b"), .., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"b"), ()));
-        let r = skip_many(new(END_OF_INPUT, b"ab"), .., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"b"), ()));
-        let r = skip_many(new(END_OF_INPUT, b"aab"), .., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"b"), ()));
+        let r = skip_many(&b"b"[..],   .., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Ok(())));
+        let r = skip_many(&b"ab"[..],  .., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Ok(())));
+        let r = skip_many(&b"aab"[..], .., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Ok(())));
     }
 
     #[test]
     fn skip_range_to() {
-        let r = skip_many(new(DEFAULT, b""), ..0, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b""), ()));
-        let r = skip_many(new(DEFAULT, b"a"), ..0, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"a"), ()));
-        let r = skip_many(new(END_OF_INPUT, b""), ..0, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), ()));
-        let r = skip_many(new(END_OF_INPUT, b"a"), ..0, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"a"), ()));
+        let r = skip_many(&b""[..],  ..0, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
+        let r = skip_many(&b"b"[..], ..0, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Ok(())));
+        let r = skip_many(&b"a"[..], ..0, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"a"[..], Ok(())));
 
-        let r = skip_many(new(DEFAULT, b""), ..1, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b""), ()));
-        let r = skip_many(new(DEFAULT, b"a"), ..1, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"a"), ()));
-        let r = skip_many(new(END_OF_INPUT, b""), ..1, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), ()));
-        let r = skip_many(new(END_OF_INPUT, b"a"), ..1, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"a"), ()));
+        let r = skip_many(&b""[..],    ..3, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
+        let r = skip_many(&b"a"[..],   ..3, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
+        let r = skip_many(&b"aa"[..],  ..3, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
+        let r = skip_many(&b"aaa"[..], ..3, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"a"[..], Ok(())));
 
-        let r = skip_many(new(DEFAULT, b""), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r = skip_many(new(DEFAULT, b"a"), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r = skip_many(new(DEFAULT, b"aa"), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b""), ()));
-        let r = skip_many(new(DEFAULT, b"aaa"), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"a"), ()));
-
-        let r = skip_many(new(DEFAULT, b"b"), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"b"), ()));
-        let r = skip_many(new(DEFAULT, b"ab"), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"b"), ()));
-        let r = skip_many(new(DEFAULT, b"aab"), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"b"), ()));
-
-        let r = skip_many(new(END_OF_INPUT, b""), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), ()));
-        let r = skip_many(new(END_OF_INPUT, b"a"), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), ()));
-        let r = skip_many(new(END_OF_INPUT, b"aa"), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), ()));
-
-        let r = skip_many(new(END_OF_INPUT, b"b"), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"b"), ()));
-        let r = skip_many(new(END_OF_INPUT, b"ab"), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"b"), ()));
-        let r = skip_many(new(END_OF_INPUT, b"aab"), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"b"), ()));
-        let r = skip_many(new(END_OF_INPUT, b"aaab"), ..3, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"ab"), ()));
+        let r = skip_many(&b"b"[..],    ..3, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Ok(())));
+        let r = skip_many(&b"ab"[..],   ..3, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Ok(())));
+        let r = skip_many(&b"aab"[..],  ..3, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Ok(())));
+        let r = skip_many(&b"aaab"[..], ..3, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"ab"[..], Ok(())));
     }
 
     #[test]
     fn skip_range_from() {
-        let r = skip_many(new(DEFAULT, b""), 2.., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r = skip_many(new(DEFAULT, b"a"), 2.., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r = skip_many(new(DEFAULT, b"aa"), 2.., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r = skip_many(new(DEFAULT, b"aaa"), 2.., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
+        let r = skip_many(&b""[..],    0.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
+        let r = skip_many(&b"a"[..],   0.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
+        let r = skip_many(&b"aa"[..],  0.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
 
-        let r = skip_many(new(DEFAULT, b"b"), 2.., |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
-        let r = skip_many(new(DEFAULT, b"ab"), 2.., |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
-        let r = skip_many(new(DEFAULT, b"aab"), 2.., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"b"), ()));
+        let r = skip_many(&b""[..],    1.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r = skip_many(&b"a"[..],   0.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
 
-        let r = skip_many(new(END_OF_INPUT, b""), 2.., any);
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r = skip_many(new(END_OF_INPUT, b"a"), 2.., any);
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r = skip_many(new(END_OF_INPUT, b"aa"), 2.., any);
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), ()));
-        let r = skip_many(new(END_OF_INPUT, b"aaa"), 2.., any);
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), ()));
+        let r = skip_many(&b""[..],    2.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r = skip_many(&b"a"[..],   2.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r = skip_many(&b"aa"[..],  2.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
+        let r = skip_many(&b"aaa"[..], 2.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
 
-        let r = skip_many(new(END_OF_INPUT, b"b"), 2.., |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
-        let r = skip_many(new(END_OF_INPUT, b"ab"), 2.., |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
-        let r = skip_many(new(END_OF_INPUT, b"aab"), 2.., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"b"), ()));
-        let r = skip_many(new(END_OF_INPUT, b"aaab"), 2.., |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"b"), ()));
+        let r = skip_many(&b"b"[..],    2.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'a'))));
+        let r = skip_many(&b"ab"[..],   2.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'a'))));
+        let r = skip_many(&b"aab"[..],  2.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Ok(())));
+        let r = skip_many(&b"aaab"[..], 2.., |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Ok(())));
     }
 
     #[test]
     fn skip_range() {
-        let r = skip_many(new(DEFAULT, b""), 0..0, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b""), ()));
-        let r = skip_many(new(DEFAULT, b"a"), 0..0, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"a"), ()));
-        let r = skip_many(new(END_OF_INPUT, b""), 0..0, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), ()));
-        let r = skip_many(new(END_OF_INPUT, b"a"), 0..0, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"a"), ()));
+        let r = skip_many(&b""[..],  0..0, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
+        let r = skip_many(&b"a"[..], 0..0, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"a"[..], Ok(())));
 
-        let r = skip_many(new(DEFAULT, b""), 0..1, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b""), ()));
-        let r = skip_many(new(DEFAULT, b"a"), 0..1, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"a"), ()));
-        let r = skip_many(new(END_OF_INPUT, b""), 0..1, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), ()));
-        let r = skip_many(new(END_OF_INPUT, b"a"), 0..1, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"a"), ()));
+        let r = skip_many(&b""[..],     2..2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r = skip_many(&b"a"[..],    2..2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r = skip_many(&b"aa"[..],   2..2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
+        let r = skip_many(&b"aaa"[..],  2..2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"a"[..], Ok(())));
 
-        let r = skip_many(new(DEFAULT, b""), 2..4, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r = skip_many(new(DEFAULT, b"a"), 2..4, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r = skip_many(new(DEFAULT, b"aa"), 2..4, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r = skip_many(new(DEFAULT, b"aaa"), 2..4, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b""), ()));
-        let r = skip_many(new(DEFAULT, b"aaaa"), 2..4, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"a"), ()));
+        let r = skip_many(&b""[..],     2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r = skip_many(&b"a"[..],    2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
+        let r = skip_many(&b"aa"[..],   2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
+        let r = skip_many(&b"aaa"[..],  2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
+        let r = skip_many(&b"aaaa"[..], 2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"a"[..], Ok(())));
 
-        let r = skip_many(new(DEFAULT, b"b"), 2..4, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
-        let r = skip_many(new(DEFAULT, b"ab"), 2..4, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
-        let r = skip_many(new(DEFAULT, b"aab"), 2..4, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"b"), ()));
-        let r = skip_many(new(DEFAULT, b"aaab"), 2..4, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"b"), ()));
-        let r = skip_many(new(DEFAULT, b"aaaab"), 2..4, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"ab"), ()));
-
-        let r = skip_many(new(END_OF_INPUT, b""), 2..4, any);
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r = skip_many(new(END_OF_INPUT, b"a"), 2..4, any);
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r = skip_many(new(END_OF_INPUT, b"aa"), 2..4, any);
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), ()));
-        let r = skip_many(new(END_OF_INPUT, b"aaa"), 2..4, any);
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), ()));
-        let r = skip_many(new(END_OF_INPUT, b"aaaa"), 2..4, any);
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"a"), ()));
-
-        let r = skip_many(new(END_OF_INPUT, b"b"), 2..4, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
-        let r = skip_many(new(END_OF_INPUT, b"ab"), 2..4, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
-        let r = skip_many(new(END_OF_INPUT, b"aab"), 2..4, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"b"), ()));
-        let r = skip_many(new(END_OF_INPUT, b"aaab"), 2..4, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"b"), ()));
-        let r = skip_many(new(END_OF_INPUT, b"aaaab"), 2..4, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"ab"), ()));
+        let r = skip_many(&b"b"[..],     2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'a'))));
+        let r = skip_many(&b"ab"[..],    2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'a'))));
+        let r = skip_many(&b"aab"[..],   2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Ok(())));
+        let r = skip_many(&b"aaab"[..],  2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..], Ok(())));
+        let r = skip_many(&b"aaaab"[..], 2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"ab"[..], Ok(())));
     }
 
     #[test]
     fn skip_exact() {
-        let r = skip_many(new(DEFAULT, b""), 2, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r = skip_many(new(DEFAULT, b"a"), 2, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r = skip_many(new(DEFAULT, b"aa"), 2, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b""), ()));
-        let r = skip_many(new(DEFAULT, b"aaa"), 2, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"a"), ()));
-
-        let r = skip_many(new(DEFAULT, b"b"), 2, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
-        let r = skip_many(new(DEFAULT, b"ab"), 2, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
-        let r = skip_many(new(DEFAULT, b"aab"), 2, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"b"), ()));
-        let r = skip_many(new(DEFAULT, b"aaab"), 2, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"ab"), ()));
-
-        let r = skip_many(new(END_OF_INPUT, b""), 2, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r = skip_many(new(END_OF_INPUT, b"a"), 2, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Incomplete(1));
-        let r = skip_many(new(END_OF_INPUT, b"aa"), 2, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b""), ()));
-        let r = skip_many(new(END_OF_INPUT, b"aaa"), 2, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"a"), ()));
-
-        let r = skip_many(new(END_OF_INPUT, b"b"), 2, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
-        let r = skip_many(new(END_OF_INPUT, b"ab"), 2, |i| token(i, b'a').map_err(|_| "token_err"));
-        assert_eq!(r.into_inner(), State::Error(b"b", "token_err"));
-        let r = skip_many(new(END_OF_INPUT, b"aab"), 2, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"b"), ()));
-        let r = skip_many(new(END_OF_INPUT, b"aaab"), 2, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(END_OF_INPUT, b"ab"), ()));
+        let r = skip_many(&b""[..],     0, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..],   Ok(())));
+        let r = skip_many(&b"a"[..],    0, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"a"[..],  Ok(())));
+        let r = skip_many(&b""[..],     1, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..],   Err(Error::expected(b'a'))));
+        let r = skip_many(&b"a"[..],    1, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..],   Ok(())));
+        let r = skip_many(&b""[..],     2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..],   Err(Error::expected(b'a'))));
+        let r = skip_many(&b"a"[..],    2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..],   Err(Error::expected(b'a'))));
+        let r = skip_many(&b"aa"[..],   2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..],   Ok(())));
+        let r = skip_many(&b"aaa"[..],  2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"a"[..],  Ok(())));
+        let r = skip_many(&b"aaab"[..], 2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"ab"[..], Ok(())));
+        let r = skip_many(&b"aab"[..],  2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..],  Ok(())));
+        let r = skip_many(&b"ab"[..],   2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..],  Err(Error::expected(b'a'))));
+        let r = skip_many(&b"b"[..],    2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"b"[..],  Err(Error::expected(b'a'))));
     }
 
     #[test]
     #[should_panic]
     fn panic_many_range_lt() {
-        let r: ParseResult<_, Vec<_>, _> = many(new(DEFAULT, b"aaaab"), 2..1, |i| token(i, b'a'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"ab"), vec![b'a', b'a', b'a']));
+        let r: ParseResult<_, Vec<_>, _> = many(&b"aaaab"[..], 2..1, |i| token(i, b'a'));
+        assert_eq!(r.into_inner(), (&b"ab"[..], Ok(vec![b'a', b'a', b'a'])));
     }
 
     #[test]
     #[should_panic]
     fn panic_skip_many_range_lt() {
-        assert_eq!(skip_many(new(DEFAULT, b"aaaab"), 2..1, |i| token(i, b'a')).into_inner(), State::Data(new(DEFAULT, b"ab"), ()));
+        assert_eq!(skip_many(&b"aaaab"[..], 2..1, |i| token(i, b'a')).into_inner(), (&b"ab"[..], Ok(())));
     }
 
     #[test]
     #[should_panic]
     fn panic_many_till_range_lt() {
-        let r: ParseResult<_, Vec<_>, _> = many_till(new(DEFAULT, b"aaaab"), 2..1, |i| token(i, b'a'), |i| token(i, b'b'));
-        assert_eq!(r.into_inner(), State::Data(new(DEFAULT, b"ab"), vec![b'a', b'a', b'a']));
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"aaaab"[..], 2..1, |i| token(i, b'a'), |i| token(i, b'b'));
+        assert_eq!(r.into_inner(), (&b"ab"[..], Ok(vec![b'a', b'a', b'a'])));
     }
 }

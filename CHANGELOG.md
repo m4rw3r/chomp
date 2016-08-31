@@ -7,6 +7,29 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 
+- `prelude` module containing basic types, parsers and combinators.
+
+  This is supposed to be the equivalent of Attoparsec's main package.
+
+- `run_parser` which executes a parser on any given `Input` type.
+
+- `buffer::InputBuf` which contains a slice and an incomplete flag, much as the old `Input` struct.
+
+- `Input<Token=T, Buffer=&[T]>` implementation for `&[T]` where `T: Copy + PartialEq`.
+
+- `Input<Token=char, Buffer=&str>` implementation for `&str`.
+
+- `types::Buffer` trait which is implemented for all buffers providing common logic to perform the
+  final parsing on a buffer without knowing the exact buffer implementation.
+
+- `types::U8Input` trait alias for `Input<Token=u8>`.
+
+- `primitives::Primitives` trait providing access to the primitive methods of the `Input` trait.
+
+  This is used for building fundamental parsers/combinators.
+
+- `ParseResult::inspect` allowing code to observe the success value.
+
 - `chomp::Error` now includes a backtrace in `test` and `debug` build profiles thanks to the
   [debugtrace crate](https://github.com/m4rw3r/debugtrace_rs). Backtraces can also be activated
   permanently using the `backtrace` feature but this will incur the significant cost of allocating
@@ -17,6 +40,27 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Changes
 
+- **Backwards-incompatible:** `Input` is now a trait with associated types `Token` and `Buffer`.
+
+  This removes all incomplete logic from the parsers themselves and moves it into the `InputBuf`
+  type. This `InputBuf` is used if a partial buffer is in memory. It also allows the parsers to
+  operate directly on slices or use more effective means of storing buffers depending on the
+  `Input` implementation.
+
+  To upgrade you replace the previous concrete `Input` type with a generic, use its associated
+  type if required, and refer to the `Buffer` associated type to allow for zero-copy parsing::
+
+      -fn http_version(i: Input<u8>) -> U8Result<&[u8]>;
+      +fn http_version<I: Input<Token=u8>>(i: I) -> SimpleResult<I, I::Buffer>;
+
+  The associated types can be restricted if requried:
+  
+      fn request<I: U8Input>(i: I) -> SimpleResult<I, (Request<I::Buffer>, Vec<Header<I::Buffer>>)>
+        where I::Buffer: ::std::ops::Deref<Target=[u8]>;
+
+- **Backwards-incompatible:** Moved types into a more logical module structure, prelude now
+  exists as a `prelude` module.
+
 - **Backwards-incompatible:** `chomp::Error` is no longer an enum, this is to facillitate the
   support of backtraces while keeping code compatible between the different build profiles.
 
@@ -26,10 +70,19 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Removed
 
+- `Input::incomplete`
 - `Input::new`
 - `ParseResult::expect`
-- `ParseResult::unwrap`
 - `ParseResult::unwrap_err`
+- `ParseResult::unwrap`
+- `buffer::IntoStream`
+- `primitives::InputClone`
+- `primitives::State`
+
+## Bugfixes
+
+- `combinators::bounded` now have a defined behavior when a `Range<usize>` has `start == end`: They will parse exactly `start` times. This also fixed a few overflows and unreachable code being reachable.
+- `combinators::bounded::many_till` got fixed for an overflow happening when `0: usize` was used to limit the number of iterations.
 
 ## [0.2.6] - 2016-07-07
 

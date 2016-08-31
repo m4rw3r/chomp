@@ -22,13 +22,15 @@ include = [
 ]
 
 [dependencies]
-bitflags   = "0.5.0"
-conv       = { version = "0.3", default-features = false, features = ["std"] }
+bitflags   = "0.7.0"
+conv       = { version = "0.3.3", default-features = false, features = ["std"] }
 debugtrace = { version = "0.1.0" }
+tendril    = { version = "0.2.2", optional = true }
 
 # Technically a dev-dependency, but dev-dependencies are not allowed to be optional,
 # compiletest_rs fails to compile on stable and beta
 compiletest_rs = { version = "0.2.1", optional = true }
+clippy         = { version = ">0.0.1", optional = true }
 
 [features]
 # Feature for running extra (compiletime fail) tests on nightly

@@ -1,13 +1,21 @@
 //! Utilities and parsers for dealing with ASCII data in `u8` format.
 
-use conv::{NoError, ValueFrom};
-use conv::errors::UnwrapOk;
-
 use std::ops::{Add, Mul};
 
-use {Input, U8Result};
+use conv::{
+    NoError,
+    ValueFrom,
+};
+use conv::errors::UnwrapOk;
+
+use types::{Buffer, Input};
 use combinators::option;
-use parsers::{take_while, take_while1, satisfy};
+use parsers::{
+    SimpleResult,
+    satisfy,
+    take_while,
+    take_while1,
+};
 
 /// Lowercase ASCII predicate.
 #[inline]
@@ -79,7 +87,7 @@ pub fn is_alphanumeric(c: u8) -> bool {
 /// assert_eq!(parse_only(skip_whitespace, b" \t "), Ok(()));
 /// ```
 #[inline]
-pub fn skip_whitespace(i: Input<u8>) -> U8Result<()> {
+pub fn skip_whitespace<I: Input<Token=u8>>(i: I) -> SimpleResult<I, ()> {
     take_while(i, is_whitespace).map(|_| ())
 }
 
@@ -98,7 +106,7 @@ pub fn skip_whitespace(i: Input<u8>) -> U8Result<()> {
 /// assert_eq!(parse_only(digit, b"1"), Ok(b'1'));
 /// ```
 #[inline]
-pub fn digit(i: Input<u8>) -> U8Result<u8> {
+pub fn digit<I: Input<Token=u8>>(i: I) -> SimpleResult<I, u8> {
     satisfy(i, is_digit)
 }
 
@@ -120,9 +128,9 @@ pub fn digit(i: Input<u8>) -> U8Result<u8> {
 /// assert_eq!(r, Ok(-123i16));
 /// ```
 #[inline]
-pub fn signed<T, F>(i: Input<u8>, f: F) -> U8Result<T>
+pub fn signed<I: Input<Token=u8>, T, F>(i: I, f: F) -> SimpleResult<I, T>
   where T: Copy + ValueFrom<i8, Err=NoError> + Add<Output=T> + Mul<Output=T>,
-        F: FnOnce(Input<u8>) -> U8Result<T> {
+        F: FnOnce(I) -> SimpleResult<I, T> {
     option(i,
            |i| satisfy(i, |c| c == b'-' || c == b'+')
                .map(|s| T::value_from(if s == b'+' { 1 } else { -1 }).unwrap_ok()),
@@ -142,12 +150,12 @@ pub fn signed<T, F>(i: Input<u8>, f: F) -> U8Result<T>
 /// use chomp::parse_only;
 /// use chomp::ascii::decimal;
 ///
-/// let r = parse_only(decimal::<u8>, b"123");
+/// let r = parse_only(decimal::<_, u8>, b"123");
 ///
 /// assert_eq!(r, Ok(123u8));
 /// ```
 #[inline]
-pub fn decimal<T: Copy + ValueFrom<u8, Err=NoError> + Add<Output=T> + Mul<Output=T>>(i: Input<u8>) -> U8Result<T> {
+pub fn decimal<I: Input<Token=u8>, T: Copy + ValueFrom<u8, Err=NoError> + Add<Output=T> + Mul<Output=T>>(i: I) -> SimpleResult<I, T> {
     take_while1(i, is_digit).map(to_decimal)
 }
 
@@ -158,8 +166,8 @@ pub fn decimal<T: Copy + ValueFrom<u8, Err=NoError> + Add<Output=T> + Mul<Output
 /// * The slice must not contain any other characters besides 0 to 9.
 /// * The `T` type must be larger than `u8` if it is signed.
 #[inline]
-fn to_decimal<T: Copy + ValueFrom<u8, Err=NoError> + Add<Output=T> + Mul<Output=T>>(buf: &[u8]) -> T {
-    buf.iter().fold(T::value_from(0).unwrap_ok(), |a, n| a * T::value_from(10).unwrap_ok() + T::value_from(n - b'0').unwrap_ok())
+fn to_decimal<T: Copy + ValueFrom<u8, Err=NoError> + Add<Output=T> + Mul<Output=T>, I: Buffer<Token=u8>>(iter: I) -> T {
+    iter.fold(T::value_from(0).unwrap_ok(), |a, n| a * T::value_from(10).unwrap_ok() + T::value_from(n - b'0').unwrap_ok())
 }
 
 #[cfg(test)]
@@ -168,13 +176,13 @@ mod test {
 
     macro_rules! test_to_decimal {
         ( $($n:ty),+ ) => { $(
-            assert_eq!(to_decimal::<$n>(b""), 0);
-            assert_eq!(to_decimal::<$n>(b"0"), 0);
-            assert_eq!(to_decimal::<$n>(b"1"), 1);
-            assert_eq!(to_decimal::<$n>(b"2"), 2);
-            assert_eq!(to_decimal::<$n>(b"10"), 10);
-            assert_eq!(to_decimal::<$n>(b"20"), 20);
-            assert_eq!(to_decimal::<$n>(b"25"), 25);
+            assert_eq!(to_decimal::<$n, _>(&b""[..]), 0);
+            assert_eq!(to_decimal::<$n, _>(&b"0"[..]), 0);
+            assert_eq!(to_decimal::<$n, _>(&b"1"[..]), 1);
+            assert_eq!(to_decimal::<$n, _>(&b"2"[..]), 2);
+            assert_eq!(to_decimal::<$n, _>(&b"10"[..]), 10);
+            assert_eq!(to_decimal::<$n, _>(&b"20"[..]), 20);
+            assert_eq!(to_decimal::<$n, _>(&b"25"[..]), 25);
         )+ }
     }
 

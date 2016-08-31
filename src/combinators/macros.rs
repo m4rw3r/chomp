@@ -14,47 +14,39 @@ macro_rules! run_iter {
         }
 
         => $result:ident : $t:ty {
-             $($pat:pat => $arm:expr),*
+             $($pat:pat => $arm:expr),*$(,)*
         }
     ) => { {
-        enum EndState<'a, I, E>
-          where I: 'a {
-            Error(&'a [I], E),
-            Incomplete(usize),
-        }
-
-        struct Iter<'a, I, T, E, F>
-          where I: 'a,
-                T: 'a,
-                E: 'a,
-                F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+        struct Iter<I: Input, T, E, F>
+          where F: FnMut(I) -> ParseResult<I, T, E> {
             /// Last state of the parser
-            state:  EndState<'a, I, E>,
+            state:  Option<E>,
             /// Parser to execute once for each iteration
             parser: F,
             /// Remaining buffer
-            buf:    Input<'a, I>,
+            ///
+            /// Wrapped in option to prevent two calls to destructors.
+            buf:    Option<I>,
+            /// Last good state.
+            ///
+            /// Wrapped in option to prevent two calls to destructors.
+            mark:   I::Marker,
             /// Nested state
             data:   $data_ty,
             _t:     PhantomData<T>,
         }
 
-        impl<'a, I, T, E, F> Iter<'a, I, T, E, F>
-          where I: 'a,
-                T: 'a,
-                E: 'a,
-                F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+        impl<I: Input, T, E, F> Iter<I, T, E, F>
+          where F: FnMut(I) -> ParseResult<I, T, E> {
             #[inline]
-            fn end_state(self) -> (Input<'a, I>, $data_ty, EndState<'a, I, E>) {
-                (self.buf, self.data, self.state)
+            fn end_state(self) -> (I, $data_ty, I::Marker, Option<E>) {
+                // TODO: Avoid branch, check if this can be guaranteed to always be Some(T)
+                (self.buf.expect("Iter.buf was None"), self.data, self.mark, self.state)
             }
         }
 
-        impl<'a, I, T, E, F> Iterator for Iter<'a, I, T, E, F>
-          where I: 'a,
-                T: 'a,
-                E: 'a,
-                F: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E> {
+        impl<I: Input, T, E, F> Iterator for Iter<I, T, E, F>
+          where F: FnMut(I) -> ParseResult<I, T, E> {
             type Item = T;
 
             #[inline]
@@ -66,21 +58,23 @@ macro_rules! run_iter {
             fn next(&mut $next_self) -> Option<Self::Item> {
                 $pre_next
 
-                match ($next_self.parser)($next_self.buf.clone()).into_inner() {
-                    State::Data(b, v) => {
-                        $next_self.buf    = b;
+                // TODO: Remove the branches here (ie. take + unwrap)
+                let i = $next_self.buf.take().expect("Iter.buf was None");
+
+                // TODO: Any way to prevent marking here since it is not used at all times?
+                $next_self.mark = i.mark();
+
+                match ($next_self.parser)(i).into_inner() {
+                    (b, Ok(v)) => {
+                        $next_self.buf = Some(b);
 
                         $on_next
 
                         Some(v)
                     },
-                    State::Error(b, e) => {
-                        $next_self.state = EndState::Error(b, e);
-
-                        None
-                    },
-                    State::Incomplete(n) => {
-                        $next_self.state = EndState::Incomplete(n);
+                    (b, Err(e)) => {
+                        $next_self.buf   = Some(b);
+                        $next_self.state = Some(e);
 
                         None
                     },
@@ -88,10 +82,14 @@ macro_rules! run_iter {
             }
         }
 
+        // TODO: Not always used
+        let mark = $input.mark();
+
         let mut iter = Iter {
-            state:  EndState::Incomplete(1),
+            state:  None,
             parser: $parser,
-            buf:    $input,
+            buf:    Some($input),
+            mark:   mark,
             data:   $data,
             _t:     PhantomData,
         };
@@ -120,57 +118,45 @@ macro_rules! run_iter_till {
         }
 
         => $result:ident : $t:ty {
-             $($pat:pat => $arm:expr),*
+             $($pat:pat => $arm:expr),*$(,)*
         }
     ) => { {
-        enum EndStateTill<'a, I, E>
-          where I: 'a {
-            Error(&'a [I], E),
-            Incomplete(usize),
+        enum EndStateTill<E> {
+            Error(E),
+            Incomplete,
             EndSuccess,
         }
 
-        /// Iterator used by ``many_till`` and ``many1``.
-        struct IterTill<'a, I, T, U, E, F, P, N>
-          where I: 'a,
-                T: 'a,
-                E: 'a,
-                U: 'a,
-                N: 'a,
-                P: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E>,
-                F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, N> {
-            state:  EndStateTill<'a, I, E>,
+        /// Iterator used by `many_till` and `many1`.
+        struct IterTill<I: Input, T, U, E, F, P, N>
+          where E: From<N>,
+                P: FnMut(I) -> ParseResult<I, T, E>,
+                F: FnMut(I) -> ParseResult<I, U, N> {
+            state:  EndStateTill<E>,
             parser: P,
             end:    F,
-            buf:    Input<'a, I>,
+            buf:    Option<I>,
             data:   $data_ty,
             _t:     PhantomData<(T, U, N)>,
         }
 
-        impl<'a, I, T, U, E, F, P, N> IterTill<'a, I, T, U, E, F, P, N>
-          where I: 'a,
-                T: 'a,
-                E: 'a,
-                U: 'a,
-                N: 'a,
-                P: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E>,
-                F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, N> {
+        impl<I: Input, T, U, E, F, P, N> IterTill<I, T, U, E, F, P, N>
+          where E: From<N>,
+                P: FnMut(I) -> ParseResult<I, T, E>,
+                F: FnMut(I) -> ParseResult<I, U, N> {
             /// Destructures the iterator returning the position just after the last successful parse as
             /// well as the state of the last attempt to parse data.
             #[inline]
-            fn end_state(self) -> (Input<'a, I>, $data_ty, EndStateTill<'a, I, E>) {
-                (self.buf, self.data, self.state)
+            fn end_state(self) -> (I, $data_ty, EndStateTill<E>) {
+                // TODO: Avoid branch, check if this can be guaranteed to always be Some(T)
+                (self.buf.expect("Iter.buf was None"), self.data, self.state)
             }
         }
 
-        impl<'a, I, T, U, E, F, P, N> Iterator for IterTill<'a, I, T, U, E, F, P, N>
-          where I: 'a,
-                T: 'a,
-                E: 'a,
-                U: 'a,
-                N: 'a,
-                P: FnMut(Input<'a, I>) -> ParseResult<'a, I, T, E>,
-                F: FnMut(Input<'a, I>) -> ParseResult<'a, I, U, N> {
+        impl<I: Input, T, U, E, F, P, N> Iterator for IterTill<I, T, U, E, F, P, N>
+          where E: From<N>,
+                P: FnMut(I) -> ParseResult<I, T, E>,
+                F: FnMut(I) -> ParseResult<I, U, N> {
             type Item = T;
 
             #[inline]
@@ -182,21 +168,20 @@ macro_rules! run_iter_till {
             fn next(&mut $next_self) -> Option<Self::Item> {
                 $pre_next
 
-                match ($next_self.parser)($next_self.buf.clone()).into_inner() {
-                    State::Data(b, v) => {
-                        $next_self.buf = b;
+                // TODO: Remove the branches here (ie. take + unwrap)
+                let i = $next_self.buf.take().expect("Iter.buf was None");
+
+                match ($next_self.parser)(i).into_inner() {
+                    (b, Ok(v)) => {
+                        $next_self.buf = Some(b);
 
                         $on_next
 
                         Some(v)
                     },
-                    State::Error(b, e) => {
-                        $next_self.state = EndStateTill::Error(b, e);
-
-                        None
-                    },
-                    State::Incomplete(n) => {
-                        $next_self.state = EndStateTill::Incomplete(n);
+                    (b, Err(e)) => {
+                        $next_self.buf   = Some(b);
+                        $next_self.state = EndStateTill::Error(e);
 
                         None
                     },
@@ -205,10 +190,10 @@ macro_rules! run_iter_till {
         }
 
         let mut iter = IterTill {
-            state:  EndStateTill::Incomplete(1),
+            state:  EndStateTill::Incomplete,
             parser: $parser,
             end:    $end,
-            buf:    $input,
+            buf:    Some($input),
             data:   $data,
             _t:     PhantomData,
         };
@@ -226,11 +211,19 @@ macro_rules! run_iter_till {
 /// will be returned, stopping the iteration. If the test fails execution continues.
 macro_rules! iter_till_end_test {
     ( $the_self:ident ) => { {
-        if let State::Data(b, _) = ($the_self.end)($the_self.buf.clone()).into_inner() {
-            $the_self.buf   = b;
-            $the_self.state = EndStateTill::EndSuccess;
+        // TODO: Remove the branches here (ie. take + unwrap)
+        let i = $the_self.buf.take().expect("Iter.buf was None");
+        let m = i.mark();
 
-            return None
+        match ($the_self.end)(i).into_inner() {
+            (b, Ok(_)) => {
+                $the_self.buf   = Some(b);
+                $the_self.state = EndStateTill::EndSuccess;
+
+                return None
+            },
+            // Failed to end, restore and continue
+            (b, Err(_))      => $the_self.buf = Some(b.restore(m)),
         }
     } }
 }
