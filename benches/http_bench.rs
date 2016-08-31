@@ -5,7 +5,6 @@ extern crate chomp;
 
 use test::Bencher;
 use chomp::prelude::*;
-use chomp::buffer::InputBuf;
 
 #[derive(Debug)]
 struct Request<B> {
