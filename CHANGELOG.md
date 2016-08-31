@@ -79,6 +79,11 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 - `primitives::InputClone`
 - `primitives::State`
 
+## Bugfixes
+
+- `combinators::bounded` now have a defined behavior when a `Range<usize>` has `start == end`: They will parse exactly `start` times. This also fixed a few overflows and unreachable code being reachable.
+- `combinators::bounded::many_till` got fixed for an overflow happening when `0: usize` was used to limit the number of iterations.
+
 ## [0.2.6] - 2016-07-07
 
 ### Bugfixes
