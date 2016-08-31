@@ -43,7 +43,8 @@ pub trait BoundedMany<I: Input, F, T, E> {
     /// * Will allocate depending on the `FromIterator` implementation.
     /// * Will never yield more items than the upper bound of the range.
     /// * Will never yield fewer items than the lower bound of the range.
-    /// * Will only call the parser-constructor `F` once for each iteration, in order
+    /// * Will only call the parser-constructor `F` once for each iteration, in order.
+    /// * Use `combinators::bounded::many` instead of calling this trait method directly.
     #[inline]
     fn many(self, f: F) -> Self::ManyParser;
 }
@@ -64,18 +65,22 @@ pub trait BoundedSkipMany<I: Input, F, E> {
     ///
     /// # Notes
     ///
-    /// * Must never yield more items than the upper bound of the range.
-    /// * Use `combinators::bounded::many` instead of calling this trait method directly.
-    /// * If the last parser succeeds on the last input item then this parser is still considered
-    ///   incomplete if the input flag END_OF_INPUT is not set as there might be more data to fill.
+    /// * Will never skip more items than the upper bound of the range.
+    /// * Will never skip fewer items than the lower bound of the range.
+    /// * Will only call the parser-constructor `F` once for each iteration, in order
+    /// * Use `combinators::bounded::skip_many` instead of calling this trait method directly.
     #[inline]
     fn skip_many(self, F) -> Self::SkipManyParser;
+}
 
-    /*
-    // TODO: Fix documentation regarding incomplete
-    /// Applies the parser `P` multiple times until the parser `F` succeeds and returns a value
-    /// populated by the values yielded by `P`. Consumes the matched part of `F`. If `F` does not
-    /// succeed within the given range `R` this combinator will propagate any failure from `P`.
+/// Trait for applying a parser multiple times based on a range until another parser succeeds.
+pub trait BoundedManyTill<I: Input, F, G, T, E> {
+    /// The parser type returned by `many_till`.
+    type ManyTillParser: Parser<I, Output=T, Error=E>;
+
+    /// Applies the parser `F` multiple times until the parser `G` succeeds, collecting the values
+    /// from `F` into a `T: FromIterator` Consumes the matched part of `G`. If `F` does not
+    /// succeed within the given range `R` this combinator will propagate any failure from `G`.
     ///
     /// # Panics
     ///
@@ -84,17 +89,11 @@ pub trait BoundedSkipMany<I: Input, F, E> {
     /// # Notes
     ///
     /// * Will allocate depending on the `FromIterator` implementation.
+    /// * Will never yield more items than the upper bound of the range.
+    /// * Will never yield fewer items than the lower bound of the range.
     /// * Use `combinators::bounded::many_till` instead of calling this trait method directly.
-    /// * Must never yield more items than the upper bound of the range.
-    /// * If the last parser succeeds on the last input item then this combinator is still considered
-    ///   incomplete unless the parser `F` matches or the lower bound has not been met.
     #[inline]
-    fn many_till<I: Input, T, E, R, F, U, N, V>(self, I, R, F) -> impl Parser<I, T, E>
-      where T: FromIterator<U>,
-            E: From<N>,
-            R: Parser<I, U, E>,
-            F: Parser<I, V, N>;
-    */
+    fn many_till(self, F, G) -> Self::ManyTillParser;
 }
 
 many_iter!{
@@ -224,77 +223,88 @@ impl<I, F, P> BoundedSkipMany<I, F, P::Error> for Range<usize>
     }
 }
 
-/*
+many_till_iter! {
+    doc: "Parser iterating over a range and ending with a final parser, created by `many_till(n..m, ...)`",
+    struct_name: ManyTillRangeParser,
+    state:       (usize, usize),
+
+    size_hint(self) {
+        (self.data.0, Some(self.data.1))
+    }
+    next(self) {
+        pre {
+            if self.data.0 == 0 {
+                // We have reached minimum, we can attempt to end now
+
+                // TODO: Remove the branches here (ie. take + unwrap)
+                let i = self.buf.take().expect("Iter.buf was None");
+                let m = i.mark();
+
+                match (self.data.1, (self.end)().parse(i)) {
+                    // We can always end
+                    (_, (b, Ok(_)))  => {
+                        self.buf   = Some(b);
+                        self.state = EndStateTill::EndSuccess;
+
+                        return None;
+                    },
+                    // We have reached end, end must match or it is an error
+                    (0, (b, Err(e))) => {
+                        self.buf   = Some(b);
+                        self.state = EndStateTill::Error(From::from(e));
+
+                        return None;
+                    },
+                    // Failed to end, restore and continue since we can parse more
+                    (_, (b, Err(_))) => self.buf = Some(b.restore(m)),
+                }
+            }
+        }
+        on {
+            self.data.0  = if self.data.0 == 0 { 0 } else { self.data.0 - 1 };
+            self.data.1 -= 1;
+        }
+    }
+
+    => result : T {
+        // Got all occurrences of the parser
+        (s, (0, _), EndStateTill::EndSuccess) => (s, Ok(result)),
+        // Did not reach minimum or a failure, propagate
+        (s, (_, _), EndStateTill::Error(e))   => (s, Err(e)),
+        (_, (_, _), EndStateTill::Incomplete) => unreachable!(),
+        // We cannot reach this since we only run the end test once we have reached the
+        // minimum number of matches
+        (_, (_, _), EndStateTill::EndSuccess) => unreachable!()
+    }
+}
+
+impl<I: Input, F, G, P, Q, T> BoundedManyTill<I, F, G, T, P::Error> for Range<usize>
+  where I: Input,
+        F: FnMut() -> P,
+        G: FnMut() -> Q,
+        P: Parser<I>,
+        Q: Parser<I, Error=P::Error>,
+        T: FromIterator<P::Output> {
+    /// The parser type returned by `many_till`.
+    type ManyTillParser = ManyTillRangeParser<I, F, G, P, Q, T>;
+
     #[inline]
-    fn many_till<I: Input, T, E, R, F, U, N, V>(self, i: I, p: R, end: F) -> ParseResult<I, T, E>
-      where T: FromIterator<U>,
-            E: From<N>,
-            R: FnMut(I) -> ParseResult<I, U, E>,
-            F: FnMut(I) -> ParseResult<I, V, N> {
+    fn many_till(self, f: F, g: G) -> Self::ManyTillParser {
         // Range does not perform this assertion
         assert!(self.start <= self.end);
 
-        run_iter_till!{
-            input:  i,
-            parser: p,
-            end:    end,
+        ManyTillRangeParser {
+            p_ctor: f,
+            q_ctor: g,
             // Range is closed on left side, open on right, ie. [self.start, self.end)
-            state:  (usize, usize): (self.start, max(self.start, self.end.saturating_sub(1))),
-
-            size_hint(self) {
-                (self.data.0, Some(self.data.1))
-            }
-
-            next(self) {
-                pre {
-                    if self.data.0 == 0 {
-                        // We have reached minimum, we can attempt to end now
-
-                        // TODO: Remove the branches here (ie. take + unwrap)
-                        let i = self.buf.take().expect("Iter.buf was None");
-                        let m = i.mark();
-
-                        match (self.data.1, (self.end)(i).into_inner()) {
-                            // We can always end
-                            (_, (b, Ok(_))) => {
-                                self.buf   = Some(b);
-                                self.state = EndStateTill::EndSuccess;
-
-                                return None
-                            },
-                            // We have reached end, end must match or it is an error
-                            (0, (b, Err(e)))      => {
-                                self.buf   = Some(b);
-                                self.state = EndStateTill::Error(From::from(e));
-
-                                return None;
-                            },
-                            // Failed to end, restore and continue since we can parse more
-                            (_, (b, Err(_)))      => self.buf = Some(b.restore(m)),
-                        }
-                    }
-                }
-                on {
-                    self.data.0  = self.data.0.saturating_sub(1);
-                    // Can't overflow unless we do not quit when self.data.1 == 0
-                    self.data.1 -= 1;
-                }
-            }
-
-            => result : T {
-                // Got all occurrences of the parser
-                (s, (0, _), EndStateTill::EndSuccess)    => s.ret(result),
-                // Did not reach minimum or a failure, propagate
-                (s, (_, _), EndStateTill::Error(e))   => s.err(e),
-                (_, (_, _), EndStateTill::Incomplete) => unreachable!(),
-                // We cannot reach this since we only run the end test once we have reached the
-                // minimum number of matches
-                (_, (_, _), EndStateTill::EndSuccess)    => unreachable!()
-            }
+            data:   (self.start, max(self.end, 1) - 1),
+            _i:     PhantomData,
+            _p:     PhantomData,
+            _q:     PhantomData,
+            _t:     PhantomData,
         }
     }
 }
-*/
 
 many_iter!{
     doc:         "Parser iterating over a `RangeFrom`, created using `many(n.., p)`.",
@@ -919,11 +929,11 @@ impl BoundedRange for usize {
 /// * Will never yield fewer items than the lower bound of the range.
 /// * Will only call the parser-constructor `F` once for each iteration, in order
 #[inline]
-pub fn many<I, F, T, P, R>(r: R, f: F) -> R::ManyParser
+pub fn many<I, F, P, T, R>(r: R, f: F) -> R::ManyParser
   where I: Input,
         F: FnMut() -> P,
-        T: FromIterator<P::Output>,
         P: Parser<I>,
+        T: FromIterator<P::Output>,
         R: BoundedMany<I, F, T, P::Error> {
     BoundedMany::many(r, f)
 }
@@ -951,11 +961,9 @@ pub fn skip_many<I, F, P, R>(r: R, f: F) -> R::SkipManyParser
     BoundedSkipMany::skip_many(r, f)
 }
 
-/*
-// TODO: Update documentation regarding incomplete behaviour
-/// Applies the parser `P` multiple times until the parser `F` succeeds and returns a value
-/// populated by the values yielded by `P`. Consumes the matched part of `F`. If `F` does not
-/// succeed within the given range `R` this combinator will propagate any failure from `P`.
+/// Applies the parser `F` multiple times until the parser `G` succeeds, collecting the values
+/// from `F` into a `T: FromIterator` Consumes the matched part of `G`. If `F` does not
+/// succeed within the given range `R` this combinator will propagate any failure from `G`.
 ///
 /// # Panics
 ///
@@ -965,21 +973,24 @@ pub fn skip_many<I, F, P, R>(r: R, f: F) -> R::SkipManyParser
 ///
 /// * Will allocate depending on the `FromIterator` implementation.
 /// * Will never yield more items than the upper bound of the range.
+/// * Will never yield fewer items than the lower bound of the range.
+/// * Use `combinators::bounded::many_till` instead of calling this trait method directly.
 #[inline]
-pub fn many_till<I: Input, T, E, R, F, U, N, P, V>(i: I, r: R, p: P, end: F) -> ParseResult<I, T, E>
-  where R: BoundedRange,
-        T: FromIterator<U>,
-        E: From<N>,
-        P: FnMut(I) -> ParseResult<I, U, E>,
-        F: FnMut(I) -> ParseResult<I, V, N> {
-    BoundedRange::many_till(r, i, p, end)
+pub fn many_till<I, F, G, P, Q, T, R>(r: R, p: F, end: G) -> R::ManyTillParser
+  where I: Input,
+        //E: From<N>,
+        F: FnMut() -> P,
+        G: FnMut() -> Q,
+        P: Parser<I>,
+        Q: Parser<I, Error=P::Error>,
+        T: FromIterator<P::Output>,
+        R: BoundedManyTill<I, F, G, T, P::Error> {
+    BoundedManyTill::many_till(r, p, end)
 }
-*/
 
 /// Applies the parser `p` multiple times, separated by the parser `sep` and returns a value
 /// populated with the values yielded by `p`. If the number of items yielded by `p` does not fall
-/// into the range `r` and the separator or parser registers error or incomplete failure is
-/// propagated.
+/// into the range `r` and the separator or parser registers error failure is propagated.
 ///
 /// # Panics
 ///
@@ -1096,7 +1107,7 @@ mod test {
 
     use super::{
         many,
-        //many_till,
+        many_till,
         skip_many,
     };
 
@@ -1265,68 +1276,36 @@ mod test {
         let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababa"[..],    ..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'c'))));
         let r: ParseResult<_, Vec<_>, _> = many_till(&b"abababa"[..],  ..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"ba"[..], Err(Error::expected(b'c'))));
     }
+    */
 
     #[test]
     fn many_till_range() {
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..],   0..0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..],   0..0, |i| string(i, b"ab"), |i| string(i, b"cd")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'c'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"a"[..],  0..0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'c'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..], 0..0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
+        let r: (_, Result<Vec<_>, _>) = many_till(0..0, || string(b"ab"), || string(b"ac")).parse(&b""[..]);   assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(0..0, || string(b"ab"), || string(b"cd")).parse(&b""[..]);   assert_eq!(r, (&b""[..], Err(Error::expected(b'c'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(0..0, || string(b"ab"), || string(b"ac")).parse(&b"a"[..]);  assert_eq!(r, (&b""[..], Err(Error::expected(b'c'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(0..0, || string(b"ab"), || string(b"ac")).parse(&b"ab"[..]); assert_eq!(r, (&b"b"[..], Err(Error::expected(b'c'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(0..0, || string(b"ab"), || string(b"ac")).parse(&b"ac"[..]); assert_eq!(r, (&b""[..], Ok(vec![])));
 
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..],   0..1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..], 0..1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ab"[..], 0..1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'c'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..], 0..1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"bac"[..], Err(Error::expected(b'c'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..],   0..2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..], 0..2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..]])));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..],         0..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"a"[..],         0..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'b'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..],       0..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![])));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abc"[..],      0..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"c"[..], Err(Error::expected(b'a'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..],     0..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..]])));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababac"[..],   0..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abababac"[..], 0..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"bac"[..], Err(Error::expected(b'c'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababa"[..],    0..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'c'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abababa"[..],  0..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"ba"[..], Err(Error::expected(b'c'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(0..1, || string(b"ab"), || string(b"ac")).parse(&b""[..]);         assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(0..1, || string(b"ab"), || string(b"ac")).parse(&b"ac"[..]);       assert_eq!(r, (&b""[..], Ok(vec![])));
+        let r: (_, Result<Vec<_>, _>) = many_till(0..1, || string(b"ab"), || string(b"ac")).parse(&b"ab"[..]);       assert_eq!(r, (&b"b"[..], Err(Error::expected(b'c'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(0..1, || string(b"ab"), || string(b"ac")).parse(&b"abac"[..]);     assert_eq!(r, (&b"bac"[..], Err(Error::expected(b'c'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(0..2, || string(b"ab"), || string(b"ac")).parse(&b"ac"[..]);       assert_eq!(r, (&b""[..], Ok(vec![])));
+        let r: (_, Result<Vec<_>, _>) = many_till(0..2, || string(b"ab"), || string(b"ac")).parse(&b"abac"[..]);     assert_eq!(r, (&b""[..], Ok(vec![&b"ab"[..]])));
+        let r: (_, Result<Vec<_>, _>) = many_till(0..3, || string(b"ab"), || string(b"ac")).parse(&b""[..]);         assert_eq!(r, (&b""[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(0..3, || string(b"ab"), || string(b"ac")).parse(&b"a"[..]);        assert_eq!(r, (&b""[..], Err(Error::expected(b'b'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(0..3, || string(b"ab"), || string(b"ac")).parse(&b"ac"[..]);       assert_eq!(r, (&b""[..], Ok(vec![])));
+        let r: (_, Result<Vec<_>, _>) = many_till(0..3, || string(b"ab"), || string(b"ac")).parse(&b"abc"[..]);      assert_eq!(r, (&b"c"[..], Err(Error::expected(b'a'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(0..3, || string(b"ab"), || string(b"ac")).parse(&b"abac"[..]);     assert_eq!(r, (&b""[..], Ok(vec![&b"ab"[..]])));
+        let r: (_, Result<Vec<_>, _>) = many_till(0..3, || string(b"ab"), || string(b"ac")).parse(&b"ababac"[..]);   assert_eq!(r, (&b""[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
+        let r: (_, Result<Vec<_>, _>) = many_till(0..3, || string(b"ab"), || string(b"ac")).parse(&b"abababac"[..]); assert_eq!(r, (&b"bac"[..], Err(Error::expected(b'c'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(0..3, || string(b"ab"), || string(b"ac")).parse(&b"ababa"[..]);    assert_eq!(r, (&b""[..], Err(Error::expected(b'c'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(0..3, || string(b"ab"), || string(b"ac")).parse(&b"abababa"[..]);  assert_eq!(r, (&b"ba"[..], Err(Error::expected(b'c'))));
 
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..], 1..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"c"[..], Err(Error::expected(b'b'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..], 1..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..]])));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..], 2..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"c"[..], Err(Error::expected(b'b'))));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababac"[..], 2..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababac"[..], 2..2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..], &b"ab"[..]])));
+        let r: (_, Result<Vec<_>, _>) = many_till(1..3, || string(b"ab"), || string(b"ac")).parse(&b"ac"[..]);   assert_eq!(r, (&b"c"[..], Err(Error::expected(b'b'))));
+        let r: (_, Result<Vec<_>, _>) = many_till(1..3, || string(b"ab"), || string(b"ac")).parse(&b"abac"[..]); assert_eq!(r, (&b""[..], Ok(vec![&b"ab"[..]])));
+        let r: (_, Result<Vec<_>, _>) = many_till(2..3, || string(b"ab"), || string(b"ac")).parse(&b"abac"[..]); assert_eq!(r, (&b"c"[..], Err(Error::expected(b'b'))));
     }
-
-    #[test]
-    fn many_till_exact() {
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..]        , 0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a')))       );
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"a"[..]       , 0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'c')))       );
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..]      , 0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![]))                       );
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"aca"[..]     , 0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"a"[..], Ok(vec![]))                      );
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"acab"[..]    , 0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"ab"[..], Ok(vec![]))                     );
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ab"[..]      , 0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'c')))      );
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..]    , 0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"bac"[..], Err(Error::expected(b'c')))    );
-
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..]        , 1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a')))       );
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"a"[..]       , 1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'b')))       );
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..]      , 1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"c"[..], Err(Error::expected(b'b')))      );
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ab"[..]      , 1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a')))       );
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"aba"[..]     , 1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'c')))       );
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abab"[..]    , 1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'c')))      );
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..]    , 1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..]]))             );
-
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..]        , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a')))       );
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"a"[..]       , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'b')))       );
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..]      , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"c"[..], Err(Error::expected(b'b')))      );
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ab"[..]      , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a')))       );
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"aba"[..]     , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'b')))       );
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abab"[..]    , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a')))       );
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..]    , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"c"[..], Err(Error::expected(b'b')))      );
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababa"[..]   , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'c')))       );
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababac"[..]  , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..], &b"ab"[..]])) );
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababab"[..]  , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'c')))      );
-        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abababac"[..], 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"bac"[..], Err(Error::expected(b'c')))    );
-    }
-    */
 
     #[test]
     fn skip_range_full() {
