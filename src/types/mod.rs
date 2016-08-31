@@ -123,7 +123,7 @@ impl<'a> Buffer for &'a str {
 /// where ``Fn*`` is the appropriate closure/function trait, `I` the input type (can be something
 /// like `[u8]`), `...` additional parameters to the parser, `T` the carried success type and `E`
 /// the potential error type.
-pub trait Input: Sized {
+pub trait Input {
     /// The token type of the input.
     type Token: Copy + PartialEq;
 
