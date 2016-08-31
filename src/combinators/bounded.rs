@@ -112,8 +112,8 @@ many_iter!{
             }
         }
         on {
-            // TODO: Saturating sub?
-            self.data.0  = if self.data.0 == 0 { 0 } else { self.data.0 - 1 };
+            self.data.0  = self.data.0.saturating_sub(1);
+            // Can't overflow unless we forget to end before self.data.1 == 0
             self.data.1 -= 1;
         }
     }
@@ -146,8 +146,8 @@ impl<I, F, T, P> BoundedMany<I, F, T, P::Error> for Range<usize>
 
         ManyRangeParser {
             parser_ctor: f,
-            // Range is closed on left side, open on right, ie. [start, end)
-            data:        (self.start, max(self.end, 1) - 1),
+            // Range is closed on left side, open on right, ie. [start, end), but start <= end
+            data:        (self.start, max(self.start, self.end.saturating_sub(1))),
             _i:          PhantomData,
             _t:          PhantomData,
             _p:          PhantomData,
@@ -217,7 +217,7 @@ impl<I, F, P> BoundedSkipMany<I, F, P::Error> for Range<usize>
         SkipManyRangeParser {
             f: f,
             min: self.start,
-            max: max(self.end, 1) - 1,
+            max: max(self.start, self.end.saturating_sub(1)),
             _i: PhantomData,
         }
     }
@@ -261,7 +261,8 @@ many_till_iter! {
             }
         }
         on {
-            self.data.0  = if self.data.0 == 0 { 0 } else { self.data.0 - 1 };
+            self.data.0  = self.data.0.saturating_sub(1);
+            // Can't overflow unless we forget to end before self.data.1 == 0
             self.data.1 -= 1;
         }
     }
@@ -296,8 +297,8 @@ impl<I: Input, F, G, P, Q, T> BoundedManyTill<I, F, G, T, P::Error> for Range<us
         ManyTillRangeParser {
             p_ctor: f,
             q_ctor: g,
-            // Range is closed on left side, open on right, ie. [self.start, self.end)
-            data:   (self.start, max(self.end, 1) - 1),
+            // Range is closed on left side, open on right, ie. [start, end), but start <= end
+            data:   (self.start, max(self.start, self.end.saturating_sub(1))),
             _i:     PhantomData,
             _p:     PhantomData,
             _q:     PhantomData,
@@ -319,7 +320,7 @@ many_iter!{
     next(self) {
         pre {}
         on  {
-            self.data = if self.data == 0 { 0 } else { self.data - 1 };
+            self.data = self.data.saturating_sub(1);
         }
     }
 
@@ -426,8 +427,7 @@ many_till_iter! {
             }
         }
         on {
-            // TODO: Replace with saturating sub
-            self.data = if self.data == 0 { 0 } else { self.data - 1 };
+            self.data = self.data.saturating_sub(1);
         }
     }
 
@@ -646,7 +646,7 @@ impl<I, F, T, P> BoundedMany<I, F, T, P::Error> for RangeTo<usize>
         ManyRangeToParser {
             parser_ctor: f,
             // Exclusive range [0, end)
-            data:        max(self.end, 1) - 1,
+            data:        self.end.saturating_sub(1),
             _i:          PhantomData,
             _t:          PhantomData,
             _p:          PhantomData,
@@ -707,7 +707,7 @@ impl<I, F, P> BoundedSkipMany<I, F, P::Error> for RangeTo<usize>
         // Open on right side
         SkipManyRangeToParser {
             f:   f,
-            max: max(self.end, 1) - 1,
+            max: self.end.saturating_sub(1),
             _i:  PhantomData,
         }
     }
@@ -777,8 +777,7 @@ impl<I: Input, F, G, P, Q, T> BoundedManyTill<I, F, G, T, P::Error> for RangeTo<
             p_ctor: f,
             q_ctor: g,
             // [0, self.end)
-            // TODO: saturating sub
-            data:   max(self.end, 1) - 1,
+            data:   self.end.saturating_sub(1),
             _i:     PhantomData,
             _p:     PhantomData,
             _q:     PhantomData,
