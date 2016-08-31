@@ -109,7 +109,7 @@ impl BoundedRange for Range<usize> {
             input:  i,
             parser: f,
             // Range is closed on left side, open on right, ie. [self.start, self.end)
-            state:  (usize, usize): (self.start, max(self.end, 1) - 1),
+            state:  (usize, usize): (self.start, max(self.start, self.end.saturating_sub(1))),
 
             size_hint(self) {
                 (self.data.0, Some(self.data.1))
@@ -122,8 +122,8 @@ impl BoundedRange for Range<usize> {
                     }
                 }
                 on {
-                    // TODO: Saturating sub?
-                    self.data.0  = if self.data.0 == 0 { 0 } else { self.data.0 - 1 };
+                    self.data.0  = self.data.0.saturating_sub(1);
+                    // Can't overflow unless we do not quit when self.data.1 == 0
                     self.data.1 -= 1;
                 }
             }
@@ -132,13 +132,13 @@ impl BoundedRange for Range<usize> {
                 // Got all occurrences of the parser
                 // First state or reached max => do not restore to mark since it is from last
                 // iteration
-                (s, (0, 0), _, _)            => s.ret(result),
+                (s, (0, 0), _, _)       => s.ret(result),
                 // Ok, last parser failed and we have reached minimum, we have iterated all.
                 // Return remainder of buffer and the collected result
-                (s, (0, _), m, Some(_))      => s.restore(m).ret(result),
+                (s, (0, _), m, Some(_)) => s.restore(m).ret(result),
                 // Did not reach minimum, propagate
-                (s, (_, _), _, Some(e))      => s.err(e),
-                (_, _, _, None) => unreachable!(),
+                (s, (_, _), _, Some(e)) => s.err(e),
+                (_, _, _, None)         => unreachable!(),
             }
         }
     }
@@ -150,7 +150,7 @@ impl BoundedRange for Range<usize> {
         assert!(self.start <= self.end);
 
         // Closed on left side, open on right
-        let (mut min, mut max) = (self.start, max(self.end, 1) - 1);
+        let (mut min, mut max) = (self.start, max(self.start, self.end.saturating_sub(1)));
 
         loop {
             if max == 0 {
@@ -161,7 +161,8 @@ impl BoundedRange for Range<usize> {
 
             match f(i).into_inner() {
                 (b, Ok(_))    => {
-                    min  = if min == 0 { 0 } else { min - 1 };
+                    min  = min.saturating_sub(1);
+                    // Can't overflow unless we do not quit when max == 0
                     max -= 1;
 
                     i = b
@@ -194,7 +195,7 @@ impl BoundedRange for Range<usize> {
             parser: p,
             end:    end,
             // Range is closed on left side, open on right, ie. [self.start, self.end)
-            state:  (usize, usize): (self.start, max(self.end, 1) - 1),
+            state:  (usize, usize): (self.start, max(self.start, self.end.saturating_sub(1))),
 
             size_hint(self) {
                 (self.data.0, Some(self.data.1))
@@ -230,7 +231,8 @@ impl BoundedRange for Range<usize> {
                     }
                 }
                 on {
-                    self.data.0  = if self.data.0 == 0 { 0 } else { self.data.0 - 1 };
+                    self.data.0  = self.data.0.saturating_sub(1);
+                    // Can't overflow unless we do not quit when self.data.1 == 0
                     self.data.1 -= 1;
                 }
             }
@@ -267,7 +269,7 @@ impl BoundedRange for RangeFrom<usize> {
             next(self) {
                 pre {}
                 on  {
-                    self.data = if self.data == 0 { 0 } else { self.data - 1 };
+                    self.data = self.data.saturating_sub(1);
                 }
             }
 
@@ -292,7 +294,7 @@ impl BoundedRange for RangeFrom<usize> {
 
             match f(i).into_inner() {
                 (b, Ok(_))    => {
-                    min  = if min == 0 { 0 } else { min - 1 };
+                    min  = min.saturating_sub(1);
 
                     i = b
                 },
@@ -335,19 +337,19 @@ impl BoundedRange for RangeFrom<usize> {
                     }
                 }
                 on {
-                    self.data = if self.data == 0 { 0 } else { self.data - 1 };
+                    self.data = self.data.saturating_sub(1);
                 }
             }
 
             => result : T {
                 // Got all occurrences of the parser
-                (s, 0, EndStateTill::EndSuccess)    => s.ret(result),
+                (s, 0, EndStateTill::EndSuccess) => s.ret(result),
                 // Did not reach minimum or a failure, propagate
                 (s, _, EndStateTill::Error(e))   => s.err(e),
                 (_, _, EndStateTill::Incomplete) => unreachable!(),
                 // We cannot reach this since we only run the end test once we have reached the
                 // minimum number of matches
-                (_, _, EndStateTill::EndSuccess)    => unreachable!()
+                (_, _, EndStateTill::EndSuccess) => unreachable!()
             }
         }
     }
@@ -1055,7 +1057,7 @@ mod test {
         let r = skip_many(&b""[..],     2..2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
         let r = skip_many(&b"a"[..],    2..2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
         let r = skip_many(&b"aa"[..],   2..2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
-        let r = skip_many(&b"aaa"[..],  2..2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Ok(())));
+        let r = skip_many(&b"aaa"[..],  2..2, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b"a"[..], Ok(())));
 
         let r = skip_many(&b""[..],     2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
         let r = skip_many(&b"a"[..],    2..4, |i| token(i, b'a')); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a'))));
