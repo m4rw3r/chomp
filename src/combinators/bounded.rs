@@ -642,8 +642,20 @@ impl BoundedRange for usize {
             next(self) {
                 pre {
                     if self.data == 0 {
-                        // Attempt to make a successful end
-                        iter_till_end_test!(self);
+                        // TODO: Remove the branches here (ie. take + unwrap)
+                        let i = self.buf.take().expect("Iter.buf was None");
+
+                        match (self.end)(i).into_inner() {
+                            (b, Ok(_))  => {
+                                self.buf   = Some(b);
+                                self.state = EndStateTill::EndSuccess;
+                            },
+                            // Failed to end, restore and continue
+                            (b, Err(e)) => {
+                                self.buf   = Some(b);
+                                self.state = EndStateTill::Error(From::from(e));
+                            },
+                        }
 
                         return None;
                     }
@@ -947,6 +959,37 @@ mod test {
         let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..], 1..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"c"[..], Err(Error::expected(b'b'))));
         let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..], 1..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..]])));
         let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..], 2..3, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"c"[..], Err(Error::expected(b'b'))));
+    }
+
+    #[test]
+    fn many_till_exact() {
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..]        , 0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a')))       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"a"[..]       , 0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'c')))       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..]      , 0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![]))                       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"aca"[..]     , 0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"a"[..], Ok(vec![]))                      );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"acab"[..]    , 0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"ab"[..], Ok(vec![]))                     );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ab"[..]      , 0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'c')))      );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..]    , 0, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"bac"[..], Err(Error::expected(b'c')))    );
+
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..]        , 1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a')))       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"a"[..]       , 1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'b')))       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..]      , 1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"c"[..], Err(Error::expected(b'b')))      );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ab"[..]      , 1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a')))       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"aba"[..]     , 1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'c')))       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abab"[..]    , 1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'c')))      );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..]    , 1, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..]]))             );
+
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b""[..]        , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a')))       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"a"[..]       , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'b')))       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ac"[..]      , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"c"[..], Err(Error::expected(b'b')))      );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ab"[..]      , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a')))       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"aba"[..]     , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'b')))       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abab"[..]    , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'a')))       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abac"[..]    , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"c"[..], Err(Error::expected(b'b')))      );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababa"[..]   , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Err(Error::expected(b'c')))       );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababac"[..]  , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b""[..], Ok(vec![&b"ab"[..], &b"ab"[..]])) );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"ababab"[..]  , 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"b"[..], Err(Error::expected(b'c')))      );
+        let r: ParseResult<_, Vec<_>, _> = many_till(&b"abababac"[..], 2, |i| string(i, b"ab"), |i| string(i, b"ac")); assert_eq!(r.into_inner(), (&b"bac"[..], Err(Error::expected(b'c')))    );
     }
 
     #[test]
