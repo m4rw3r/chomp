@@ -5,8 +5,8 @@ rust:
   - stable
   - beta
   - nightly
-  # Minimum supported version (bitflags fails on 1.5 due to core module not being stable):
-  - 1.6.0
+  # Minimum supported version (bitflags fails on 1.7 due to op_assign_traits not being stable):
+  - 1.8.0
 
 # necessary for `travis-cargo coveralls --no-sudo`
 addons:
