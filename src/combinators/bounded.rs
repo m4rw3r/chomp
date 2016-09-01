@@ -11,7 +11,7 @@
 //! use chomp::parsers::any;
 //!
 //! // Read any character 2 or 3 times
-//! let r: Result<Vec<_>, _> = parse_only(|i| many(i, 2..4, any), b"abcd");
+//! let r: Result<Vec<_>, _> = parse_only(many(2..4, any), b"abcd");
 //!
 //! assert_eq!(r, Ok(vec![b'a', b'b', b'c']));
 //! ```
@@ -837,13 +837,13 @@ impl<I, F, T, P> BoundedMany<I, F, T, P::Error> for usize
 }
 
 /// Parser iterating `n` times discarding results, created using `skip_many(n, f)`.
-pub struct SkipManyUsizeParser<I, F> {
+pub struct SkipManyExactParser<I, F> {
     f:   F,
     n: usize,
     _i:  PhantomData<I>
 }
 
-impl<I, F, P> Parser<I> for SkipManyUsizeParser<I, F>
+impl<I, F, P> Parser<I> for SkipManyExactParser<I, F>
   where I: Input,
         F: FnMut() -> P,
         P: Parser<I> {
@@ -880,11 +880,11 @@ impl<I, F, P> BoundedSkipMany<I, F, P::Error> for usize
   where I: Input,
         F: FnMut() -> P,
         P: Parser<I> {
-    type SkipManyParser = SkipManyUsizeParser<I, F>;
+    type SkipManyParser = SkipManyExactParser<I, F>;
 
     #[inline]
     fn skip_many(self, f: F) -> Self::SkipManyParser {
-        SkipManyUsizeParser {
+        SkipManyExactParser {
             f:  f,
             n:  self,
             _i: PhantomData,
@@ -894,7 +894,7 @@ impl<I, F, P> BoundedSkipMany<I, F, P::Error> for usize
 
 many_till_iter! {
     doc: "Parser iterating `usize` times and ending with a final parser, created by `many_till(n, ...)`",
-    struct_name: ManyTillUsizeParser,
+    struct_name: ManyTillExactParser,
     state:       usize,
 
     size_hint(self) {
@@ -949,11 +949,11 @@ impl<I: Input, F, G, P, Q, T> BoundedManyTill<I, F, G, T, P::Error> for usize
         Q: Parser<I, Error=P::Error>,
         T: FromIterator<P::Output> {
     /// The parser type returned by `many_till`.
-    type ManyTillParser = ManyTillUsizeParser<I, F, G, P, Q, T>;
+    type ManyTillParser = ManyTillExactParser<I, F, G, P, Q, T>;
 
     #[inline]
     fn many_till(self, f: F, g: G) -> Self::ManyTillParser {
-        ManyTillUsizeParser {
+        ManyTillExactParser {
             p_ctor: f,
             q_ctor: g,
             data:   self,

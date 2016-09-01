@@ -9,7 +9,7 @@
 //!
 //! use chomp::buffer;
 //! use chomp::buffer::Stream;
-//! use chomp::prelude::{token, take_while, take_while1};
+//! use chomp::prelude::{Parser, token, take_while, take_while1};
 //! use chomp::ascii::is_whitespace;
 //!
 //! let f = File::open("./README.md").unwrap();

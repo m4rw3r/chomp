@@ -1,3 +1,4 @@
+// TODO: Rewrite
 //! Chomp is a fast monadic-style parser combinator library for the Rust programming language. It was
 //! written as the culmination of the experiments detailed in these blog posts:
 //!
@@ -141,22 +142,23 @@
 //! A Chomp parser with a similar structure looks like this:
 //!
 //! ```
+//! #![feature(conservative_impl_trait)]
 //! # #[macro_use] extern crate chomp;
 //! # use chomp::prelude::*;
-//! fn f<I: U8Input>(i: I) -> SimpleResult<I, (u8, u8, u8)> {
-//!     parse!{i;
+//! fn f<I: U8Input>() -> impl Parser<I, Output=(u8, u8, u8), Error=Error<u8>> {
+//!     parse!{
 //!         let a = digit();
 //!         let b = digit();
 //!                 string(b"missiles");
-//!         ret (a, b, a + b)
+//!         ret((a, b, a + b))
 //!     }
 //! }
 //!
-//! fn digit<I: U8Input>(i: I) -> SimpleResult<I, u8> {
-//!     satisfy(i, |c| b'0' <= c && c <= b'9').map(|c| c - b'0')
+//! fn digit<I: U8Input>() -> impl Parser<I, Output=u8, Error=Error<u8>> {
+//!     satisfy(|c| b'0' <= c && c <= b'9').map(|c| c - b'0')
 //! }
 //! # fn main() {
-//! #     let r = parse_only(f, b"33missiles");
+//! #     let r = parse_only(f(), b"33missiles");
 //! #     assert_eq!(r, Ok((3, 3, 6)));
 //! # }
 //! ```

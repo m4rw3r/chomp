@@ -8,8 +8,9 @@ use buffer::{InputBuf, StreamError, Stream};
 /// # fn main() {
 /// use chomp::parsers::{token, take};
 /// use chomp::buffer::{SliceStream, Stream};
+/// use chomp::types::Parser;
 ///
-/// let r = SliceStream::new(b"foo").parse(parser!{
+/// let r = SliceStream::new(b"foo").parse(parse!{
 ///     token(b'f');
 ///     take(2)
 /// });
@@ -23,11 +24,12 @@ use buffer::{InputBuf, StreamError, Stream};
 /// # fn main() {
 /// use chomp::prelude::{token, many, take};
 /// use chomp::buffer::{SliceStream, Stream};
+/// use chomp::types::Parser;
 ///
-/// let r = SliceStream::new(b"foofoo").parse(parser!{many(parser!{
+/// let r = SliceStream::new(b"foofoo").parse(many(|| parse!{
 ///     token(b'f');
 ///     take(2)
-/// })});
+/// }));
 ///
 /// assert_eq!(r, Ok(vec![b"oo" as &[u8], b"oo" as &[u8]]));
 /// # }
