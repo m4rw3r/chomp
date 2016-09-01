@@ -934,10 +934,10 @@ many_till_iter! {
         (s, 0, EndStateTill::EndSuccess) => (s, Ok(result)),
         // Did not reach minimum or a failure, propagate
         (s, _, EndStateTill::Error(e))   => (s, Err(e)),
-        (_, n, EndStateTill::Incomplete) => panic!("This is unreachable, incomplete, n: {:?}", n),
+        (_, n, EndStateTill::Incomplete) => unreachable!(),
         // We cannot reach this since we only run the end test once we have reached the
         // minimum number of matches
-        (_, _, EndStateTill::EndSuccess) => unreachable!()
+        (_, _, EndStateTill::EndSuccess) => unreachable!(),
     }
 }
 
