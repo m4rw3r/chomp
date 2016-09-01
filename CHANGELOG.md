@@ -30,6 +30,11 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 - `ParseResult::inspect` allowing code to observe the success value.
 
+- `types::numbering` module for creating position-aware `Input` types.
+
+- `parsers::skip_while` using an efficient way of skipping data if provided, otherwise falls back
+  on using `take_while` and throws the result away.
+
 - `chomp::Error` now includes a backtrace in `test` and `debug` build profiles thanks to the
   [debugtrace crate](https://github.com/m4rw3r/debugtrace_rs). Backtraces can also be activated
   permanently using the `backtrace` feature but this will incur the significant cost of allocating
