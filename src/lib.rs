@@ -14,6 +14,7 @@
 //! # Example
 //!
 //! ```
+//! #![feature(conservative_impl_trait)]
 //! # #[macro_use] extern crate chomp;
 //! # fn main() {
 //! use chomp::prelude::*;
@@ -24,20 +25,20 @@
 //!     last:  B,
 //! }
 //!
-//! fn name<I: U8Input>(i: I) -> SimpleResult<I, Name<I::Buffer>> {
-//!     parse!{i;
+//! fn name<I: U8Input>() -> impl Parser<I, Output=Name<I::Buffer>, Error=Error<u8>> {
+//!     parse!{
 //!         let first = take_while1(|c| c != b' ');
 //!                     token(b' ');  // skipping this char
 //!         let last  = take_while1(|c| c != b'\n');
 //!
-//!         ret Name{
+//!         ret(Name{
 //!             first: first,
 //!             last:  last,
-//!         }
+//!         })
 //!     }
 //! }
 //!
-//! assert_eq!(parse_only(name, "Martin Wernstål\n".as_bytes()), Ok(Name{
+//! assert_eq!(parse_only(name(), "Martin Wernstål\n".as_bytes()), Ok(Name{
 //!     first: &b"Martin"[..],
 //!     last: "Wernstål".as_bytes()
 //! }));
@@ -93,14 +94,14 @@
 //! # #[macro_use] extern crate chomp;
 //! # fn main() {
 //! # use chomp::prelude::*;
-//! # let r = parse_only(parser!{
+//! # let r = parse_only(
 //! satisfy(|c| {
 //!     match c {
 //!         b'c' | b'h' | b'a' | b'r' => true,
 //!         _ => false,
 //!     }
 //! })
-//! # }, b"h");
+//! # , b"h");
 //! # assert_eq!(r, Ok(b'h'));
 //! # }
 //! ```

@@ -9,7 +9,7 @@ use conv::{
 use conv::errors::UnwrapOk;
 
 use combinators::option;
-use parsers::{Error, satisfy, take_while, take_while1};
+use parsers::{Error, satisfy, skip_while, take_while1};
 use types::{Buffer, Input, Parser};
 
 /// Lowercase ASCII predicate.
@@ -79,12 +79,11 @@ pub fn is_alphanumeric(c: u8) -> bool {
 /// use chomp::parse_only;
 /// use chomp::ascii::skip_whitespace;
 ///
-/// assert_eq!(parse_only(skip_whitespace, b" \t "), Ok(()));
+/// assert_eq!(parse_only(skip_whitespace(), b" \t "), Ok(()));
 /// ```
 #[inline]
 pub fn skip_whitespace<I: Input<Token=u8>>() -> impl Parser<I, Output=(), Error=Error<u8>> {
-    // TODO: More efficient implementation, requires a skip_while parser using Input primitives
-    take_while(is_whitespace).map(|_| ())
+    skip_while(is_whitespace).map(|_| ())
 }
 
 /// Parses a single digit.
@@ -99,7 +98,7 @@ pub fn skip_whitespace<I: Input<Token=u8>>() -> impl Parser<I, Output=(), Error=
 /// use chomp::parse_only;
 /// use chomp::ascii::digit;
 ///
-/// assert_eq!(parse_only(digit, b"1"), Ok(b'1'));
+/// assert_eq!(parse_only(digit(), b"1"), Ok(b'1'));
 /// ```
 #[inline]
 pub fn digit<I: Input<Token=u8>>() -> impl Parser<I, Output=u8, Error=Error<u8>> {
@@ -119,7 +118,7 @@ pub fn digit<I: Input<Token=u8>>() -> impl Parser<I, Output=u8, Error=Error<u8>>
 /// use chomp::parse_only;
 /// use chomp::ascii::{decimal, signed};
 ///
-/// let r: Result<i16, _> = parse_only(|i| signed(i, decimal), b"-123");
+/// let r: Result<i16, _> = parse_only(signed(decimal()), b"-123");
 ///
 /// assert_eq!(r, Ok(-123i16));
 /// ```
@@ -145,7 +144,7 @@ pub fn signed<I: Input<Token=u8>, T, F>(f: F) -> impl Parser<I, Output=T, Error=
 /// use chomp::parse_only;
 /// use chomp::ascii::decimal;
 ///
-/// let r = parse_only(decimal::<_, u8>, b"123");
+/// let r = parse_only(decimal::<_, u8>(), b"123");
 ///
 /// assert_eq!(r, Ok(123u8));
 /// ```

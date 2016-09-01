@@ -430,13 +430,13 @@ pub trait Parser<I: Input> {
     /// # Examples
     ///
     /// ```
-    /// use chomp::prelude::{Input, parse_only};
+    /// #![feature(conservative_impl_trait)]
     ///
-    /// let r = parse_only(|i| {
-    ///         i.ret("data".to_owned())
-    ///         // Explicitly state the error type
-    ///          .bind::<_, _, ()>(|i, x| i.ret(x + " here!"))
-    ///     },
+    /// use chomp::prelude::{Parser, parse_only, ret};
+    ///
+    /// let r = parse_only(ret("data")
+    ///     // Explicitly state the error type
+    ///     .bind(|x| ret::<_, ()>(x.to_owned() + " here!")),
     ///     b"test");
     ///
     /// assert_eq!(r, Ok("data here!".to_owned()));
@@ -446,13 +446,15 @@ pub trait Parser<I: Input> {
     /// the type-hint for the error in the function signature:
     ///
     /// ```
-    /// use chomp::prelude::{Input, ParseResult, parse_only};
+    /// #![feature(conservative_impl_trait)]
     ///
-    /// fn parser<I: Input>(i: I, n: i32) -> ParseResult<I, i32, ()> {
-    ///     i.ret(n + 10)
+    /// use chomp::prelude::{Input, Parser, parse_only, ret};
+    ///
+    /// fn parser<I: Input>(n: i32) -> impl Parser<I, Output=i32, Error=()> {
+    ///     ret(n + 10)
     /// }
     ///
-    /// let r = parse_only(|i| i.ret(23).bind(parser), b"test");
+    /// let r = parse_only(ret(23).bind(parser), b"test");
     ///
     /// assert_eq!(r, Ok(33));
     /// ```
@@ -482,14 +484,16 @@ pub trait Parser<I: Input> {
     /// # Example
     ///
     /// ```
-    /// use chomp::prelude::{Input, SimpleResult, parse_only};
+    /// #![feature(conservative_impl_trait)]
     ///
-    /// fn g<I: Input>(i: I) -> SimpleResult<I, &'static str> {
-    ///     i.ret("testing!")
+    /// use chomp::prelude::{Input, Parser, parse_only, ret};
+    ///
+    /// fn g<I: Input>() -> impl Parser<I, Output=&'static str, Error=()> {
+    ///     ret("testing!")
     /// }
     ///
-    /// let r1 = parse_only(|i| i.ret("initial state").bind(|i, _| g(i)), b"data");
-    /// let r2 = parse_only(|i| i.ret("initial state").then(g), b"data");
+    /// let r1 = parse_only(ret("initial state").bind(|_| g()), b"data");
+    /// let r2 = parse_only(ret("initial state").then(g()), b"data");
     ///
     /// assert_eq!(r1, Ok("testing!"));
     /// assert_eq!(r2, Ok("testing!"));
@@ -508,11 +512,13 @@ pub trait Parser<I: Input> {
     /// # Example
     ///
     /// ```
-    /// use chomp::prelude::{parse_only, any};
+    /// use chomp::prelude::{Parser, parse_only, any, ret};
     ///
-    /// let r = parse_only(|i| any(i).map(|c| c + 12), b"abc");
+    /// let r = parse_only(any().map(|c| c + 12), b"abc");
     ///
     /// assert_eq!(r, Ok(b'm'));
+    ///
+    /// assert_eq!(parse_only(ret::<_, ()>(123).map(|c| c + 12), b"abc"), Ok(135));
     /// ```
     // TODO: Tests
     #[inline(always)]
@@ -527,11 +533,10 @@ pub trait Parser<I: Input> {
     /// # Example
     ///
     /// ```
-    /// use chomp::prelude::{Input, parse_only};
+    /// use chomp::prelude::{Parser, parse_only, err};
     ///
-    /// let r = parse_only(|i| i.err::<(), _>("this is")
-    ///          .map_err(|e| e.to_owned() + " an error"),
-    ///          b"foo");
+    /// let r = parse_only(err::<(), _>("this is")
+    ///          .map_err(|e| e.to_owned() + " an error"), b"foo");
     ///
     /// assert_eq!(r, Err((&b"foo"[..], "this is an error".to_owned())));
     /// ```
@@ -550,9 +555,9 @@ pub trait Parser<I: Input> {
     /// # Example
     ///
     /// ```
-    /// use chomp::prelude::{parse_only, take_while};
+    /// use chomp::prelude::{Parser, parse_only, take_while};
     ///
-    /// let r = parse_only(|i| take_while(i, |c| c != b' ').inspect(|b| {
+    /// let r = parse_only(take_while(|c| c != b' ').inspect(|b| {
     ///     println!("{:?}", b); // Prints "test"
     /// }), b"test and more");
     ///
@@ -575,15 +580,13 @@ pub trait Parser<I: Input> {
     /// and its alternation operator (`<|>`).
     ///
     /// ```
-    /// use chomp::prelude::{Error, parse_only, or, token};
+    /// use chomp::prelude::{Error, Parser, parse_only, token};
     ///
-    /// let p = |i| or(i,
-    ///             |i| token(i, b'a'),
-    ///             |i| token(i, b'b'));
+    /// let p = || token(b'a').or(token(b'b'));
     ///
-    /// assert_eq!(parse_only(&p, b"abc"), Ok(b'a'));
-    /// assert_eq!(parse_only(&p, b"bbc"), Ok(b'b'));
-    /// assert_eq!(parse_only(&p, b"cbc"), Err((&b"cbc"[..], Error::expected(b'b'))));
+    /// assert_eq!(parse_only(p(), b"abc"), Ok(b'a'));
+    /// assert_eq!(parse_only(p(), b"bbc"), Ok(b'b'));
+    /// assert_eq!(parse_only(p(), b"cbc"), Err((&b"cbc"[..], Error::expected(b'b'))));
     /// ```
     // TODO: Write the laws for MonadPlus, or should satisfy MonadPlus laws (stronger guarantees
     // compared to Alternative typeclass laws)
@@ -623,8 +626,7 @@ pub trait Parser<I: Input> {
     /// depending on a condition.
     ///
     /// ```
-    /// use parsers::{any, token};
-    /// use types::Parser;
+    /// use chomp::prelude::{Parser, Error, any, token};
     ///
     /// let a = 3;
     ///
@@ -634,7 +636,7 @@ pub trait Parser<I: Input> {
     ///     token(b'a').boxed()
     /// };
     ///
-    /// assert_eq!(p.parse(&b"bcd"), (&b"bcd", Err(Error::expected(b'a'))));
+    /// assert_eq!(p.parse(&b"bcd"[..]), (&b"bcd"[..], Err(Error::expected(b'a'))));
     /// ```
     #[inline(always)]
     fn boxed(self) -> BoxedParser<I, Self::Output, Self::Error>
@@ -666,6 +668,7 @@ impl<I, P> BoxParser<I> for P
     type Output = P::Output;
     type Error  = P::Error;
 
+    #[cfg_attr(feature="clippy", allow(boxed_local))]
     #[inline]
     fn parse_box(self: Box<Self>, i: I) -> (I, Result<P::Output, P::Error>) {
         (*self).parse(i)
@@ -690,9 +693,10 @@ impl<I, T, E> Parser<I> for Box<BoxParser<I, Output=T, Error=E>>
 /// # Example
 ///
 /// ```
-/// use chomp::types::{Input, parse_only, ret};
+/// use chomp::types::ret;
+/// use chomp::parse_only;
 ///
-/// let r = parse_only(|i|
+/// let r = parse_only(
 ///     // Annotate the error type
 ///     ret::<_, ()>("Wohoo, success!"),
 ///     b"some input");
@@ -711,11 +715,12 @@ pub fn ret<T, E>(t: T) -> RetParser<T, E> {
 /// # Example
 ///
 /// ```
-/// use chomp::prelude::{Input, parse_only};
+/// use chomp::types::err;
+/// use chomp::parse_only;
 ///
-/// let r = parse_only(|i|
+/// let r = parse_only(
 ///     // Annotate the value type
-///     i.err::<(), _>("Something went wrong"),
+///     err::<(), _>("Something went wrong"),
 ///     b"some input");
 ///
 /// assert_eq!(r, Err((&b"some input"[..], "Something went wrong")));
@@ -735,13 +740,14 @@ pub fn err<T, E>(e: E) -> ErrParser<T, E> {
 /// # Examples
 ///
 /// ```
-/// use chomp::prelude::{Input, parse_only};
+/// use chomp::types::from_result;
+/// use chomp::parse_only;
 ///
-/// let r = parse_only(|i| i.from_result::<_, ()>(Ok("foo")), b"test");
+/// let r = parse_only(from_result::<_, ()>(Ok("foo")), b"test");
 ///
 /// assert_eq!(r, Ok("foo"));
 ///
-/// let r = parse_only(|i| i.from_result::<(), _>(Err("error message")), b"test");
+/// let r = parse_only(from_result::<(), _>(Err("error message")), b"test");
 ///
 /// assert_eq!(r, Err((&b"test"[..], "error message")));
 /// ```

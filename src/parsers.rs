@@ -22,7 +22,7 @@ pub use debugtrace::StackFrame;
 /// ```
 /// use chomp::prelude::{parse_only, any};
 ///
-/// assert_eq!(parse_only(any, b"abc"), Ok(b'a'));
+/// assert_eq!(parse_only(any(), b"abc"), Ok(b'a'));
 /// ```
 #[inline]
 pub fn any<I: Input>() -> impl Parser<I, Output=I::Token, Error=Error<I::Token>> {
@@ -40,7 +40,7 @@ pub fn any<I: Input>() -> impl Parser<I, Output=I::Token, Error=Error<I::Token>>
 /// ```
 /// use chomp::prelude::{parse_only, satisfy};
 ///
-/// assert_eq!(parse_only(|i| satisfy(i, |c| c == b'a'), b"abc"), Ok(b'a'));
+/// assert_eq!(parse_only(satisfy(|c| c == b'a'), b"abc"), Ok(b'a'));
 /// ```
 #[inline]
 pub fn satisfy<I: Input, F>(f: F) -> impl Parser<I, Output=I::Token, Error=Error<I::Token>>
@@ -60,7 +60,7 @@ pub fn satisfy<I: Input, F>(f: F) -> impl Parser<I, Output=I::Token, Error=Error
 /// use chomp::prelude::{parse_only, satisfy_with};
 ///
 /// let r = parse_only(
-///     |i| satisfy_with(i, |c| AsciiExt::to_ascii_uppercase(&c), |c| c == b'T'),
+///     satisfy_with(|c| AsciiExt::to_ascii_uppercase(&c), |c| c == b'T'),
 ///     b"testing");
 ///
 /// assert_eq!(r, Ok(b'T'));
@@ -90,7 +90,7 @@ pub fn satisfy_with<I: Input, T: Clone, F, P>(f: F, p: P) -> impl Parser<I, Outp
 /// ```
 /// use chomp::prelude::{parse_only, token};
 ///
-/// assert_eq!(parse_only(|i| token(i, b'a'), b"abc"), Ok(b'a'));
+/// assert_eq!(parse_only(token(b'a'), b"abc"), Ok(b'a'));
 /// ```
 #[inline]
 pub fn token<I: Input>(t: I::Token) -> impl Parser<I, Output=I::Token, Error=Error<I::Token>> {
@@ -107,7 +107,7 @@ pub fn token<I: Input>(t: I::Token) -> impl Parser<I, Output=I::Token, Error=Err
 /// ```
 /// use chomp::prelude::{parse_only, not_token};
 ///
-/// assert_eq!(parse_only(|i| not_token(i, b'b'), b"abc"), Ok(b'a'));
+/// assert_eq!(parse_only(not_token(b'b'), b"abc"), Ok(b'a'));
 /// ```
 #[inline]
 pub fn not_token<I: Input>(t: I::Token) -> impl Parser<I, Output=I::Token, Error=Error<I::Token>> {
@@ -125,9 +125,9 @@ pub fn not_token<I: Input>(t: I::Token) -> impl Parser<I, Output=I::Token, Error
 /// ```
 /// use chomp::prelude::{parse_only, peek};
 ///
-/// assert_eq!(parse_only(peek, b"abc"), Ok(Some(b'a')));
+/// assert_eq!(parse_only(peek(), b"abc"), Ok(Some(b'a')));
 ///
-/// assert_eq!(parse_only(peek, b""), Ok(None));
+/// assert_eq!(parse_only(peek(), b""), Ok(None));
 /// ```
 #[inline]
 pub fn peek<I: Input>() -> impl Parser<I, Output=Option<I::Token>, Error=Error<I::Token>> {
@@ -145,7 +145,7 @@ pub fn peek<I: Input>() -> impl Parser<I, Output=Option<I::Token>, Error=Error<I
 /// ```
 /// use chomp::prelude::{parse_only, peek_next};
 ///
-/// assert_eq!(parse_only(peek_next, b"abc"), Ok(b'a'));
+/// assert_eq!(parse_only(peek_next(), b"abc"), Ok(b'a'));
 /// ```
 #[inline]
 pub fn peek_next<I: Input>() -> impl Parser<I, Output=I::Token, Error=Error<I::Token>> {
@@ -162,7 +162,7 @@ pub fn peek_next<I: Input>() -> impl Parser<I, Output=I::Token, Error=Error<I::T
 /// ```
 /// use chomp::prelude::{parse_only, take};
 ///
-/// assert_eq!(parse_only(|i| take(i, 3), b"abcd"), Ok(&b"abc"[..]));
+/// assert_eq!(parse_only(take(3), b"abcd"), Ok(&b"abc"[..]));
 /// ```
 #[inline]
 pub fn take<I: Input>(num: usize) -> impl Parser<I, Output=I::Buffer, Error=Error<I::Token>> {
@@ -180,7 +180,7 @@ pub fn take<I: Input>(num: usize) -> impl Parser<I, Output=I::Buffer, Error=Erro
 /// ```
 /// use chomp::prelude::{parse_only, take_while};
 ///
-/// let r = parse_only(|i| take_while(i, |c| c == b'a' || c == b'b'), b"abcdcba");
+/// let r = parse_only(take_while(|c| c == b'a' || c == b'b'), b"abcdcba");
 ///
 /// assert_eq!(r, Ok(&b"ab"[..]));
 /// ```
@@ -190,7 +190,7 @@ pub fn take<I: Input>(num: usize) -> impl Parser<I, Output=I::Buffer, Error=Erro
 /// ```
 /// use chomp::prelude::{parse_only, take_while};
 ///
-/// let r = parse_only(|i| take_while(i, |c| c == b'z'), b"abcdcba");
+/// let r = parse_only(take_while(|c| c == b'z'), b"abcdcba");
 ///
 /// assert_eq!(r, Ok(&b""[..]));
 /// ```
@@ -213,7 +213,7 @@ pub fn take_while<I: Input, F>(f: F) -> impl Parser<I, Output=I::Buffer, Error=E
 /// ```
 /// use chomp::prelude::{parse_only, take_while1};
 ///
-/// let r = parse_only(|i| take_while1(i, |c| c == b'a' || c == b'b'), b"abcdcba");
+/// let r = parse_only(take_while1(|c| c == b'a' || c == b'b'), b"abcdcba");
 ///
 /// assert_eq!(r, Ok(&b"ab"[..]));
 /// ```
@@ -257,7 +257,7 @@ pub fn skip_while<I: Input, F>(f: F) -> impl Parser<I, Output=(), Error=Error<I:
 /// ```
 /// use chomp::prelude::{parse_only, take_till};
 ///
-/// let r = parse_only(|i| take_till(i, |c| c == b'd'), b"abcdef");
+/// let r = parse_only(take_till(|c| c == b'd'), b"abcdef");
 ///
 /// assert_eq!(r, Ok(&b"abc"[..]));
 /// ```
@@ -291,7 +291,7 @@ pub fn take_till<I: Input, F>(mut f: F) -> impl Parser<I, Output=I::Buffer, Erro
 /// ```
 /// use chomp::prelude::{parse_only, scan};
 ///
-/// let p = |i| scan(i, false, |s, c| match (s, c) {
+/// let p = scan(false, |s, c| match (s, c) {
 ///     (true, b'/') => None,
 ///     (_,    b'*') => Some(true),
 ///     (_, _)       => Some(false),
@@ -316,7 +316,7 @@ pub fn scan<I: Input, S, F>(s: S, mut f: F) -> impl Parser<I, Output=I::Buffer, 
 /// ```
 /// use chomp::prelude::{parse_only, run_scanner};
 ///
-/// let p = |i| run_scanner(i, 0, |s, c| match (s, c) {
+/// let p = run_scanner(0, |s, c| match (s, c) {
 ///     (b'*', b'/') => None,
 ///     (_,    c)    => Some(c),
 /// });
@@ -347,7 +347,7 @@ pub fn run_scanner<I: Input, S: Copy, F>(s: S, mut f: F) -> impl Parser<I, Outpu
 /// ```
 /// use chomp::prelude::{parse_only, take_remainder};
 ///
-/// assert_eq!(parse_only(take_remainder, b"abcd"), Ok(&b"abcd"[..]));
+/// assert_eq!(parse_only(take_remainder(), b"abcd"), Ok(&b"abcd"[..]));
 /// ```
 #[inline]
 pub fn take_remainder<I: Input>() -> impl Parser<I, Output=I::Buffer, Error=Error<I::Token>> {
@@ -366,7 +366,7 @@ pub fn take_remainder<I: Input>() -> impl Parser<I, Output=I::Buffer, Error=Erro
 /// ```
 /// use chomp::prelude::{parse_only, string};
 ///
-/// assert_eq!(parse_only(|i| string(i, b"abc"), b"abcdef"), Ok(&b"abc"[..]));
+/// assert_eq!(parse_only(string(b"abc"), b"abcdef"), Ok(&b"abc"[..]));
 /// ```
 // TODO: Does not actually work with &str yet
 #[inline]
@@ -399,9 +399,9 @@ pub fn string<I: Input>(s: &'static [I::Token]) -> impl Parser<I, Output=I::Buff
 /// Matches the end of the input.
 ///
 /// ```
-/// use chomp::prelude::{parse_only, token, eof};
+/// use chomp::prelude::{Parser, parse_only, token, eof};
 ///
-/// let r = parse_only(|i| token(i, b'a').then(eof), b"a");
+/// let r = parse_only(token(b'a').then(eof()), b"a");
 ///
 /// assert_eq!(r, Ok(()));
 /// ```

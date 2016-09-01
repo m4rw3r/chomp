@@ -6,10 +6,10 @@ use types::{Input, Parser};
 /// use chomp::prelude::{parse_only, Error};
 /// use chomp::ascii::decimal;
 ///
-/// assert_eq!(parse_only(decimal, b"123foobar"), Ok(123u32));
+/// assert_eq!(parse_only(decimal(), b"123foobar"), Ok(123u32));
 ///
 /// // Annotation because `decimal` is generic over number types
-/// let r: Result<u32, _> = parse_only(decimal, b"foobar");
+/// let r: Result<u32, _> = parse_only(decimal(), b"foobar");
 /// assert_eq!(r, Err((&b"foobar"[..], Error::new())));
 /// ```
 ///
@@ -17,21 +17,16 @@ use types::{Input, Parser};
 /// discarded. To force a parser to consume all its input, use `eof` at the end like this:
 ///
 /// ```
+/// #![feature(conservative_impl_trait)]
+///
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use chomp::prelude::{U8Input, Input, Error, SimpleResult, parse_only, string, eof};
+/// use chomp::prelude::{U8Input, Error, Parser, parse_only, string, eof};
 ///
-/// fn my_parser<I: U8Input>(i: I) -> SimpleResult<I, I::Buffer> {
-///     parse!{i;
-///         let r = string(b"pattern");
-///                 eof();
+/// let parser = || string(b"pattern").skip(eof());
 ///
-///         ret r
-///     }
-/// }
-///
-/// assert_eq!(parse_only(my_parser, b"pattern"), Ok(&b"pattern"[..]));
-/// assert_eq!(parse_only(my_parser, b"pattern and more"),
+/// assert_eq!(parse_only(parser(), b"pattern"), Ok(&b"pattern"[..]));
+/// assert_eq!(parse_only(parser(), b"pattern and more"),
 ///            Err((&b" and more"[..], Error::new())));
 /// # }
 /// ```

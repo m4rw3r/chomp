@@ -16,7 +16,7 @@
 //!
 //! let mut b = buffer::Source::from_read(f, buffer::FixedSizeBuffer::new());
 //!
-//! let r = b.parse(parser!{
+//! let r = b.parse(parse!{
 //!     take_while(|c| c != b'#');
 //!     token(b'#');
 //!     take_while1(is_whitespace);
