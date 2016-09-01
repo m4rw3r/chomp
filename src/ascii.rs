@@ -13,7 +13,7 @@ use combinators::option;
 use parsers::{
     SimpleResult,
     satisfy,
-    take_while,
+    skip_while,
     take_while1,
 };
 
@@ -88,7 +88,7 @@ pub fn is_alphanumeric(c: u8) -> bool {
 /// ```
 #[inline]
 pub fn skip_whitespace<I: Input<Token=u8>>(i: I) -> SimpleResult<I, ()> {
-    take_while(i, is_whitespace).map(|_| ())
+    skip_while(i, is_whitespace)
 }
 
 /// Parses a single digit.
