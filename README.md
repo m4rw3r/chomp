@@ -81,16 +81,15 @@ For more documentation, see the rust-doc output.
 #[macro_use]
 extern crate chomp;
 
-use chomp::{Input, U8Result, parse_only};
-use chomp::{take_while1, token};
+use chomp::prelude::*;
 
 #[derive(Debug, Eq, PartialEq)]
-struct Name<'a> {
-    first: &'a [u8],
-    last:  &'a [u8],
+struct Name<B: Buffer> {
+    first: B,
+    last:  B,
 }
 
-fn name(i: Input<u8>) -> U8Result<Name> {
+fn name<I: U8Input>(i: I) -> SimpleResult<I, Name<I::Buffer>> {
     parse!{i;
         let first = take_while1(|c| c != b' ');
                     token(b' ');  // skipping this char
@@ -103,12 +102,11 @@ fn name(i: Input<u8>) -> U8Result<Name> {
     }
 }
 
-fn main() {
-    assert_eq!(parse_only(name, "Martin Wernstål\n".as_bytes()), Ok(Name{
-        first: b"Martin",
-        last: "Wernstål".as_bytes()
-    }));
-}
+assert_eq!(parse_only(name, "Martin Wernstål\n".as_bytes()), Ok(Name{
+    first: &b"Martin"[..],
+    last: "Wernstål".as_bytes()
+}));
+# }
 ```
 
 ##Contact
