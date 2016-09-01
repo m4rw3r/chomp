@@ -458,7 +458,9 @@ pub trait Parser<I: Input> {
     /// ```
     #[inline(always)]
     // TODO: Add From::from
-    // TODO: Is it possible to remove I and R here?
+    // TODO: Is it possible to remove R here?
+    // I is required to be a type-parameter to the created parser in case Self does not have
+    // anything restricting I, then the parser we are binding to needs to provide that.
     fn bind<F, R>(self, f: F) -> BindParser<I, Self, F, R>
       where F: FnOnce(Self::Output) -> R,
             R: Parser<I, Error=Self::Error>,
@@ -494,11 +496,11 @@ pub trait Parser<I: Input> {
     /// ```
     #[inline(always)]
     // TODO: Add From::from
-    // TODO: Tests
-    fn then<P>(self, p: P) -> ThenParser<Self, P>
+    // TODO: Tests, also with an unbounded I (from eg. ret or err)
+    fn then<P>(self, p: P) -> ThenParser<I, Self, P>
       where P: Parser<I, Error=Self::Error>,
             Self: Sized {
-        ThenParser { p: self, q: p }
+        ThenParser { p: self, q: p, _i: PhantomData }
     }
 
     /// Applies the function `f` on the contained data if the parser is in a success state.
@@ -513,11 +515,11 @@ pub trait Parser<I: Input> {
     /// assert_eq!(r, Ok(b'm'));
     /// ```
     // TODO: Tests
-    #[inline]
-    fn map<F, R>(self, f: F) -> MapParser<Self, F>
+    #[inline(always)]
+    fn map<F, R>(self, f: F) -> MapParser<I, Self, F>
       where F: FnOnce(Self::Output) -> R,
             Self: Sized {
-        MapParser { p: self, f: f }
+        MapParser { p: self, f: f, _i: PhantomData }
     }
 
     /// Applies the function `f` on the contained error if the parser is in an error state.
@@ -534,11 +536,12 @@ pub trait Parser<I: Input> {
     /// assert_eq!(r, Err((&b"foo"[..], "this is an error".to_owned())));
     /// ```
     // TODO: Tests
-    #[inline]
-    fn map_err<F, E>(self, f: F) -> MapErrParser<Self, F>
+    // TODO: Make sure to use an unbounded I too first in tests
+    #[inline(always)]
+    fn map_err<F, E>(self, f: F) -> MapErrParser<I, Self, F>
       where F: FnOnce(Self::Error) -> E,
             Self: Sized {
-        MapErrParser { p: self, f: f }
+        MapErrParser { p: self, f: f, _i: PhantomData }
     }
 
     /// Calls the function `f` with a reference of the contained data if the parser is in a success
@@ -556,11 +559,11 @@ pub trait Parser<I: Input> {
     /// assert_eq!(r, Ok(&b"test"[..]));
     /// ```
     // TODO: Tests
-    #[inline]
-    fn inspect<F>(self, f: F) -> InspectParser<Self, F>
+    #[inline(always)]
+    fn inspect<F>(self, f: F) -> InspectParser<I, Self, F>
       where F: FnOnce(&Self::Output),
             Self: Sized {
-        InspectParser { p: self, f: f }
+        InspectParser { p: self, f: f, _i: PhantomData }
     }
 
     /// Tries to match the parser `f`, if `f` fails it tries `g`. Returns the success value of
@@ -585,11 +588,11 @@ pub trait Parser<I: Input> {
     // TODO: Write the laws for MonadPlus, or should satisfy MonadPlus laws (stronger guarantees
     // compared to Alternative typeclass laws)
     // TODO: Tests
-    #[inline]
-    fn or<P>(self, p: P) -> OrParser<Self, P>
+    #[inline(always)]
+    fn or<P>(self, p: P) -> OrParser<I, Self, P>
       where P: Parser<I, Output=Self::Output, Error=Self::Error>,
             Self: Sized {
-        OrParser { p: self, q: p }
+        OrParser { p: self, q: p, _i: PhantomData }
     }
 
     /// Creates a new parser which matches `Self` and if successful tries to match `P`, if `P` is
@@ -602,15 +605,15 @@ pub trait Parser<I: Input> {
     /// ```
     // TODO: Get more of the Applicative instance in here, make tests
     // TODO: Docs
-    // TODO: Tests
-    #[inline]
-    fn skip<P>(self, p: P) -> SkipParser<Self, P>
+    // TODO: Tests, also include test with unbounded existing parser (ret and err) on lhs
+    #[inline(always)]
+    fn skip<P>(self, p: P) -> SkipParser<I, Self, P>
       where P: Parser<I, Error=Self::Error>,
             Self: Sized {
         // Would be nice to be able to return the following, but conservative impl Trait does not
         // work on traits:
         // self.bind(|t| p.map(|_| t))
-        SkipParser{ p: self, q: p }
+        SkipParser{ p: self, q: p, _i: PhantomData }
     }
 
     /// Turns the parser into a trait object, using the `BoxedParser` type to provide inference and
@@ -633,7 +636,7 @@ pub trait Parser<I: Input> {
     ///
     /// assert_eq!(p.parse(&b"bcd"), (&b"bcd", Err(Error::expected(b'a'))));
     /// ```
-    #[inline]
+    #[inline(always)]
     fn boxed(self) -> BoxedParser<I, Self::Output, Self::Error>
       where Self: Sized + 'static {
         Box::new(self)
@@ -838,12 +841,13 @@ impl<I, P, F, R> Parser<I> for BindParser<I, P, F, R>
 /// Parser for the `Parser::then` chaining operator, allowing to chain parsers.
 ///
 /// This is created by the `Parser::then` method.
-pub struct ThenParser<P, Q> {
+pub struct ThenParser<I, P, Q> {
     p:  P,
     q:  Q,
+    _i: PhantomData<I>,
 }
 
-impl<I, P, Q> Parser<I> for ThenParser<P, Q>
+impl<I, P, Q> Parser<I> for ThenParser<I, P, Q>
   where I: Input,
         P: Parser<I>,
         Q: Parser<I, Error=P::Error> {
@@ -862,12 +866,13 @@ impl<I, P, Q> Parser<I> for ThenParser<P, Q>
 /// Parser for the `Parser::map` combinator.
 ///
 /// This is created by the `Parser::map` method.
-pub struct MapParser<P, F> {
+pub struct MapParser<I, P, F> {
     p:  P,
     f:  F,
+    _i: PhantomData<I>,
 }
 
-impl<I, P, F, R> Parser<I> for MapParser<P, F>
+impl<I, P, F, R> Parser<I> for MapParser<I, P, F>
   where I: Input,
         P: Parser<I>,
         F: FnOnce(P::Output) -> R {
@@ -886,12 +891,13 @@ impl<I, P, F, R> Parser<I> for MapParser<P, F>
 /// Parser for the `Parser::map_err` combinator.
 ///
 /// This is created by the `Parser::map_err` method.
-pub struct MapErrParser<P, F> {
+pub struct MapErrParser<I, P, F> {
     p:  P,
     f:  F,
+    _i: PhantomData<I>
 }
 
-impl<I, P, F, E> Parser<I> for MapErrParser<P, F>
+impl<I, P, F, E> Parser<I> for MapErrParser<I, P, F>
   where I: Input,
         P: Parser<I>,
         F: FnOnce(P::Error) -> E {
@@ -910,12 +916,13 @@ impl<I, P, F, E> Parser<I> for MapErrParser<P, F>
 /// Parser for the `Parser::inspect` combinator.
 ///
 /// This is created by `Parser::inspect`.
-pub struct InspectParser<P, F> {
+pub struct InspectParser<I, P, F> {
     p:  P,
     f:  F,
+    _i: PhantomData<I>,
 }
 
-impl<I, P, F> Parser<I> for InspectParser<P, F>
+impl<I, P, F> Parser<I> for InspectParser<I, P, F>
   where I: Input,
         P: Parser<I>,
         F: FnOnce(&P::Output) {
@@ -938,12 +945,13 @@ impl<I, P, F> Parser<I> for InspectParser<P, F>
 /// Parser for the `Parser::or` combinator.
 ///
 /// This is created by `Parser::or`.
-pub struct OrParser<P, Q> {
-    p: P,
-    q: Q,
+pub struct OrParser<I, P, Q> {
+    p:  P,
+    q:  Q,
+    _i: PhantomData<I>,
 }
 
-impl<I, P, Q> Parser<I> for OrParser<P, Q>
+impl<I, P, Q> Parser<I> for OrParser<I, P, Q>
   where I: Input,
         P: Parser<I>,
         Q: Parser<I, Output=P::Output, Error=P::Error> {
@@ -963,12 +971,13 @@ impl<I, P, Q> Parser<I> for OrParser<P, Q>
 /// Parser for the `Parser::skip` combinator.
 ///
 /// This is created by `Parser::skip`.
-pub struct SkipParser<P, Q> {
-    p: P,
-    q: Q,
+pub struct SkipParser<I, P, Q> {
+    p:  P,
+    q:  Q,
+    _i: PhantomData<I>,
 }
 
-impl<I, P, Q> Parser<I> for SkipParser<P, Q>
+impl<I, P, Q> Parser<I> for SkipParser<I, P, Q>
   where I: Input,
         P: Parser<I>,
         Q: Parser<I, Error=P::Error> {

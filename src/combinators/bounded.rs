@@ -1092,7 +1092,7 @@ impl<I, F, S, P, Q> FnOnce<()> for SepByInnerParserCtor<I, F, S>
         S: FnMut() -> Q,
         P: Parser<I>,
         Q: Parser<I, Error=P::Error> {
-    type Output = ThenParser<MaybeAParser<Q>, P>;
+    type Output = ThenParser<I, MaybeAParser<Q>, P>;
 
     extern "rust-call" fn call_once(self, _: ()) -> Self::Output {
         unimplemented!()
