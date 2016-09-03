@@ -83,7 +83,7 @@ pub fn is_alphanumeric(c: u8) -> bool {
 /// ```
 #[inline]
 pub fn skip_whitespace<I: Input<Token=u8>>() -> impl Parser<I, Output=(), Error=Error<u8>> {
-    skip_while(is_whitespace).map(|_| ())
+    skip_while(is_whitespace)
 }
 
 /// Parses a single digit.

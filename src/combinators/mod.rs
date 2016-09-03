@@ -7,6 +7,8 @@ pub mod bounded;
 
 use std::iter::FromIterator;
 
+use either::Either;
+
 use types::{Input, Parser};
 
 /// Applies the parser `p` exactly `num` times collecting all items into `T: FromIterator`.
@@ -57,6 +59,33 @@ pub fn option<I: Input, P>(p: P, default: P::Output) -> impl Parser<I, Output=P:
             (b, Ok(d))  => (b, Ok(d)),
             (b, Err(_)) => (b.restore(m), Ok(default)),
         }
+    }
+}
+
+/// Attempts the left parser first and then the right parser if the first parser fails. Result is
+/// returned as an `Either<T, U>` depending on which parser succeeded.
+///
+/// NOTE: If both parsers have the same return-type, use `or` instead.
+///
+/// ```
+/// use chomp::prelude::{Error, parse_only, either, token, Either, Left, Right};
+///
+/// let p = |i| either(i, |i| token(i, b'a'), |i| token(i, b'b'));
+///
+/// assert_eq!(parse_only(&p, b"a"), Ok(Left(b'a')));
+/// assert_eq!(parse_only(&p, b"b"), Ok(Right(b'b')));
+/// assert_eq!(parse_only(&p, b"c"), Err((&b"c"[..], Error::expected(b'b'))));
+/// ```
+#[inline]
+pub fn either<I, T, U, E, F, G>(i: I, f: F, g: G) -> ParseResult<I, Either<T, U>, E>
+  where I: Input,
+        F: FnOnce(I) -> ParseResult<I, T, E>,
+        G: FnOnce(I) -> ParseResult<I, U, E> {
+    let m = i.mark();
+
+    match f(i).into_inner() {
+        (b, Ok(d))  => b.ret(Either::Left(d)),
+        (b, Err(_)) => g(b.restore(m)).map(Either::Right),
     }
 }
 
