@@ -222,6 +222,7 @@ extern crate tendril;
 #[macro_use]
 extern crate bitflags;
 extern crate conv;
+extern crate either;
 extern crate debugtrace;
 
 #[macro_use]
@@ -264,11 +265,11 @@ pub mod prelude {
         Error,
         SimpleResult,
     };
-
     pub use combinators::{
         count,
         option,
         or,
+        either,
         many,
         many1,
         sep_by,
@@ -284,6 +285,8 @@ pub mod prelude {
         U8Input,
         ParseResult,
     };
+
+    pub use either::*;
     pub use parse_only;
     pub use parse_only_str;
 }
