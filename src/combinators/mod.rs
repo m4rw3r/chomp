@@ -70,22 +70,27 @@ pub fn option<I: Input, P>(p: P, default: P::Output) -> impl Parser<I, Output=P:
 /// ```
 /// use chomp::prelude::{Error, parse_only, either, token, Either, Left, Right};
 ///
-/// let p = |i| either(i, |i| token(i, b'a'), |i| token(i, b'b'));
+/// let p = || either(token(b'a'), token(b'b'));
 ///
-/// assert_eq!(parse_only(&p, b"a"), Ok(Left(b'a')));
-/// assert_eq!(parse_only(&p, b"b"), Ok(Right(b'b')));
-/// assert_eq!(parse_only(&p, b"c"), Err((&b"c"[..], Error::expected(b'b'))));
+/// assert_eq!(parse_only(p(), b"a"), Ok(Left(b'a')));
+/// assert_eq!(parse_only(p(), b"b"), Ok(Right(b'b')));
+/// assert_eq!(parse_only(p(), b"c"), Err((&b"c"[..], Error::expected(b'b'))));
 /// ```
 #[inline]
-pub fn either<I, T, U, E, F, G>(i: I, f: F, g: G) -> ParseResult<I, Either<T, U>, E>
+pub fn either<I, L, R>(l: L, r: R) -> impl Parser<I, Output=Either<L::Output, R::Output>, Error=L::Error>
   where I: Input,
-        F: FnOnce(I) -> ParseResult<I, T, E>,
-        G: FnOnce(I) -> ParseResult<I, U, E> {
-    let m = i.mark();
+        L: Parser<I>,
+        R: Parser<I, Error=L::Error> {
+    move |i: I| {
+        let m = i.mark();
 
-    match f(i).into_inner() {
-        (b, Ok(d))  => b.ret(Either::Left(d)),
-        (b, Err(_)) => g(b.restore(m)).map(Either::Right),
+        match l.parse(i) {
+            (b, Ok(l_t))  => (b, Ok(Either::Left(l_t))),
+            (b, Err(_)) => match r.parse(b.restore(m)) {
+                (c, Ok(r_t))  => (c, Ok(Either::Right(r_t))),
+                (c, Err(r_e)) => (c, Err(r_e))
+            }
+        }
     }
 }
 
