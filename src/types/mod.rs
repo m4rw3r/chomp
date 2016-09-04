@@ -1115,32 +1115,38 @@ pub mod test {
 
     // TODO: More tests for fundamental combinators implemented on Parser
 
-    // FIXME: Inspect lifetimes
-    /*
     #[test]
     fn parse_result_inspect() {
         let mut n1 = 0;
         let mut n2 = 0;
-        let i1     = ret::<u32, ()>(23);
-        let i2     = ret::<u32, ()>(23);
 
-        let r1 = inspect(i1, |d: &u32| {
-            assert_eq!(d, &23);
+        {
+            let i1     = ret::<u32, ()>(23);
+            let i2     = ret::<u32, ()>(23);
+            let i3     = err::<u32, i32>(42);
 
-            n1 += 1;
-        });
-        let r2 = inspect(i2, |d: &u32| {
-            assert_eq!(d, &23);
+            let r1 = i1.inspect(|d: &u32| {
+                assert_eq!(d, &23);
 
-            n2 += 1;
-        });
+                n1 += 1;
+            });
+            let r2 = i2.inspect(|d: &u32| {
+                assert_eq!(d, &23);
 
-        assert_eq!(r1.parse(&b"test"[..]), (&b"test "[..], Ok(23)));
+                n2 += 1;
+            });
+            let r3 = i3.inspect(|_: &u32| {
+                panic!("Success value obtained in error branch in inspect!");
+            });
+
+            assert_eq!(r1.parse(&b"test"[..]), (&b"test"[..], Ok(23)));
+            assert_eq!(r2.parse(&b"test"[..]), (&b"test"[..], Ok(23)));
+            assert_eq!(r3.parse(&b"test"[..]), (&b"test"[..], Err(42)));
+        }
+
         assert_eq!(n1, 1);
-        assert_eq!(r2.parse(&b"test"[..]), (&b"test "[..], Ok(23)));
         assert_eq!(n2, 1);
     }
-    */
 
     #[test]
     fn test_slice() {
