@@ -570,12 +570,10 @@ mod error {
     }
 }
 
-/*
 #[cfg(test)]
 mod test {
-    use primitives::IntoInner;
     use super::*;
-    use types::{Input, ParseResult};
+    use types::{Buffer, Input, Parser, ret};
 
     #[test]
     fn parse_decimal() {
@@ -583,114 +581,107 @@ mod test {
             c >= b'0' && c <= b'9'
         }
 
-        fn decimal<'i, I: Input<Token=u8, Buffer=&'i [u8]>>(i: I) -> SimpleResult<I, usize> {
-            take_while1(i, is_digit).bind(|i, bytes|
-                i.ret(bytes.iter().fold(0, |a, b| a * 10 + (b - b'0') as usize)))
+        fn decimal<I: Input<Token=u8>>() -> impl Parser<I, Output=usize, Error=Error<u8>> {
+            take_while1(is_digit).bind(|bytes: I::Buffer|
+                ret(bytes.fold(0, |a, b| a * 10 + (b - b'0') as usize)))
         }
 
         let i = &b"123.4567 "[..];
 
-        let p = decimal(i).bind(|i, real|
-            token(i, b'.').bind(|i, _|
-                decimal(i).bind(|i, frac|
-                    i.ret((real, frac)))));
+        let p = decimal().bind(|real| token(b'.').then(decimal().map(move |frac| (real, frac))))
+            .bind(|num| take_remainder().map(move |r| (r, num)));
 
-        // ParseResult necessary here due to inference, for some reason is
-        // `Error<<I as Input>::Token>` not specific enough to actually help inference.
-        let d: ParseResult<_, _, Error<u8>> = p.bind(|i, num| take_remainder(i)
-                                           .bind(|i, r| i.ret((r, num))));
-
-        assert_eq!(d.into_inner(), (&b""[..], Ok((&b" "[..], (123, 4567)))));
+        assert_eq!(p.parse(i), (&b""[..], Ok((&b" "[..], (123, 4567)))));
     }
 
     #[test]
     fn parse_remainder_empty() {
-        assert_eq!(take_remainder(&b""[..]).into_inner(), (&b""[..], Ok(&b""[..])));
+        assert_eq!(take_remainder().parse(&b""[..]), (&b""[..], Ok(&b""[..])));
     }
 
     #[test]
     fn take_while1_empty() {
-        assert_eq!(take_while1(&b""[..], |_| true).into_inner(), (&b""[..], Err(Error::unexpected())));
+        assert_eq!(take_while1(|_| true).parse(&b""[..]), (&b""[..], Err(Error::unexpected())));
     }
 
     #[test]
     fn token_test() {
-        assert_eq!(token(&b""[..],   b'a').into_inner(), (&b""[..],   Err(Error::expected(b'a'))));
-        assert_eq!(token(&b"ab"[..], b'a').into_inner(), (&b"b"[..],  Ok(b'a')));
-        assert_eq!(token(&b"bb"[..], b'a').into_inner(), (&b"bb"[..], Err(Error::expected(b'a'))));
+        assert_eq!(token(b'a').parse(&b""[..]), (&b""[..],   Err(Error::expected(b'a'))));
+        assert_eq!(token(b'a').parse(&b"ab"[..]), (&b"b"[..],  Ok(b'a')));
+        assert_eq!(token(b'a').parse(&b"bb"[..]), (&b"bb"[..], Err(Error::expected(b'a'))));
     }
 
     #[test]
     fn take_test() {
-        assert_eq!(take(&b""[..],   0).into_inner(), (&b""[..],  Ok(&b""[..])));
-        assert_eq!(take(&b"a"[..],  0).into_inner(), (&b"a"[..], Ok(&b""[..])));
-        assert_eq!(take(&b"a"[..],  1).into_inner(), (&b""[..],  Ok(&b"a"[..])));
-        assert_eq!(take(&b"a"[..],  2).into_inner(), (&b"a"[..], Err(Error::unexpected())));
-        assert_eq!(take(&b"a"[..],  3).into_inner(), (&b"a"[..], Err(Error::unexpected())));
-        assert_eq!(take(&b"ab"[..], 1).into_inner(), (&b"b"[..], Ok(&b"a"[..])));
-        assert_eq!(take(&b"ab"[..], 2).into_inner(), (&b""[..],  Ok(&b"ab"[..])));
+        assert_eq!(take(0).parse(&b""[..]), (&b""[..],  Ok(&b""[..])));
+        assert_eq!(take(0).parse(&b"a"[..]), (&b"a"[..], Ok(&b""[..])));
+        assert_eq!(take(1).parse(&b"a"[..]), (&b""[..],  Ok(&b"a"[..])));
+        assert_eq!(take(2).parse(&b"a"[..]), (&b"a"[..], Err(Error::unexpected())));
+        assert_eq!(take(3).parse(&b"a"[..]), (&b"a"[..], Err(Error::unexpected())));
+        assert_eq!(take(1).parse(&b"ab"[..]), (&b"b"[..], Ok(&b"a"[..])));
+        assert_eq!(take(2).parse(&b"ab"[..]), (&b""[..],  Ok(&b"ab"[..])));
     }
 
     #[test]
     fn take_while_test() {
-        assert_eq!(take_while(&b""[..],    |c| c != b'b').into_inner(), (&b""[..],    Ok(&b""[..])));
-        assert_eq!(take_while(&b"a"[..],   |c| c != b'b').into_inner(), (&b""[..],    Ok(&b"a"[..])));
-        assert_eq!(take_while(&b"b"[..],   |c| c != b'b').into_inner(), (&b"b"[..],   Ok(&b""[..])));
-        assert_eq!(take_while(&b"abc"[..], |c| c != b'b').into_inner(), (&b"bc"[..],  Ok(&b"a"[..])));
-        assert_eq!(take_while(&b"bbc"[..], |c| c != b'b').into_inner(), (&b"bbc"[..], Ok(&b""[..])));
-        assert_eq!(take_while(&b"bbc"[..], |c| c != b'b').into_inner(), (&b"bbc"[..], Ok(&b""[..])));
-        assert_eq!(take_while(&b"abc"[..], |c| c != b'b').into_inner(), (&b"bc"[..],  Ok(&b"a"[..])));
-        assert_eq!(take_while(&b"acc"[..], |c| c != b'b').into_inner(), (&b""[..],    Ok(&b"acc"[..])));
+        assert_eq!(take_while(|c| c != b'b').parse(&b""[..]), (&b""[..],    Ok(&b""[..])));
+        assert_eq!(take_while(|c| c != b'b').parse(&b"a"[..]), (&b""[..],    Ok(&b"a"[..])));
+        assert_eq!(take_while(|c| c != b'b').parse(&b"b"[..]), (&b"b"[..],   Ok(&b""[..])));
+        assert_eq!(take_while(|c| c != b'b').parse(&b"abc"[..]), (&b"bc"[..],  Ok(&b"a"[..])));
+        assert_eq!(take_while(|c| c != b'b').parse(&b"bbc"[..]), (&b"bbc"[..], Ok(&b""[..])));
+        assert_eq!(take_while(|c| c != b'b').parse(&b"bbc"[..]), (&b"bbc"[..], Ok(&b""[..])));
+        assert_eq!(take_while(|c| c != b'b').parse(&b"abc"[..]), (&b"bc"[..],  Ok(&b"a"[..])));
+        assert_eq!(take_while(|c| c != b'b').parse(&b"acc"[..]), (&b""[..],    Ok(&b"acc"[..])));
     }
 
     #[test]
     fn take_while1_test() {
-        assert_eq!(take_while1(&b""[..],    |c| c != b'b').into_inner(), (&b""[..],    Err(Error::unexpected())));
-        assert_eq!(take_while1(&b"a"[..],   |c| c != b'b').into_inner(), (&b""[..],    Ok(&b"a"[..])));
-        assert_eq!(take_while1(&b"b"[..],   |c| c != b'b').into_inner(), (&b"b"[..],   Err(Error::unexpected())));
-        assert_eq!(take_while1(&b"ab"[..],  |c| c != b'b').into_inner(), (&b"b"[..],   Ok(&b"a"[..])));
-        assert_eq!(take_while1(&b"abc"[..], |c| c != b'b').into_inner(), (&b"bc"[..],  Ok(&b"a"[..])));
-        assert_eq!(take_while1(&b"bbc"[..], |c| c != b'b').into_inner(), (&b"bbc"[..], Err(Error::unexpected())));
-        assert_eq!(take_while1(&b"bbc"[..], |c| c != b'b').into_inner(), (&b"bbc"[..], Err(Error::unexpected())));
-        assert_eq!(take_while1(&b"abc"[..], |c| c != b'b').into_inner(), (&b"bc"[..],  Ok(&b"a"[..])));
-        assert_eq!(take_while1(&b"acc"[..], |c| c != b'b').into_inner(), (&b""[..],    Ok(&b"acc"[..])));
+        assert_eq!(take_while1(|c| c != b'b').parse(&b""[..]), (&b""[..],    Err(Error::unexpected())));
+        assert_eq!(take_while1(|c| c != b'b').parse(&b"a"[..]), (&b""[..],    Ok(&b"a"[..])));
+        assert_eq!(take_while1(|c| c != b'b').parse(&b"b"[..]), (&b"b"[..],   Err(Error::unexpected())));
+        assert_eq!(take_while1(|c| c != b'b').parse(&b"ab"[..]), (&b"b"[..],   Ok(&b"a"[..])));
+        assert_eq!(take_while1(|c| c != b'b').parse(&b"abc"[..]), (&b"bc"[..],  Ok(&b"a"[..])));
+        assert_eq!(take_while1(|c| c != b'b').parse(&b"bbc"[..]), (&b"bbc"[..], Err(Error::unexpected())));
+        assert_eq!(take_while1(|c| c != b'b').parse(&b"bbc"[..]), (&b"bbc"[..], Err(Error::unexpected())));
+        assert_eq!(take_while1(|c| c != b'b').parse(&b"abc"[..]), (&b"bc"[..],  Ok(&b"a"[..])));
+        assert_eq!(take_while1(|c| c != b'b').parse(&b"acc"[..]), (&b""[..],    Ok(&b"acc"[..])));
     }
 
     #[test]
     fn peek_next_test() {
-        assert_eq!(peek_next(&b"abc"[..]).into_inner(), (&b"abc"[..], Ok(b'a')));
-        assert_eq!(peek_next(&b"abc"[..]).into_inner(), (&b"abc"[..], Ok(b'a')));
-        assert_eq!(peek_next(&b""[..]).into_inner(),    (&b""[..],    Err(Error::unexpected())));
-        assert_eq!(peek_next(&b""[..]).into_inner(),    (&b""[..],    Err(Error::unexpected())));
+        assert_eq!(peek_next().parse(&b"abc"[..]), (&b"abc"[..], Ok(b'a')));
+        assert_eq!(peek_next().parse(&b"abc"[..]), (&b"abc"[..], Ok(b'a')));
+        assert_eq!(peek_next().parse(&b""[..]),    (&b""[..],    Err(Error::unexpected())));
+        assert_eq!(peek_next().parse(&b""[..]),    (&b""[..],    Err(Error::unexpected())));
     }
 
     #[test]
     fn satisfy_with_test() {
         let mut m1 = 0;
         let mut n1 = 0;
-        assert_eq!(satisfy_with(&b"abc"[..], |m| { m1 += 1; m % 8 }, |n| { n1 += 1; n == 1 }).into_inner(), (&b"bc"[..], Ok(1)));
+        assert_eq!(satisfy_with(|m| { m1 += 1; m % 8 }, |n| { n1 += 1; n == 1 }).parse(&b"abc"[..]), (&b"bc"[..], Ok(1)));
         assert_eq!(m1, 1);
         assert_eq!(n1, 1);
 
         let mut m2 = 0;
         let mut n2 = 0;
-        assert_eq!(satisfy_with(&b""[..], |m| { m2 += 1; m % 8 }, |n| { n2 += 1; n == 1 }).into_inner(), (&b""[..], Err(Error::unexpected())));
+        assert_eq!(satisfy_with(|m| { m2 += 1; m % 8 }, |n| { n2 += 1; n == 1 }).parse(&b""[..]), (&b""[..], Err(Error::unexpected())));
         assert_eq!(m2, 0);
         assert_eq!(n2, 0);
     }
 
     #[test]
     fn string_test() {
-        assert_eq!(string(&b""[..],    b"").into_inner(),      (&b""[..],    Ok(&b""[..])));
-        assert_eq!(string(&b""[..],    b"a").into_inner(),     (&b""[..],    Err(Error::expected(b'a'))));
-        assert_eq!(string(&b"a"[..],   b"a").into_inner(),     (&b""[..],    Ok(&b"a"[..])));
-        assert_eq!(string(&b"b"[..],   b"a").into_inner(),     (&b"b"[..],   Err(Error::expected(b'a'))));
-        assert_eq!(string(&b"abc"[..], b"a").into_inner(),     (&b"bc"[..],  Ok(&b"a"[..])));
-        assert_eq!(string(&b"abc"[..], b"ab").into_inner(),    (&b"c"[..],   Ok(&b"ab"[..])));
-        assert_eq!(string(&b"abc"[..], b"abc").into_inner(),   (&b""[..],    Ok(&b"abc"[..])));
-        assert_eq!(string(&b"abc"[..], b"abcd").into_inner(),  (&b""[..],    Err(Error::expected(b'd'))));
-        assert_eq!(string(&b"abc"[..], b"abcde").into_inner(), (&b""[..],    Err(Error::expected(b'd'))));
-        assert_eq!(string(&b"abc"[..], b"ac").into_inner(),    (&b"bc"[..],  Err(Error::expected(b'c'))));
+        assert_eq!(string(b""     ).parse(&b""[..]),      (&b""[..],    Ok(&b""[..])));
+        assert_eq!(string(b"a"    ).parse(&b""[..]),     (&b""[..],    Err(Error::expected(b'a'))));
+        assert_eq!(string(b"a"    ).parse(&b"a"[..]),     (&b""[..],    Ok(&b"a"[..])));
+        assert_eq!(string(b"a"    ).parse(&b"b"[..]),     (&b"b"[..],   Err(Error::expected(b'a'))));
+        assert_eq!(string(b"a"    ).parse(&b"abc"[..]),     (&b"bc"[..],  Ok(&b"a"[..])));
+        assert_eq!(string(b"ab"   ).parse(&b"abc"[..]),    (&b"c"[..],   Ok(&b"ab"[..])));
+        assert_eq!(string(b"abc"  ).parse(&b"abc"[..]),   (&b""[..],    Ok(&b"abc"[..])));
+        assert_eq!(string(b"abcd" ).parse(&b"abc"[..]),  (&b""[..],    Err(Error::expected(b'd'))));
+        assert_eq!(string(b"abcde").parse(&b"abc"[..]), (&b""[..],    Err(Error::expected(b'd'))));
+        assert_eq!(string(b"ac"   ).parse(&b"abc"[..]),    (&b"bc"[..],  Err(Error::expected(b'c'))));
     }
 
     #[test]
@@ -726,4 +717,3 @@ mod test {
         assert!(this.name.as_ref().map(|n| n.contains("parsers::test::backtrace_test")).unwrap_or(false), "Expected trace to contain \"parsers::test::backtrace_test\", got: {:?}", this.name.as_ref());
     }
 }
-*/
