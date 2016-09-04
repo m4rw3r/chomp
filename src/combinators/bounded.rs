@@ -1,6 +1,8 @@
 //! Bounded versions of combinators.
 //!
-//! This module provides bounded versions of `many`, `many_till` and `skip_many`.
+//! This module provides bounded versions of `many`, `many_till` and `skip_many`. All versions
+//! parse into any `T: FromIterator` with guarantees that they will never (successfully) yield
+//! fewer items than the range and never more than the range specifies.
 //!
 //! The core range types are used to describe a half-open range of successive applications of a
 //! parser. `usize` is used to specify an exact number of iterations:
@@ -25,7 +27,7 @@ use std::ops::{RangeFrom, RangeFull, RangeTo, Range};
 use types::{Input, Parser, ThenParser};
 
 /// Trait for applying a parser multiple times based on a range.
-pub trait BoundedMany<I: Input, F, T, E> {
+pub trait Many<I: Input, F, T, E> {
     /// The parser type returned by `many`.
     type ManyParser: Parser<I, Output=T, Error=E>;
 
@@ -50,7 +52,7 @@ pub trait BoundedMany<I: Input, F, T, E> {
 }
 
 /// Trait for applying a parser multiple times based on a range, ignoring any output.
-pub trait BoundedSkipMany<I: Input, F, E> {
+pub trait SkipMany<I: Input, F, E> {
     /// The parser type returned by `skip_many`.
     type SkipManyParser: Parser<I, Output=(), Error=E>;
 
@@ -74,7 +76,7 @@ pub trait BoundedSkipMany<I: Input, F, E> {
 }
 
 /// Trait for applying a parser multiple times based on a range until another parser succeeds.
-pub trait BoundedManyTill<I: Input, F, G, T, E> {
+pub trait ManyTill<I: Input, F, G, T, E> {
     /// The parser type returned by `many_till`.
     type ManyTillParser: Parser<I, Output=T, Error=E>;
 
@@ -132,7 +134,7 @@ many_iter!{
     }
 }
 
-impl<I, F, T, P> BoundedMany<I, F, T, P::Error> for Range<usize>
+impl<I, F, T, P> Many<I, F, T, P::Error> for Range<usize>
   where I: Input,
         F: FnMut() -> P,
         T: FromIterator<P::Output>,
@@ -203,7 +205,7 @@ impl<I, F, P> Parser<I> for SkipManyRangeParser<I, F>
     }
 }
 
-impl<I, F, P> BoundedSkipMany<I, F, P::Error> for Range<usize>
+impl<I, F, P> SkipMany<I, F, P::Error> for Range<usize>
   where I: Input,
         F: FnMut() -> P,
         P: Parser<I> {
@@ -226,7 +228,7 @@ impl<I, F, P> BoundedSkipMany<I, F, P::Error> for Range<usize>
 
 many_till_iter! {
     #[derive(Debug)]
-    #[doc="Parser iterating over a range and ending with a final parser, created by `many_till(n..m, ...)`"]
+    #[doc="Parser iterating over a `Range` and ending with a final parser, created by `many_till(n..m, ...)`"]
     pub struct ManyTillRangeParser {
         state: (usize, usize),
 
@@ -281,7 +283,7 @@ many_till_iter! {
     }
 }
 
-impl<I: Input, F, G, P, Q, T> BoundedManyTill<I, F, G, T, P::Error> for Range<usize>
+impl<I: Input, F, G, P, Q, T> ManyTill<I, F, G, T, P::Error> for Range<usize>
   where I: Input,
         F: FnMut() -> P,
         G: FnMut() -> Q,
@@ -335,7 +337,7 @@ many_iter!{
     }
 }
 
-impl<I, F, T, P> BoundedMany<I, F, T, P::Error> for RangeFrom<usize>
+impl<I, F, T, P> Many<I, F, T, P::Error> for RangeFrom<usize>
   where I: Input,
         F: FnMut() -> P,
         T: FromIterator<P::Output>,
@@ -396,7 +398,7 @@ impl<I, F, P> Parser<I> for SkipManyRangeFromParser<I, F>
     }
 }
 
-impl<I, F, P> BoundedSkipMany<I, F, P::Error> for RangeFrom<usize>
+impl<I, F, P> SkipMany<I, F, P::Error> for RangeFrom<usize>
   where I: Input,
         F: FnMut() -> P,
         P: Parser<I> {
@@ -446,7 +448,7 @@ many_till_iter! {
     }
 }
 
-impl<I: Input, F, G, P, Q, T> BoundedManyTill<I, F, G, T, P::Error> for RangeFrom<usize>
+impl<I: Input, F, G, P, Q, T> ManyTill<I, F, G, T, P::Error> for RangeFrom<usize>
   where I: Input,
         F: FnMut() -> P,
         G: FnMut() -> Q,
@@ -491,7 +493,7 @@ many_iter!{
     }
 }
 
-impl<I, F, T, P> BoundedMany<I, F, T, P::Error> for RangeFull
+impl<I, F, T, P> Many<I, F, T, P::Error> for RangeFull
   where I: Input,
         F: FnMut() -> P,
         T: FromIterator<P::Output>,
@@ -543,7 +545,7 @@ impl<I, F, P> Parser<I> for SkipManyRangeFullParser<I, F>
     }
 }
 
-impl<I, F, P> BoundedSkipMany<I, F, P::Error> for RangeFull
+impl<I, F, P> SkipMany<I, F, P::Error> for RangeFull
   where I: Input,
         F: FnMut() -> P,
         P: Parser<I> {
@@ -583,7 +585,7 @@ many_till_iter! {
     }
 }
 
-impl<I: Input, F, G, P, Q, T> BoundedManyTill<I, F, G, T, P::Error> for RangeFull
+impl<I: Input, F, G, P, Q, T> ManyTill<I, F, G, T, P::Error> for RangeFull
   where I: Input,
         F: FnMut() -> P,
         G: FnMut() -> Q,
@@ -638,7 +640,7 @@ many_iter!{
     }
 }
 
-impl<I, F, T, P> BoundedMany<I, F, T, P::Error> for RangeTo<usize>
+impl<I, F, T, P> Many<I, F, T, P::Error> for RangeTo<usize>
   where I: Input,
         F: FnMut() -> P,
         T: FromIterator<P::Output>,
@@ -701,7 +703,7 @@ impl<I, F, P> Parser<I> for SkipManyRangeToParser<I, F>
     }
 }
 
-impl<I, F, P> BoundedSkipMany<I, F, P::Error> for RangeTo<usize>
+impl<I, F, P> SkipMany<I, F, P::Error> for RangeTo<usize>
   where I: Input,
         F: FnMut() -> P,
         P: Parser<I> {
@@ -766,7 +768,7 @@ many_till_iter! {
     }
 }
 
-impl<I: Input, F, G, P, Q, T> BoundedManyTill<I, F, G, T, P::Error> for RangeTo<usize>
+impl<I: Input, F, G, P, Q, T> ManyTill<I, F, G, T, P::Error> for RangeTo<usize>
   where I: Input,
         F: FnMut() -> P,
         G: FnMut() -> Q,
@@ -793,7 +795,7 @@ impl<I: Input, F, G, P, Q, T> BoundedManyTill<I, F, G, T, P::Error> for RangeTo<
 
 many_iter!{
     #[derive(Debug)]
-    #[doc="Parser iterating over a `usize`, created using `many(n, p)`."]
+    #[doc="Parser iterating `usize` times, created using `many(n, p)`."]
     pub struct ManyExactParser {
         // Excatly self
         state: usize,
@@ -821,7 +823,7 @@ many_iter!{
     }
 }
 
-impl<I, F, T, P> BoundedMany<I, F, T, P::Error> for usize
+impl<I, F, T, P> Many<I, F, T, P::Error> for usize
   where I: Input,
         F: FnMut() -> P,
         T: FromIterator<P::Output>,
@@ -841,7 +843,7 @@ impl<I, F, T, P> BoundedMany<I, F, T, P::Error> for usize
     }
 }
 
-/// Parser iterating `n` times discarding results, created using `skip_many(n, f)`.
+/// Parser iterating `usize` times discarding results, created using `skip_many(n, f)`.
 #[derive(Debug)]
 pub struct SkipManyExactParser<I, F> {
     f:   F,
@@ -882,7 +884,7 @@ impl<I, F, P> Parser<I> for SkipManyExactParser<I, F>
     }
 }
 
-impl<I, F, P> BoundedSkipMany<I, F, P::Error> for usize
+impl<I, F, P> SkipMany<I, F, P::Error> for usize
   where I: Input,
         F: FnMut() -> P,
         P: Parser<I> {
@@ -947,7 +949,7 @@ many_till_iter! {
     }
 }
 
-impl<I: Input, F, G, P, Q, T> BoundedManyTill<I, F, G, T, P::Error> for usize
+impl<I: Input, F, G, P, Q, T> ManyTill<I, F, G, T, P::Error> for usize
   where I: Input,
         F: FnMut() -> P,
         G: FnMut() -> Q,
@@ -992,8 +994,8 @@ pub fn many<I, F, P, T, R>(r: R, f: F) -> R::ManyParser
         F: FnMut() -> P,
         P: Parser<I>,
         T: FromIterator<P::Output>,
-        R: BoundedMany<I, F, T, P::Error> {
-    BoundedMany::many(r, f)
+        R: Many<I, F, T, P::Error> {
+    Many::many(r, f)
 }
 
 /// Applies the parser `F` multiple times until it fails or the maximum value of the range has
@@ -1015,8 +1017,8 @@ pub fn skip_many<I, F, P, R>(r: R, f: F) -> R::SkipManyParser
   where I: Input,
         F: FnMut() -> P,
         P: Parser<I>,
-        R: BoundedSkipMany<I, F, P::Error> {
-    BoundedSkipMany::skip_many(r, f)
+        R: SkipMany<I, F, P::Error> {
+    SkipMany::skip_many(r, f)
 }
 
 /// Applies the parser `F` multiple times until the parser `G` succeeds, collecting the values
@@ -1042,8 +1044,8 @@ pub fn many_till<I, F, G, P, Q, T, R>(r: R, p: F, end: G) -> R::ManyTillParser
         P: Parser<I>,
         Q: Parser<I, Error=P::Error>,
         T: FromIterator<P::Output>,
-        R: BoundedManyTill<I, F, G, T, P::Error> {
-    BoundedManyTill::many_till(r, p, end)
+        R: ManyTill<I, F, G, T, P::Error> {
+    ManyTill::many_till(r, p, end)
 }
 
 /// Applies the parser `p` multiple times, separated by the parser `sep` and returns a value
@@ -1068,8 +1070,8 @@ pub fn sep_by<I, T, F, G, P, Q, R>(r: R, f: F, sep: G) -> R::ManyParser
         // E: From<N>,
         P: Parser<I>,
         Q: Parser<I, Error=P::Error>,
-        R: BoundedMany<I, SepByInnerParserCtor<I, F, G>, T, P::Error> {
-    BoundedMany::many(r, SepByInnerParserCtor {
+        R: Many<I, SepByInnerParserCtor<I, F, G>, T, P::Error> {
+    Many::many(r, SepByInnerParserCtor {
         item: false,
         f:    f,
         sep:  sep,
@@ -1080,8 +1082,8 @@ pub fn sep_by<I, T, F, G, P, Q, R>(r: R, f: F, sep: G) -> R::ManyParser
 /// Constructor for the inner parser used by `sep_by`.
 ///
 /// This type is created internally by `sep_by` to construct the appropriate parser from a
-/// `BoundedMany` implementation providing the iteration.
-// Due to the requirement of BoundedMany to be able to specify a concrete type for the function (F)
+/// `Many` implementation providing the iteration.
+// Due to the requirement of Many to be able to specify a concrete type for the function (F)
 // parameter we need to have a type we can describe and not a closure for the type of the sep-by
 // inner parser
 // TODO: Implement as a trait for `ParserConstructor`?
