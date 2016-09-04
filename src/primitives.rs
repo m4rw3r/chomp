@@ -29,6 +29,7 @@ pub trait IntoInner {
 /// imported.
 ///
 /// It cannot be instantiated outside of the `Primitives` trait blanket implementation.
+#[allow(missing_debug_implementations, missing_copy_implementations)]
 pub struct Guard(());
 
 /// Trait enabling primitive actions on an `Input` type.
