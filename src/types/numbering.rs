@@ -49,17 +49,11 @@ pub trait Numbering: Clone {
 }
 
 /// Struct counting the number of newlines (`b'\n'`).
-#[derive(Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub struct LineNumber(
     /// The current line, zero-indexed.
     pub u64,
 );
-
-impl Clone for LineNumber {
-    fn clone(&self) -> Self {
-        LineNumber(self.0)
-    }
-}
 
 impl LineNumber {
     /// Creates a new line-number counter with zero.

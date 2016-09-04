@@ -203,6 +203,8 @@
 
 #![feature(conservative_impl_trait, unboxed_closures, fn_traits)]
 #![warn(missing_docs,
+        missing_debug_implementations,
+        missing_copy_implementations,
         trivial_casts,
         unused_import_braces,
         unused_qualifications)]

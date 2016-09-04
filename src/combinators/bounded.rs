@@ -156,6 +156,7 @@ impl<I, F, T, P> BoundedMany<I, F, T, P::Error> for Range<usize>
 }
 
 /// Parser iterating over a `Range` discarding results, created using `skip_many(n..m, f)`.
+#[derive(Debug)]
 pub struct SkipManyRangeParser<I, F> {
     f:   F,
     max: usize,
@@ -354,6 +355,7 @@ impl<I, F, T, P> BoundedMany<I, F, T, P::Error> for RangeFrom<usize>
 }
 
 /// Parser iterating over a `RangeFrom` discarding results, created using `skip_many(n.., f)`.
+#[derive(Debug)]
 pub struct SkipManyRangeFromParser<I, F> {
     f:   F,
     min: usize,
@@ -508,6 +510,7 @@ impl<I, F, T, P> BoundedMany<I, F, T, P::Error> for RangeFull
 }
 
 /// Parser iterating over a `RangeFull` discarding results, created using `skip_many(.., f)`.
+#[derive(Debug)]
 pub struct SkipManyRangeFullParser<I, F> {
     f:   F,
     _i:  PhantomData<I>
@@ -655,6 +658,7 @@ impl<I, F, T, P> BoundedMany<I, F, T, P::Error> for RangeTo<usize>
 }
 
 /// Parser iterating over a `RangeTo` discarding results, created using `skip_many(..n, f)`.
+#[derive(Debug)]
 pub struct SkipManyRangeToParser<I, F> {
     f:   F,
     max: usize,
@@ -837,6 +841,7 @@ impl<I, F, T, P> BoundedMany<I, F, T, P::Error> for usize
 }
 
 /// Parser iterating `n` times discarding results, created using `skip_many(n, f)`.
+#[derive(Debug)]
 pub struct SkipManyExactParser<I, F> {
     f:   F,
     n: usize,
@@ -1079,6 +1084,7 @@ pub fn sep_by<I, T, F, G, P, Q, R>(r: R, f: F, sep: G) -> R::ManyParser
 // parameter we need to have a type we can describe and not a closure for the type of the sep-by
 // inner parser
 // TODO: Implement as a trait for `ParserConstructor`?
+#[derive(Debug)]
 pub struct SepByInnerParserCtor<I, F, S> {
     item: bool,
     f:    F,

@@ -759,6 +759,7 @@ pub fn from_result<T, E>(r: Result<T, E>) -> FromResultParser<T, E> {
 /// Parser containing a success value.
 ///
 /// This is created by `ret`.
+#[derive(Debug)]
 pub struct RetParser<T, E> {
     t:  T,
     _e: PhantomData<E>,
@@ -778,6 +779,7 @@ impl<I, T, E> Parser<I> for RetParser<T, E>
 /// Parser containing an error value.
 ///
 /// This is created by `err`.
+#[derive(Debug)]
 pub struct ErrParser<T, E> {
     e:  E,
     _t: PhantomData<T>,
@@ -797,6 +799,7 @@ impl<I, T, E> Parser<I> for ErrParser<T, E>
 /// Parser containing a `Result<T, E>`.
 ///
 /// This is created by `from_result`.
+#[derive(Debug)]
 pub struct FromResultParser<T, E> {
     r:  Result<T, E>,
 }
@@ -815,6 +818,7 @@ impl<I, T, E> Parser<I> for FromResultParser<T, E>
 /// Parser for the `Parser::bind` chaining operator, allowing to chain parsers.
 ///
 /// This is created by the `Parser::bind` method.
+#[derive(Debug)]
 pub struct BindParser<I, P, F, R>
   where I: Input,
         P: Parser<I>,
@@ -847,6 +851,7 @@ impl<I, P, F, R> Parser<I> for BindParser<I, P, F, R>
 /// Parser for the `Parser::then` chaining operator, allowing to chain parsers.
 ///
 /// This is created by the `Parser::then` method.
+#[derive(Debug)]
 pub struct ThenParser<I, P, Q> {
     p:  P,
     q:  Q,
@@ -872,6 +877,7 @@ impl<I, P, Q> Parser<I> for ThenParser<I, P, Q>
 /// Parser for the `Parser::map` combinator.
 ///
 /// This is created by the `Parser::map` method.
+#[derive(Debug)]
 pub struct MapParser<I, P, F> {
     p:  P,
     f:  F,
@@ -897,6 +903,7 @@ impl<I, P, F, R> Parser<I> for MapParser<I, P, F>
 /// Parser for the `Parser::map_err` combinator.
 ///
 /// This is created by the `Parser::map_err` method.
+#[derive(Debug)]
 pub struct MapErrParser<I, P, F> {
     p:  P,
     f:  F,
@@ -922,6 +929,7 @@ impl<I, P, F, E> Parser<I> for MapErrParser<I, P, F>
 /// Parser for the `Parser::inspect` combinator.
 ///
 /// This is created by `Parser::inspect`.
+#[derive(Debug)]
 pub struct InspectParser<I, P, F> {
     p:  P,
     f:  F,
@@ -951,6 +959,7 @@ impl<I, P, F> Parser<I> for InspectParser<I, P, F>
 /// Parser for the `Parser::or` combinator.
 ///
 /// This is created by `Parser::or`.
+#[derive(Debug)]
 pub struct OrParser<I, P, Q> {
     p:  P,
     q:  Q,
@@ -977,6 +986,7 @@ impl<I, P, Q> Parser<I> for OrParser<I, P, Q>
 /// Parser for the `Parser::skip` combinator.
 ///
 /// This is created by `Parser::skip`.
+#[derive(Debug)]
 pub struct SkipParser<I, P, Q> {
     p:  P,
     q:  Q,
