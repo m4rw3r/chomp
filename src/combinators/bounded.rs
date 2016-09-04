@@ -97,38 +97,38 @@ pub trait BoundedManyTill<I: Input, F, G, T, E> {
 }
 
 many_iter!{
-    doc:         "Parser iterating over a `Range`, created using `many(n..m, p)`.",
-    struct_name: ManyRangeParser,
-    state:       (usize, usize),
+    #[derive(Debug)]
+    #[doc="Parser iterating over a `Range`, created using `many(n..m, p)`."]
+    pub struct ManyRangeParser {
+        state: (usize, usize),
 
-    size_hint(self) {
-        (self.data.0, Some(self.data.1))
-    }
-
-    next(self) {
-        pre {
-            if self.data.1 == 0 {
-                return None;
+        size_hint(self) {
+            (self.data.0, Some(self.data.1))
+        }
+        next(self) {
+            pre {
+                if self.data.1 == 0 {
+                    return None;
+                }
+            }
+            on {
+                self.data.0  = self.data.0.saturating_sub(1);
+                // Can't overflow unless we forget to end before self.data.1 == 0
+                self.data.1 -= 1;
             }
         }
-        on {
-            self.data.0  = self.data.0.saturating_sub(1);
-            // Can't overflow unless we forget to end before self.data.1 == 0
-            self.data.1 -= 1;
+        finally(result) {
+            // Got all occurrences of the parser
+            // First state or reached max => do not restore to mark since it is from last
+            // iteration
+            (s, (0, 0), _, _)       => (s, Ok(result)),
+            // Ok, last parser failed and we have reached minimum, we have iterated all.
+            // Return remainder of buffer and the collected result
+            (s, (0, _), m, Some(_)) => (s.restore(m), Ok(result)),
+            // Did not reach minimum, propagate
+            (s, (_, _), _, Some(e)) => (s, Err(e)),
+            (_, _, _, None)         => unreachable!(),
         }
-    }
-
-    => result {
-        // Got all occurrences of the parser
-        // First state or reached max => do not restore to mark since it is from last
-        // iteration
-        (s, (0, 0), _, _)       => (s, Ok(result)),
-        // Ok, last parser failed and we have reached minimum, we have iterated all.
-        // Return remainder of buffer and the collected result
-        (s, (0, _), m, Some(_)) => (s.restore(m), Ok(result)),
-        // Did not reach minimum, propagate
-        (s, (_, _), _, Some(e)) => (s, Err(e)),
-        (_, _, _, None)         => unreachable!(),
     }
 }
 
@@ -225,58 +225,59 @@ impl<I, F, P> BoundedSkipMany<I, F, P::Error> for Range<usize>
 }
 
 many_till_iter! {
-    doc: "Parser iterating over a range and ending with a final parser, created by `many_till(n..m, ...)`",
-    struct_name: ManyTillRangeParser,
-    state:       (usize, usize),
+    #[derive(Debug)]
+    #[doc="Parser iterating over a range and ending with a final parser, created by `many_till(n..m, ...)`"]
+    pub struct ManyTillRangeParser {
+        state: (usize, usize),
 
-    size_hint(self) {
-        (self.data.0, Some(self.data.1))
-    }
-    next(self) {
-        pre {
-            if self.data.0 == 0 {
-                // We have reached minimum, we can attempt to end now
+        size_hint(self) {
+            (self.data.0, Some(self.data.1))
+        }
+        next(self) {
+            pre {
+                if self.data.0 == 0 {
+                    // We have reached minimum, we can attempt to end now
 
-                // TODO: Remove the branches here (ie. take + unwrap)
-                let i = self.buf.take().expect("Iter.buf was None");
-                let m = i.mark();
+                    // TODO: Remove the branches here (ie. take + unwrap)
+                    let i = self.buf.take().expect("Iter.buf was None");
+                    let m = i.mark();
 
-                match (self.data.1, (self.end)().parse(i)) {
-                    // We can always end
-                    (_, (b, Ok(_)))  => {
-                        self.buf   = Some(b);
-                        self.state = EndStateTill::EndSuccess;
+                    match (self.data.1, (self.end)().parse(i)) {
+                        // We can always end
+                        (_, (b, Ok(_)))  => {
+                            self.buf   = Some(b);
+                            self.state = EndStateTill::EndSuccess;
 
-                        return None;
-                    },
-                    // We have reached end, end must match or it is an error
-                    (0, (b, Err(e))) => {
-                        self.buf   = Some(b);
-                        self.state = EndStateTill::Error(From::from(e));
+                            return None;
+                        },
+                        // We have reached end, end must match or it is an error
+                        (0, (b, Err(e))) => {
+                            self.buf   = Some(b);
+                            self.state = EndStateTill::Error(From::from(e));
 
-                        return None;
-                    },
-                    // Failed to end, restore and continue since we can parse more
-                    (_, (b, Err(_))) => self.buf = Some(b.restore(m)),
+                            return None;
+                        },
+                        // Failed to end, restore and continue since we can parse more
+                        (_, (b, Err(_))) => self.buf = Some(b.restore(m)),
+                    }
                 }
             }
+            on {
+                self.data.0  = self.data.0.saturating_sub(1);
+                // Can't overflow unless we forget to end before self.data.1 == 0
+                self.data.1 -= 1;
+            }
         }
-        on {
-            self.data.0  = self.data.0.saturating_sub(1);
-            // Can't overflow unless we forget to end before self.data.1 == 0
-            self.data.1 -= 1;
+        finally(result) {
+            // Got all occurrences of the parser
+            (s, (0, _), EndStateTill::EndSuccess) => (s, Ok(result)),
+            // Did not reach minimum or a failure, propagate
+            (s, (_, _), EndStateTill::Error(e))   => (s, Err(e)),
+            (_, (_, _), EndStateTill::Incomplete) => unreachable!(),
+            // We cannot reach this since we only run the end test once we have reached the
+            // minimum number of matches
+            (_, (_, _), EndStateTill::EndSuccess) => unreachable!()
         }
-    }
-
-    => result {
-        // Got all occurrences of the parser
-        (s, (0, _), EndStateTill::EndSuccess) => (s, Ok(result)),
-        // Did not reach minimum or a failure, propagate
-        (s, (_, _), EndStateTill::Error(e))   => (s, Err(e)),
-        (_, (_, _), EndStateTill::Incomplete) => unreachable!(),
-        // We cannot reach this since we only run the end test once we have reached the
-        // minimum number of matches
-        (_, (_, _), EndStateTill::EndSuccess) => unreachable!()
     }
 }
 
@@ -309,28 +310,28 @@ impl<I: Input, F, G, P, Q, T> BoundedManyTill<I, F, G, T, P::Error> for Range<us
 }
 
 many_iter!{
-    doc:         "Parser iterating over a `RangeFrom`, created using `many(n.., p)`.",
-    struct_name: ManyRangeFromParser,
-    // Inclusive
-    state:       usize,
+    #[derive(Debug)]
+    #[doc="Parser iterating over a `RangeFrom`, created using `many(n.., p)`."]
+    pub struct ManyRangeFromParser {
+        // Inclusive
+        state: usize,
 
-    size_hint(self) {
-        (self.data, None)
-    }
-
-    next(self) {
-        pre {}
-        on  {
-            self.data = self.data.saturating_sub(1);
+        size_hint(self) {
+            (self.data, None)
         }
-    }
-
-    => result {
-        // We got at least n items
-        (s, 0, m, Some(_)) => (s.restore(m), Ok(result)),
-        // Items still remaining, propagate
-        (s, _, _, Some(e)) => (s, Err(e)),
-        (_, _, _, None)    => unreachable!(),
+        next(self) {
+            pre {}
+            on  {
+                self.data = self.data.saturating_sub(1);
+            }
+        }
+        finally(result) {
+            // We got at least n items
+            (s, 0, m, Some(_)) => (s.restore(m), Ok(result)),
+            // Items still remaining, propagate
+            (s, _, _, Some(e)) => (s, Err(e)),
+            (_, _, _, None)    => unreachable!(),
+        }
     }
 }
 
@@ -413,35 +414,35 @@ impl<I, F, P> BoundedSkipMany<I, F, P::Error> for RangeFrom<usize>
 }
 
 many_till_iter! {
-    doc: "Parser iterating over a `RangeFrom` and ending with a final parser, created by `many_till(n.., ...)`",
-    struct_name: ManyTillRangeFromParser,
-    state:       usize,
+    #[derive(Debug)]
+    #[doc="Parser iterating over a `RangeFrom` and ending with a final parser, created by `many_till(n.., ...)`"]
+    pub struct ManyTillRangeFromParser {
+        state: usize,
 
-    size_hint(self) {
-        (self.data, None)
-    }
-
-    next(self) {
-        pre {
-            if self.data == 0 {
-                // We have reached minimum, we can attempt to end now
-                iter_till_end_test!(self);
+        size_hint(self) {
+            (self.data, None)
+        }
+        next(self) {
+            pre {
+                if self.data == 0 {
+                    // We have reached minimum, we can attempt to end now
+                    iter_till_end_test!(self);
+                }
+            }
+            on {
+                self.data = self.data.saturating_sub(1);
             }
         }
-        on {
-            self.data = self.data.saturating_sub(1);
+        finally(result) {
+            // Got all occurrences of the parser
+            (s, 0, EndStateTill::EndSuccess) => (s, Ok(result)),
+            // Did not reach minimum or a failure, propagate
+            (s, _, EndStateTill::Error(e))   => (s, Err(e)),
+            (_, _, EndStateTill::Incomplete) => unreachable!(),
+            // We cannot reach this since we only run the end test once we have reached the
+            // minimum number of matches
+            (_, _, EndStateTill::EndSuccess) => unreachable!()
         }
-    }
-
-    => result {
-        // Got all occurrences of the parser
-        (s, 0, EndStateTill::EndSuccess) => (s, Ok(result)),
-        // Did not reach minimum or a failure, propagate
-        (s, _, EndStateTill::Error(e))   => (s, Err(e)),
-        (_, _, EndStateTill::Incomplete) => unreachable!(),
-        // We cannot reach this since we only run the end test once we have reached the
-        // minimum number of matches
-        (_, _, EndStateTill::EndSuccess) => unreachable!()
     }
 }
 
@@ -471,22 +472,22 @@ impl<I: Input, F, G, P, Q, T> BoundedManyTill<I, F, G, T, P::Error> for RangeFro
 }
 
 many_iter!{
-    doc:         "Parser iterating over a `RangeFull`, created using `many(.., p)`.",
-    struct_name: ManyRangeFullParser,
-    state:       (),
+    #[derive(Debug)]
+    #[doc="Parser iterating over a `RangeFull`, created using `many(.., p)`."]
+    pub struct ManyRangeFullParser {
+        state: (),
 
-    size_hint(self) {
-        (0, None)
-    }
-
-    next(self) {
-        pre {}
-        on  {}
-    }
-
-    => result {
-        (s, (), m, Some(_)) => (s.restore(m), Ok(result)),
-        (_, _, _, None)     => unreachable!(),
+        size_hint(self) {
+            (0, None)
+        }
+        next(self) {
+            pre {}
+            on  {}
+        }
+        finally(result) {
+            (s, (), m, Some(_)) => (s.restore(m), Ok(result)),
+            (_, _, _, None)     => unreachable!(),
+        }
     }
 }
 
@@ -558,27 +559,27 @@ impl<I, F, P> BoundedSkipMany<I, F, P::Error> for RangeFull
 }
 
 many_till_iter! {
-    doc: "Parser iterating over a `RangeFull` and ending with a final parser, created by `many_till(.., ...)`",
-    struct_name: ManyTillRangeFullParser,
-    state:       (),
+    #[derive(Debug)]
+    #[doc="Parser iterating over a `RangeFull` and ending with a final parser, created by `many_till(.., ...)`"]
+    pub struct ManyTillRangeFullParser {
+        state: (),
 
-    size_hint(self) {
-        (0, None)
-    }
-
-    next(self) {
-        pre {
-            // Can end at any time
-            iter_till_end_test!(self);
+        size_hint(self) {
+            (0, None)
         }
-        on  {}
-    }
-
-    => result {
-        (s, (), EndStateTill::EndSuccess) => (s, Ok(result)),
-        (s, (), EndStateTill::Error(e))   => (s, Err(e)),
-        // Nested parser incomplete, propagate if not at end
-        (_, (), EndStateTill::Incomplete) => unreachable!()
+        next(self) {
+            pre {
+                // Can end at any time
+                iter_till_end_test!(self);
+            }
+            on  {}
+        }
+        finally(result) {
+            (s, (), EndStateTill::EndSuccess) => (s, Ok(result)),
+            (s, (), EndStateTill::Error(e))   => (s, Err(e)),
+            // Nested parser incomplete, propagate if not at end
+            (_, (), EndStateTill::Incomplete) => unreachable!()
+        }
     }
 }
 
@@ -607,33 +608,33 @@ impl<I: Input, F, G, P, Q, T> BoundedManyTill<I, F, G, T, P::Error> for RangeFul
 }
 
 many_iter!{
-    doc:         "Parser iterating over a `RangeTo`, created using `many(..n, p)`.",
-    struct_name: ManyRangeToParser,
-    // Exclusive range [0, end)
-    state:       usize,
+    #[derive(Debug)]
+    #[doc="Parser iterating over a `RangeTo`, created using `many(..n, p)`."]
+    pub struct ManyRangeToParser {
+        // Exclusive range [0, end)
+        state: usize,
 
-    size_hint(self) {
-        (0, Some(self.data))
-    }
-
-    next(self) {
-        pre {
-            if self.data == 0 {
-                return None;
+        size_hint(self) {
+            (0, Some(self.data))
+        }
+        next(self) {
+            pre {
+                if self.data == 0 {
+                    return None;
+                }
+            }
+            on {
+                self.data  -= 1;
             }
         }
-        on {
-            self.data  -= 1;
+        finally(result) {
+            // First state or reached max => do not restore to mark since it is from last
+            // iteration
+            (s, 0, _, _)       => (s, Ok(result)),
+            // Inside of range, never outside
+            (s, _, m, Some(_)) => (s.restore(m), Ok(result)),
+            (_, _, _, None)    => unreachable!(),
         }
-    }
-
-    => result {
-        // First state or reached max => do not restore to mark since it is from last
-        // iteration
-        (s, 0, _, _)       => (s, Ok(result)),
-        // Inside of range, never outside
-        (s, _, m, Some(_)) => (s.restore(m), Ok(result)),
-        (_, _, _, None)    => unreachable!(),
     }
 }
 
@@ -718,50 +719,50 @@ impl<I, F, P> BoundedSkipMany<I, F, P::Error> for RangeTo<usize>
 }
 
 many_till_iter! {
-    doc: "Parser iterating over a `RangeTo` and ending with a final parser, created by `many_till(..m, ...)`",
-    struct_name: ManyTillRangeToParser,
-    state:       usize,
+    #[derive(Debug)]
+    #[doc="Parser iterating over a `RangeTo` and ending with a final parser, created by `many_till(..m, ...)`"]
+    pub struct ManyTillRangeToParser {
+        state: usize,
 
-    size_hint(self) {
-        (0, Some(self.data))
-    }
+        size_hint(self) {
+            (0, Some(self.data))
+        }
+        next(self) {
+            pre {
+                // TODO: Remove the branches here (ie. take + unwrap)
+                let i = self.buf.take().expect("Iter.buf was None");
+                let m = i.mark();
 
-    next(self) {
-        pre {
-            // TODO: Remove the branches here (ie. take + unwrap)
-            let i = self.buf.take().expect("Iter.buf was None");
-            let m = i.mark();
+                match (self.data, (self.end)().parse(i)) {
+                    // We can always end
+                    (_, (b, Ok(_)))  => {
+                        self.buf   = Some(b);
+                        self.state = EndStateTill::EndSuccess;
 
-            match (self.data, (self.end)().parse(i)) {
-                // We can always end
-                (_, (b, Ok(_)))  => {
-                    self.buf   = Some(b);
-                    self.state = EndStateTill::EndSuccess;
+                        return None
+                    },
+                    // We have reached end, end must match or it is an error
+                    (0, (b, Err(e))) => {
+                        self.buf   = Some(b);
+                        self.state = EndStateTill::Error(From::from(e));
 
-                    return None
-                },
-                // We have reached end, end must match or it is an error
-                (0, (b, Err(e))) => {
-                    self.buf   = Some(b);
-                    self.state = EndStateTill::Error(From::from(e));
-
-                    return None;
-                },
-                // Failed to end, restore and continue since we can parse more
-                (_, (b, Err(_))) => self.buf = Some(b.restore(m)),
+                        return None;
+                    },
+                    // Failed to end, restore and continue since we can parse more
+                    (_, (b, Err(_))) => self.buf = Some(b.restore(m)),
+                }
+            }
+            on {
+                self.data -= 1;
             }
         }
-        on {
-            self.data -= 1;
+        finally(result) {
+            // Got all occurrences of the parser since we have no minimum bound
+            (s, _, EndStateTill::EndSuccess) => (s, Ok(result)),
+            // Did not reach minimum or a failure, propagate
+            (s, _, EndStateTill::Error(e))   => (s, Err(e)),
+            (_, _, EndStateTill::Incomplete) => unreachable!(),
         }
-    }
-
-    => result {
-        // Got all occurrences of the parser since we have no minimum bound
-        (s, _, EndStateTill::EndSuccess) => (s, Ok(result)),
-        // Did not reach minimum or a failure, propagate
-        (s, _, EndStateTill::Error(e))   => (s, Err(e)),
-        (_, _, EndStateTill::Incomplete) => unreachable!(),
     }
 }
 
@@ -791,32 +792,32 @@ impl<I: Input, F, G, P, Q, T> BoundedManyTill<I, F, G, T, P::Error> for RangeTo<
 }
 
 many_iter!{
-    doc:         "Parser iterating over a `usize`, created using `many(n, p)`.",
-    struct_name: ManyExactParser,
-    // Excatly self
-    state:       usize,
+    #[derive(Debug)]
+    #[doc="Parser iterating over a `usize`, created using `many(n, p)`."]
+    pub struct ManyExactParser {
+        // Excatly self
+        state: usize,
 
-    size_hint(self) {
-        (self.data, Some(self.data))
-    }
-
-    next(self) {
-        pre {
-            if self.data == 0 {
-                return None;
+        size_hint(self) {
+            (self.data, Some(self.data))
+        }
+        next(self) {
+            pre {
+                if self.data == 0 {
+                    return None;
+                }
+            }
+            on {
+                self.data  -= 1;
             }
         }
-        on {
-            self.data  -= 1;
+        finally(result) {
+            // Got exact
+            (s, 0, _, _)       => (s, Ok(result)),
+            // We have got too few items, propagate error
+            (s, _, _, Some(e)) => (s, Err(e)),
+            (_, _, _, None)    => unreachable!(),
         }
-    }
-
-    => result {
-        // Got exact
-        (s, 0, _, _)       => (s, Ok(result)),
-        // We have got too few items, propagate error
-        (s, _, _, Some(e)) => (s, Err(e)),
-        (_, _, _, None)    => unreachable!(),
     }
 }
 
@@ -898,51 +899,51 @@ impl<I, F, P> BoundedSkipMany<I, F, P::Error> for usize
 }
 
 many_till_iter! {
-    doc: "Parser iterating `usize` times and ending with a final parser, created by `many_till(n, ...)`",
-    struct_name: ManyTillExactParser,
-    state:       usize,
+    #[derive(Debug)]
+    #[doc="Parser iterating `usize` times and ending with a final parser, created by `many_till(n, ...)`"]
+    pub struct ManyTillExactParser {
+        state: usize,
 
-    size_hint(self) {
-        (self.data, Some(self.data))
-    }
+        size_hint(self) {
+            (self.data, Some(self.data))
+        }
+        next(self) {
+            pre {
+                if self.data == 0 {
+                    // Reached exact, MUST end here:
 
-    next(self) {
-        pre {
-            if self.data == 0 {
-                // Reached exact, MUST end here:
+                    // TODO: Remove the branches here (ie. take + unwrap)
+                    let i = self.buf.take().expect("Iter.buf was None");
 
-                // TODO: Remove the branches here (ie. take + unwrap)
-                let i = self.buf.take().expect("Iter.buf was None");
+                    match (self.end)().parse(i) {
+                        (b, Ok(_)) => {
+                            self.buf   = Some(b);
+                            self.state = EndStateTill::EndSuccess;
+                        },
+                        // Failed to end, restore and continue
+                        (b, Err(e))      => {
+                            self.buf   = Some(b);
+                            self.state = EndStateTill::Error(e);
+                        },
+                    }
 
-                match (self.end)().parse(i) {
-                    (b, Ok(_)) => {
-                        self.buf   = Some(b);
-                        self.state = EndStateTill::EndSuccess;
-                    },
-                    // Failed to end, restore and continue
-                    (b, Err(e))      => {
-                        self.buf   = Some(b);
-                        self.state = EndStateTill::Error(e);
-                    },
+                    return None;
                 }
-
-                return None;
+            }
+            on {
+                self.data -= 1;
             }
         }
-        on {
-            self.data -= 1;
+        finally(result) {
+            // Got all occurrences of the parser
+            (s, 0, EndStateTill::EndSuccess) => (s, Ok(result)),
+            // Did not reach minimum or a failure, propagate
+            (s, _, EndStateTill::Error(e))   => (s, Err(e)),
+            (_, _, EndStateTill::Incomplete) => unreachable!(),
+            // We cannot reach this since we only run the end test once we have reached the
+            // minimum number of matches
+            (_, _, EndStateTill::EndSuccess) => unreachable!(),
         }
-    }
-
-    => result {
-        // Got all occurrences of the parser
-        (s, 0, EndStateTill::EndSuccess) => (s, Ok(result)),
-        // Did not reach minimum or a failure, propagate
-        (s, _, EndStateTill::Error(e))   => (s, Err(e)),
-        (_, _, EndStateTill::Incomplete) => unreachable!(),
-        // We cannot reach this since we only run the end test once we have reached the
-        // minimum number of matches
-        (_, _, EndStateTill::EndSuccess) => unreachable!(),
     }
 }
 

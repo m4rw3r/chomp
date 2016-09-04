@@ -1,20 +1,20 @@
 macro_rules! many_iter {
     (
-        doc:         $doc:expr,
-        struct_name: $name:ident,
-        state:       $data_ty:ty,
+        $(#[$attr:meta])*
+        pub struct $name:ident {
+            state: $data_ty:ty,
 
-        size_hint($size_hint_self:ident) $size_hint:block
-        next($next_self:ident) {
-            pre $pre_next:block
-            on  $on_next:block
-        }
-
-        => $result:ident {
-             $($pat:pat => $arm:expr),*$(,)*
+            size_hint($size_hint_self:ident) $size_hint:block
+            next($next_self:ident) {
+                pre $pre_next:block
+                on  $on_next:block
+            }
+            finally($result:ident) {
+                 $($pat:pat => $arm:expr),*$(,)*
+            }
         }
     ) => {
-        #[doc=$doc]
+        $(#[$attr])*
         pub struct $name<I, F, P, T>
           where I: Input,
                 F: FnMut() -> P,
@@ -135,21 +135,21 @@ macro_rules! many_iter {
 /// iteration early.
 macro_rules! many_till_iter {
     (
-        doc:         $doc:expr,
-        struct_name: $name:ident,
-        state:       $data_ty:ty,
+        $(#[$attr:meta])*
+        pub struct $name:ident {
+            state:       $data_ty:ty,
 
-        size_hint($size_hint_self:ident) $size_hint:block
-        next($next_self:ident) {
-            pre $pre_next:block
-            on  $on_next:block
-        }
-
-        => $result:ident {
-             $($pat:pat => $arm:expr),*$(,)*
+            size_hint($size_hint_self:ident) $size_hint:block
+            next($next_self:ident) {
+                pre $pre_next:block
+                on  $on_next:block
+            }
+            finally($result:ident) {
+                 $($pat:pat => $arm:expr),*$(,)*
+            }
         }
     ) => {
-        #[doc=$doc]
+        $(#[$attr])*
         pub struct $name<I, F, G, P, Q, T>
           where I: Input,
                 F: FnMut() -> P,
