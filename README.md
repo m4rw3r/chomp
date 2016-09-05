@@ -1,5 +1,6 @@
 # Chomp
 
+[![Gitter](https://badges.gitter.im/m4rw3r/chomp.svg)](https://gitter.im/m4rw3r/chomp?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 [![Build Status](https://travis-ci.org/m4rw3r/chomp.svg?branch=master)](https://travis-ci.org/m4rw3r/chomp)
 [![Coverage Status](https://coveralls.io/repos/m4rw3r/chomp/badge.svg?branch=master&service=github)](https://coveralls.io/github/m4rw3r/chomp?branch=master)
 [![Crates.io](https://img.shields.io/crates/v/chomp.svg)](https://crates.io/crates/chomp)
