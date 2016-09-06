@@ -105,7 +105,7 @@ pub fn or<I: Input, T, E, F, G>(i: I, f: F, g: G) -> ParseResult<I, T, E>
 /// NOTE: If both parsers have the same return-type, use `or` instead.
 ///
 /// ```
-/// use chomp::prelude::{Error, parse_only, either, token, Either, Left, Right};
+/// use chomp::prelude::{Error, parse_only, either, token, Left, Right};
 ///
 /// let p = |i| either(i, |i| token(i, b'a'), |i| token(i, b'b'));
 ///

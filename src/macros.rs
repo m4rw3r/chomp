@@ -66,7 +66,7 @@
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use chomp::prelude::{U8Input, Input, SimpleResult, parse_only, string, token};
+/// use chomp::prelude::{U8Input, SimpleResult, parse_only, string, token};
 /// use chomp::ascii::decimal;
 ///
 /// fn parse_ip<I: U8Input>(i: I) -> SimpleResult<I, (u8, u8, u8, u8)> {
@@ -156,7 +156,7 @@
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
 /// # use chomp::ascii::decimal;
-/// # use chomp::prelude::{parse_only, U8Input, Input, token, SimpleResult};
+/// # use chomp::prelude::{parse_only, U8Input, token, SimpleResult};
 /// # fn my_parser<I: U8Input>(i: I) -> SimpleResult<I, u32> {
 /// parse!{i;
 ///     token(b':');
@@ -367,6 +367,7 @@
 ///
 /// ```
 /// #![recursion_limit="100"]
+/// # fn main() {}
 /// ```
 ///
 /// # Debugging macro expansion

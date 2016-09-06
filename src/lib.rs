@@ -135,6 +135,7 @@
 //!     launch_missiles();
 //!     return (a, b, a + b);
 //! }
+//! # assert_eq!(f(), (3, 3, 6));
 //! ```
 //!
 //! A Chomp parser with a similar structure looks like this:
