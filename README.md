@@ -21,7 +21,7 @@ Add the following line to the dependencies section of your `Cargo.toml`:
 
 ```toml
 [dependencies]
-chomp = "0.3.0"
+chomp = "0.3.1"
 ```
 
 ##Usage
