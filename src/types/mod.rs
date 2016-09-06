@@ -1149,6 +1149,18 @@ pub mod test {
     }
 
     #[test]
+    fn test_boxed() {
+        let p = ret::<_, ()>("foo").boxed().bind(|x| ret(x.to_owned() + "bar").boxed());
+
+        assert_eq!(p.parse(&b"test"[..]), (&b"test"[..], Ok("foobar".to_owned())));
+
+        let v = vec![ret::<_, ()>("foo").boxed(), err::<(), _>("error")];
+
+        assert_eq!(v[0].parse(&b"test2"[..]), (&b"test2"[..], Ok("foo")));
+        assert_eq!(v[1].parse(&b"test2"[..]), (&b"test2"[..], Err("error")));
+    }
+
+    #[test]
     fn test_slice() {
         run_primitives_test(&b"abc"[..], |x| x);
     }
