@@ -112,14 +112,14 @@ impl Buffer for ByteTendril {
 
 #[cfg(test)]
 mod test {
+    use types::Parser;
     use tendril::Tendril;
 
     #[test]
     fn basic() {
         use ascii::decimal;
-        use primitives::IntoInner;
 
-        assert_eq!(decimal(Tendril::from_slice(&b"123"[..])).into_inner(), (Tendril::from_slice(&b""[..]), Ok(123i32)));
+        assert_eq!(decimal().parse(Tendril::from_slice(&b"123"[..])), (Tendril::from_slice(&b""[..]), Ok(123i32)));
     }
 
     #[test]
