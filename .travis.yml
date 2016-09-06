@@ -38,6 +38,7 @@ env:
   matrix:
     - FEATURES="--features noop_error"
     - FEATURES="--features backtrace"
+    - FEATURES="--features tendril"
     # Travis seems to have issues with quotation in env-vars, use a merged feature
     - FEATURES="--features noop_error_and_backtrace"
     - FEATURES=""
