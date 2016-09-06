@@ -112,4 +112,4 @@ assert_eq!(parse_only(name, "Martin Wernstål\n".as_bytes()), Ok(Name{
 
 ##Contact
 
-You can contact the author either through an issue here on GitHub, or you can query him at m4rw3r on mozilla's irc network.
+File an issue [here](https://github.com/m4rw3r/chomp/issues/new) on Github or visit [gitter.im/m4rw3r/chomp](https://gitter.im/m4rw3r/chomp).
