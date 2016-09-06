@@ -9,6 +9,10 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 - `combinators::either`: Like `or` but allows different result types from the parsers.
 
+### Bugfixes
+
+- Feature `tendril` now compiles again.
+
 ## [0.3.0] - 2016-09-01
 
 ### Added
