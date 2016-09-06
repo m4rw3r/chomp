@@ -69,7 +69,7 @@
 /// # #![feature(conservative_impl_trait)]
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use chomp::prelude::{U8Input, Input, Parser, Error, parse_only, string, token, ret};
+/// use chomp::prelude::{U8Input, Parser, Error, parse_only, string, token, ret};
 /// use chomp::ascii::decimal;
 ///
 /// fn parse_ip<I: U8Input>() -> impl Parser<I, Output=(u8, u8, u8, u8), Error=Error<u8>> {
@@ -160,7 +160,7 @@
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
 /// # use chomp::ascii::decimal;
-/// # use chomp::prelude::{parse_only, U8Input, Input, Error, token, Parser, ret};
+/// # use chomp::prelude::{parse_only, U8Input, Error, token, Parser, ret};
 /// # fn my_parser<I: U8Input>() -> impl Parser<I, Output=u32, Error=Error<u8>> {
 /// parse!{
 ///     token(b':');
@@ -224,7 +224,7 @@
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// # use chomp::prelude::{parse_only, Parser, ret};
+/// # use chomp::prelude::{parse_only, ret};
 /// let r: Result<_, (_, ())> = parse_only(
 ///     parse!{ ret("some success data") },
 ///     b"input data"
@@ -332,6 +332,7 @@
 ///
 /// ```
 /// #![recursion_limit="100"]
+/// # fn main() {}
 /// ```
 ///
 /// # Debugging macro expansion

@@ -21,7 +21,7 @@ use types::{Input, Parser};
 ///
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use chomp::prelude::{U8Input, Error, Parser, parse_only, string, eof};
+/// use chomp::prelude::{Error, Parser, parse_only, string, eof};
 ///
 /// let parser = || string(b"pattern").skip(eof());
 ///

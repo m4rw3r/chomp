@@ -5,7 +5,7 @@
 //! # #[macro_use] extern crate chomp;
 //! # fn main() {
 //! use chomp::types::{Input, Parser, ret};
-//! use chomp::types::numbering::{InputPosition, LineNumber, Numbering, position};
+//! use chomp::types::numbering::{InputPosition, LineNumber, position};
 //! use chomp::combinators::many;
 //! use chomp::parsers::{Error, any, take_while1, string};
 //!
