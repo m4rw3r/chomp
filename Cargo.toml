@@ -34,10 +34,11 @@ compiletest_rs = { version = "0.2.1", optional = true }
 clippy         = { version = ">0.0.1", optional = true }
 
 [features]
-# Feature for running extra (compiletime fail) tests on nightly
-unstable      = ["compiletest_rs"]
+core          = []
 noop_error    = []
 backtrace     = ["debugtrace/backtrace"]
+# Feature for running extra (compiletime fail) tests on nightly
+unstable      = ["compiletest_rs"]
 
 # Feature for travis, so that both noop_error and backtrace can be enabled simultaneously
 # without causing parse-errors in the argument parser in travis-cargo.

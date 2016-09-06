@@ -36,12 +36,14 @@ pub trait Buffer: PartialEq<Self> {
     fn len(&self) -> usize;
 
     /// Copies all the tokens in this buffer to a new `Vec`.
+    #[cfg(not(feature = "core"))]
     fn to_vec(&self) -> Vec<Self::Token>;
 
     /// Consumes self to create an owned vector of tokens.
     ///
     /// Will allocate if the implementation borrows storage or does not use an owned type
     /// compatible with `Vec` internally.
+    #[cfg(not(feature = "core"))]
     fn into_vec(self) -> Vec<Self::Token>;
 
     /// Returns true if this buffer is empty.
@@ -70,10 +72,12 @@ impl<'a, I: Copy + PartialEq> Buffer for &'a [I] {
         (&self[..]).len()
     }
 
+    #[cfg(not(feature = "core"))]
     fn to_vec(&self) -> Vec<Self::Token> {
         (&self[..]).to_vec()
     }
 
+    #[cfg(not(feature = "core"))]
     fn into_vec(self) -> Vec<Self::Token> {
         (&self[..]).to_vec()
     }
@@ -102,10 +106,12 @@ impl<'a> Buffer for &'a str {
         (&self[..]).is_empty()
     }
 
+    #[cfg(not(feature = "core"))]
     fn to_vec(&self) -> Vec<Self::Token> {
         (&self[..]).chars().collect()
     }
 
+    #[cfg(not(feature = "core"))]
     fn into_vec(self) -> Vec<Self::Token> {
         (&self[..]).chars().collect()
     }

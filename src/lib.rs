@@ -219,6 +219,14 @@
     single_match_else))]
 #![cfg_attr(feature="clippy", allow(inline_always, many_single_char_names))]
 
+#![cfg_attr(feature="core", no_std)]
+
+/// Inner module to emulate std when using `core`.
+#[cfg(feature = "core")]
+mod std {
+    pub use core::{cell, cmp, fmt, iter, marker, mem, ops, ptr};
+}
+
 #[cfg(feature = "tendril")]
 extern crate tendril;
 
@@ -233,7 +241,9 @@ mod macros;
 mod parse;
 
 pub mod ascii;
-pub mod buffer;
+// FIXME: Import but make it compatible with core by exposing a minimal buffer-helper which doesn't
+// require std
+//pub mod buffer;
 pub mod combinators;
 pub mod parsers;
 pub mod primitives;
