@@ -1228,6 +1228,28 @@ pub mod test {
 
         assert_eq!(s.peek(), None);
         let mut s = s.restore(m);
+        let m = s.mark();
+
+        if let Some(b) = s.consume(3) {
+            let mut v = Vec::new();
+
+            assert_eq!(b.len(), 3);
+            assert_eq!(b.is_empty(), false);
+
+            b.iterate(|c| {
+                v.push(c);
+            });
+
+            assert_eq!(v, [f(b'a'), f(b'b'), f(b'c')]);
+            assert_eq!(b.len(), 3);
+            assert_eq!(b.is_empty(), false);
+        }
+        else {
+            panic!("s.consume(3) failed");
+        }
+
+        assert_eq!(s.peek(), None);
+        let mut s = s.restore(m);
         assert_eq!(s.peek(), Some(f(b'a')));
         let m = s.mark();
 

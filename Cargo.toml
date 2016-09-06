@@ -1,6 +1,6 @@
 [package]
 name          = "chomp"
-version       = "0.3.1+master"
+version       = "0.3.2+master"
 authors       = ["Martin Wernstål <m4rw3r@gmail.com>"]
 description   = "A fast monadic-style parser combinator designed to work on stable Rust."
 documentation = "http://m4rw3r.github.io/chomp"
@@ -8,7 +8,7 @@ homepage      = "http://github.com/m4rw3r/chomp"
 repository    = "http://github.com/m4rw3r/chomp"
 readme        = "README.md"
 keywords      = ["parser", "parser-combinators", "parsing", "streaming"]
-license       = "MIT"
+license       = "MIT/Apache-2.0"
 
 include = [
     "benches/**/*.rs",
@@ -24,7 +24,7 @@ include = [
 [dependencies]
 bitflags   = "0.7.0"
 conv       = { version = "0.3.3", default-features = false, features = ["std"] }
-either     = { version = "0.1.6" }
+either     = { version = "0.1.7" }
 debugtrace = { version = "0.1.0" }
 tendril    = { version = "0.2.2", optional = true }
 

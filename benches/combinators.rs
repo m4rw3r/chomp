@@ -26,10 +26,10 @@ fn count_vec_1k(b: &mut Bencher) {
 
 #[bench]
 fn count_vec_10k(b: &mut Bencher) {
-    let data = iter::repeat(b'a').take(10024).collect::<Vec<u8>>();
+    let data = iter::repeat(b'a').take(10240).collect::<Vec<u8>>();
 
     fn count_vec<I: Input>() -> impl Parser<I, Output=Vec<I::Token>, Error=Error<I::Token>> {
-        count(10024, any)
+        count(10240, any)
     }
 
     b.iter(|| {

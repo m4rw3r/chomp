@@ -1,5 +1,6 @@
 # Chomp
 
+[![Gitter](https://badges.gitter.im/m4rw3r/chomp.svg)](https://gitter.im/m4rw3r/chomp?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 [![Build Status](https://travis-ci.org/m4rw3r/chomp.svg?branch=master)](https://travis-ci.org/m4rw3r/chomp)
 [![Coverage Status](https://coveralls.io/repos/m4rw3r/chomp/badge.svg?branch=master&service=github)](https://coveralls.io/github/m4rw3r/chomp?branch=master)
 [![Crates.io](https://img.shields.io/crates/v/chomp.svg)](https://crates.io/crates/chomp)
@@ -20,7 +21,7 @@ Add the following line to the dependencies section of your `Cargo.toml`:
 
 ```toml
 [dependencies]
-chomp = "0.3.0"
+chomp = "0.3.1"
 ```
 
 ##Usage
@@ -109,6 +110,21 @@ assert_eq!(parse_only(name, "Martin Wernstål\n".as_bytes()), Ok(Name{
 # }
 ```
 
+## License
+
+Licensed under either of
+
+ * Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+ * MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+
+at your option.
+
+### Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in
+the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any
+additional terms or conditions.
+
 ##Contact
 
-You can contact the author either through an issue here on GitHub, or you can query him at m4rw3r on mozilla's irc network.
+File an issue [here](https://github.com/m4rw3r/chomp/issues/new) on Github or visit [gitter.im/m4rw3r/chomp](https://gitter.im/m4rw3r/chomp).

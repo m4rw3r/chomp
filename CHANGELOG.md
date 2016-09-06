@@ -5,9 +5,19 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2016-09-06
+
 ### Added
 
 - `combinators::either`: Like `or` but allows different result types from the parsers.
+
+### Changes
+
+- Chomp is now licensed under both MIT and Apache-2.0 licenses.
+
+### Bugfixes
+
+- Feature `tendril` now compiles again.
 
 ## [0.3.0] - 2016-09-01
 

@@ -36,7 +36,6 @@ impl Input for ByteTendril {
         if n > self.len32() as usize {
             None
         } else {
-            // TODO: How does this work with allocation in the tendril?
             let b = self.subtendril(0, n as u32);
 
             self.pop_front(n as u32);
@@ -50,7 +49,6 @@ impl Input for ByteTendril {
       where F: FnMut(Self::Token) -> bool {
         match self.iter().position(|c| !f(*c)) {
             Some(n) => {
-                // TODO: How does this work with allocation in the tendril?
                 let b = self.subtendril(0, n as u32);
 
                 self.pop_front(n as u32);
@@ -93,11 +91,22 @@ impl Buffer for ByteTendril {
         (&self[..]).iter().cloned().fold(init, f)
     }
 
+    fn iterate<F>(&self, mut f: F)
+      where F: FnMut(Self::Token) {
+        for i in (&self[..]).iter().cloned() {
+            f(i)
+        }
+    }
+
     fn len(&self) -> usize {
         self.len32() as usize
     }
 
-    fn to_vec(self) -> Vec<Self::Token> {
+    fn to_vec(&self) -> Vec<Self::Token> {
+        (&self[..]).iter().cloned().collect()
+    }
+
+    fn into_vec(self) -> Vec<Self::Token> {
         (&self[..]).iter().cloned().collect()
     }
 }
@@ -106,14 +115,16 @@ impl Buffer for ByteTendril {
 mod test {
     use tendril::Tendril;
 
+    #[test]
     fn basic() {
         use ascii::decimal;
         use primitives::IntoInner;
 
-        assert_eq!(decimal(Tendril::from_slice(b"123")).into_inner(), (Tendril::from_slice(b""), Ok(123i32)));
+        assert_eq!(decimal(Tendril::from_slice(&b"123"[..])).into_inner(), (Tendril::from_slice(&b""[..]), Ok(123i32)));
     }
 
+    #[test]
     fn primitives() {
-        ::types::input::test::run_primitives_test(Tendril::from_slice(b"123"), |x| x);
+        ::types::test::run_primitives_test(Tendril::from_slice(&b"abc"[..]), |x| x);
     }
 }
