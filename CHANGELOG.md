@@ -5,6 +5,10 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `parsers::skip_while1` skips at least one token matching a predicate.
+
 ## [0.3.1] - 2016-09-06
 
 ### Added
