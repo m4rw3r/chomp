@@ -107,7 +107,6 @@ assert_eq!(parse_only(name, "Martin Wernstål\n".as_bytes()), Ok(Name{
     first: &b"Martin"[..],
     last: "Wernstål".as_bytes()
 }));
-# }
 ```
 
 ## License
