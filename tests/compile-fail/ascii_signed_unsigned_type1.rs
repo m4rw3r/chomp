@@ -1,13 +1,14 @@
 // error-pattern:error[E0271]: type mismatch resolving `<u16 as conv::ValueFrom<i8>>::Err == conv::errors::NoError`
 
+#![feature(conservative_impl_trait)]
 extern crate chomp;
 
-use chomp::prelude::{U8Input, SimpleResult, parse_only};
+use chomp::prelude::{U8Input, Parser, Error, parse_only};
 use chomp::ascii::{signed, decimal};
 
 // Should not be possible to use unsigned integers with signed
-fn parser<I: U8Input>(i: I) -> SimpleResult<I, u16> {
-    signed(i, decimal)
+fn parser<I: U8Input>() -> impl Parser<I, Output=u16, Error=Error<u8>> {
+    signed(decimal())
 }
 
 fn main() {

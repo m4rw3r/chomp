@@ -1,3 +1,4 @@
+#![feature(conservative_impl_trait)]
 #![feature(test)]
 extern crate test;
 #[macro_use]
@@ -14,12 +15,12 @@ use chomp::buffer::InputBuf;
 fn count_vec_1k(b: &mut Bencher) {
     let data = iter::repeat(b'a').take(1024).collect::<Vec<u8>>();
 
-    fn count_vec<I: Input>(i: I) -> ParseResult<I, Vec<I::Token>, Error<I::Token>> {
-        count(i, 1024, any)
+    fn count_vec<I: Input>() -> impl Parser<I, Output=Vec<I::Token>, Error=Error<I::Token>> {
+        count(1024, any)
     }
 
     b.iter(|| {
-        parse_only(count_vec, &data)
+        count_vec().parse(&data[..])
     })
 }
 
@@ -27,12 +28,12 @@ fn count_vec_1k(b: &mut Bencher) {
 fn count_vec_10k(b: &mut Bencher) {
     let data = iter::repeat(b'a').take(10240).collect::<Vec<u8>>();
 
-    fn count_vec<I: Input>(i: I) -> ParseResult<I, Vec<I::Token>, Error<I::Token>> {
-        count(i, 10240, any)
+    fn count_vec<I: Input>() -> impl Parser<I, Output=Vec<I::Token>, Error=Error<I::Token>> {
+        count(10240, any)
     }
 
     b.iter(|| {
-        parse_only(count_vec, &data)
+        count_vec().parse(&data[..])
     })
 }
 
@@ -40,12 +41,12 @@ fn count_vec_10k(b: &mut Bencher) {
 fn many_vec_1k(b: &mut Bencher) {
     let data = iter::repeat(b'a').take(1024).collect::<Vec<u8>>();
 
-    fn many_vec<I: Input>(i: I) -> ParseResult<I, Vec<I::Token>, Error<I::Token>> {
-        many(i, any)
+    fn many_vec<I: Input>() -> impl Parser<I, Output=Vec<I::Token>, Error=Error<I::Token>> {
+        many(any)
     }
 
     b.iter(|| {
-        parse_only(many_vec, &data)
+        many_vec().parse(&data[..])
     })
 }
 
@@ -53,12 +54,12 @@ fn many_vec_1k(b: &mut Bencher) {
 fn many_vec_10k(b: &mut Bencher) {
     let data = iter::repeat(b'a').take(10024).collect::<Vec<u8>>();
 
-    fn many_vec<I: Input>(i: I) -> ParseResult<I, Vec<I::Token>, Error<I::Token>> {
-        many(i, any)
+    fn many_vec<I: Input>() -> impl Parser<I, Output=Vec<I::Token>, Error=Error<I::Token>> {
+        many(any)
     }
 
     b.iter(|| {
-        parse_only(many_vec, &data)
+        many_vec().parse(&data[..])
     })
 }
 
@@ -66,12 +67,12 @@ fn many_vec_10k(b: &mut Bencher) {
 fn many1_vec_1k(b: &mut Bencher) {
     let data = iter::repeat(b'a').take(1024).collect::<Vec<u8>>();
 
-    fn many1_vec<I: Input>(i: I) -> ParseResult<I, Vec<I::Token>, Error<I::Token>> {
-        many1(i, any)
+    fn many1_vec<I: Input>() -> impl Parser<I, Output=Vec<I::Token>, Error=Error<I::Token>> {
+        many1(any)
     }
 
     b.iter(|| {
-        parse_only(many1_vec, &data)
+        many1_vec().parse(&data[..])
     })
 }
 
@@ -79,12 +80,12 @@ fn many1_vec_1k(b: &mut Bencher) {
 fn many1_vec_10k(b: &mut Bencher) {
     let data = iter::repeat(b'a').take(10024).collect::<Vec<u8>>();
 
-    fn many1_vec<I: Input>(i: I) -> ParseResult<I, Vec<I::Token>, Error<I::Token>> {
-        many1(i, any)
+    fn many1_vec<I: Input>() -> impl Parser<I, Output=Vec<I::Token>, Error=Error<I::Token>> {
+        many1(any)
     }
 
     b.iter(|| {
-        parse_only(many1_vec, &data)
+        many1_vec().parse(&data[..])
     })
 }
 
@@ -92,12 +93,12 @@ fn many1_vec_10k(b: &mut Bencher) {
 fn count_vec_10k_maybe_incomplete(b: &mut Bencher) {
     let data = iter::repeat(b'a').take(10024).collect::<Vec<u8>>();
 
-    fn count_vec<I: Input>(i: I) -> ParseResult<I, Vec<I::Token>, Error<I::Token>> {
-        count(i, 10024, any)
+    fn count_vec<I: Input>() -> impl Parser<I, Output=Vec<I::Token>, Error=Error<I::Token>> {
+        count(10024, any)
     }
 
     b.iter(|| {
-        count_vec(InputBuf::new(&data))
+        count_vec().parse(InputBuf::new(&data))
     })
 }
 
@@ -105,12 +106,12 @@ fn count_vec_10k_maybe_incomplete(b: &mut Bencher) {
 fn many_vec_10k_maybe_incomplete(b: &mut Bencher) {
     let data = iter::repeat(b'a').take(10024).collect::<Vec<u8>>();
 
-    fn many_vec<I: Input>(i: I) -> ParseResult<I, Vec<I::Token>, Error<I::Token>> {
-        many(i, any)
+    fn many_vec<I: Input>() -> impl Parser<I, Output=Vec<I::Token>, Error=Error<I::Token>> {
+        many(any)
     }
 
     b.iter(|| {
-        many_vec(InputBuf::new(&data))
+        many_vec().parse(InputBuf::new(&data))
     })
 }
 
@@ -118,11 +119,11 @@ fn many_vec_10k_maybe_incomplete(b: &mut Bencher) {
 fn many1_vec_10k_maybe_incomplete(b: &mut Bencher) {
     let data = iter::repeat(b'a').take(10024).collect::<Vec<u8>>();
 
-    fn many1_vec<I: Input>(i: I) -> ParseResult<I, Vec<I::Token>, Error<I::Token>> {
-        many1(i, any)
+    fn many1_vec<I: Input>() -> impl Parser<I, Output=Vec<I::Token>, Error=Error<I::Token>> {
+        many1(any)
     }
 
     b.iter(|| {
-        many1_vec(InputBuf::new(&data))
+        many1_vec().parse(InputBuf::new(&data))
     })
 }

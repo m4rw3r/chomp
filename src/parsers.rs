@@ -5,14 +5,10 @@ use std::mem;
 use types::{
     Buffer,
     Input,
-    ParseResult,
+    Parser,
 };
-use primitives::Primitives;
 
 pub use self::error::Error;
-
-/// Result returned from the basic parsers.
-pub type SimpleResult<I, T> = ParseResult<I, T, Error<<I as Input>::Token>>;
 
 // Only export if we have backtraces enabled, in debug/test profiles the StackFrame is only used
 // to debug-print.
@@ -26,13 +22,13 @@ pub use debugtrace::StackFrame;
 /// ```
 /// use chomp::prelude::{parse_only, any};
 ///
-/// assert_eq!(parse_only(any, b"abc"), Ok(b'a'));
+/// assert_eq!(parse_only(any(), b"abc"), Ok(b'a'));
 /// ```
 #[inline]
-pub fn any<I: Input>(mut i: I) -> SimpleResult<I, I::Token> {
-    match i.pop() {
-        Some(c) => i.ret(c),
-        None    => i.err(Error::unexpected()),
+pub fn any<I: Input>() -> impl Parser<I, Output=I::Token, Error=Error<I::Token>> {
+    move |mut i: I| match i.pop() {
+        Some(c) => (i, Ok(c)),
+        None    => (i, Err(Error::unexpected())),
     }
 }
 
@@ -44,14 +40,14 @@ pub fn any<I: Input>(mut i: I) -> SimpleResult<I, I::Token> {
 /// ```
 /// use chomp::prelude::{parse_only, satisfy};
 ///
-/// assert_eq!(parse_only(|i| satisfy(i, |c| c == b'a'), b"abc"), Ok(b'a'));
+/// assert_eq!(parse_only(satisfy(|c| c == b'a'), b"abc"), Ok(b'a'));
 /// ```
 #[inline]
-pub fn satisfy<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Token>
+pub fn satisfy<I: Input, F>(f: F) -> impl Parser<I, Output=I::Token, Error=Error<I::Token>>
   where F: FnOnce(I::Token) -> bool {
-    match i.peek() {
-        Some(c) if f(c) => { i.pop(); i.ret(c) },
-        _               => i.err(Error::unexpected()),
+    move |mut i: I| match i.peek() {
+        Some(c) if f(c) => { i.pop(); (i, Ok(c)) },
+        _               => (i, Err(Error::unexpected())),
     }
 }
 
@@ -64,26 +60,26 @@ pub fn satisfy<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Token>
 /// use chomp::prelude::{parse_only, satisfy_with};
 ///
 /// let r = parse_only(
-///     |i| satisfy_with(i, |c| AsciiExt::to_ascii_uppercase(&c), |c| c == b'T'),
+///     satisfy_with(|c| AsciiExt::to_ascii_uppercase(&c), |c| c == b'T'),
 ///     b"testing");
 ///
 /// assert_eq!(r, Ok(b'T'));
 /// ```
 #[inline]
-pub fn satisfy_with<I: Input, T: Clone, F, P>(mut i: I, f: F, p: P) -> SimpleResult<I, T>
+pub fn satisfy_with<I: Input, T: Clone, F, P>(f: F, p: P) -> impl Parser<I, Output=T, Error=Error<I::Token>>
   where F: FnOnce(I::Token) -> T,
         P: FnOnce(T) -> bool {
-    match i.peek().map(f) {
+    move |mut i: I| match i.peek().map(f) {
         Some(c) => {
             if p(c.clone()) {
                 i.pop();
 
-                i.ret(c)
+                (i, Ok(c))
             } else {
-                i.err(Error::unexpected())
+                (i, Err(Error::unexpected()))
             }
         },
-        _                           => i.err(Error::unexpected()),
+        _ => (i, Err(Error::unexpected())),
     }
 }
 
@@ -94,13 +90,13 @@ pub fn satisfy_with<I: Input, T: Clone, F, P>(mut i: I, f: F, p: P) -> SimpleRes
 /// ```
 /// use chomp::prelude::{parse_only, token};
 ///
-/// assert_eq!(parse_only(|i| token(i, b'a'), b"abc"), Ok(b'a'));
+/// assert_eq!(parse_only(token(b'a'), b"abc"), Ok(b'a'));
 /// ```
 #[inline]
-pub fn token<I: Input>(mut i: I, t: I::Token) -> SimpleResult<I, I::Token> {
-    match i.peek() {
-        Some(c) if c == t => { i.pop(); i.ret(c) },
-        _                 => i.err(Error::expected(t)),
+pub fn token<I: Input>(t: I::Token) -> impl Parser<I, Output=I::Token, Error=Error<I::Token>> {
+    move |mut i: I| match i.peek() {
+        Some(c) if c == t => { i.pop(); (i, Ok(c)) },
+        _                 => (i, Err(Error::expected(t))),
     }
 }
 
@@ -111,13 +107,13 @@ pub fn token<I: Input>(mut i: I, t: I::Token) -> SimpleResult<I, I::Token> {
 /// ```
 /// use chomp::prelude::{parse_only, not_token};
 ///
-/// assert_eq!(parse_only(|i| not_token(i, b'b'), b"abc"), Ok(b'a'));
+/// assert_eq!(parse_only(not_token(b'b'), b"abc"), Ok(b'a'));
 /// ```
 #[inline]
-pub fn not_token<I: Input>(mut i: I, t: I::Token) -> SimpleResult<I, I::Token> {
-    match i.peek() {
-        Some(c) if c != t => { i.pop(); i.ret(c) },
-        _                 => i.err(Error::unexpected()),
+pub fn not_token<I: Input>(t: I::Token) -> impl Parser<I, Output=I::Token, Error=Error<I::Token>> {
+    move |mut i: I| match i.peek() {
+        Some(c) if c != t => { i.pop(); (i, Ok(c)) },
+        _                 => (i, Err(Error::unexpected())),
     }
 }
 
@@ -129,15 +125,17 @@ pub fn not_token<I: Input>(mut i: I, t: I::Token) -> SimpleResult<I, I::Token> {
 /// ```
 /// use chomp::prelude::{parse_only, peek};
 ///
-/// assert_eq!(parse_only(peek, b"abc"), Ok(Some(b'a')));
+/// assert_eq!(parse_only(peek(), b"abc"), Ok(Some(b'a')));
 ///
-/// assert_eq!(parse_only(peek, b""), Ok(None));
+/// assert_eq!(parse_only(peek(), b""), Ok(None));
 /// ```
 #[inline]
-pub fn peek<I: Input>(mut i: I) -> SimpleResult<I, Option<I::Token>> {
-    let t = i.peek();
+pub fn peek<I: Input>() -> impl Parser<I, Output=Option<I::Token>, Error=Error<I::Token>> {
+    |mut i: I| {
+        let t = i.peek();
 
-    i.ret(t)
+        (i, Ok(t))
+    }
 }
 
 /// Matches any item but does not consume it.
@@ -147,13 +145,13 @@ pub fn peek<I: Input>(mut i: I) -> SimpleResult<I, Option<I::Token>> {
 /// ```
 /// use chomp::prelude::{parse_only, peek_next};
 ///
-/// assert_eq!(parse_only(peek_next, b"abc"), Ok(b'a'));
+/// assert_eq!(parse_only(peek_next(), b"abc"), Ok(b'a'));
 /// ```
 #[inline]
-pub fn peek_next<I: Input>(mut i: I) -> SimpleResult<I, I::Token> {
-    match i.peek() {
-        Some(c) => i.ret(c),
-        None    => i.err(Error::unexpected()),
+pub fn peek_next<I: Input>() -> impl Parser<I, Output=I::Token, Error=Error<I::Token>> {
+    move |mut i: I| match i.peek() {
+        Some(c) => (i, Ok(c)),
+        None    => (i, Err(Error::unexpected())),
     }
 }
 
@@ -164,14 +162,13 @@ pub fn peek_next<I: Input>(mut i: I) -> SimpleResult<I, I::Token> {
 /// ```
 /// use chomp::prelude::{parse_only, take};
 ///
-/// assert_eq!(parse_only(|i| take(i, 3), b"abcd"), Ok(&b"abc"[..]));
+/// assert_eq!(parse_only(take(3), b"abcd"), Ok(&b"abc"[..]));
 /// ```
 #[inline]
-pub fn take<I: Input>(mut i: I, num: usize) -> SimpleResult<I, I::Buffer> {
-    match i.consume(num) {
-        Some(b) => i.ret(b),
-        // TODO: Proper incomplete error here?
-        None    => i.err(Error::unexpected()),
+pub fn take<I: Input>(num: usize) -> impl Parser<I, Output=I::Buffer, Error=Error<I::Token>> {
+    move |mut i: I| match i.consume(num) {
+        Some(b) => (i, Ok(b)),
+        None    => (i, Err(Error::unexpected())),
     }
 }
 
@@ -183,7 +180,7 @@ pub fn take<I: Input>(mut i: I, num: usize) -> SimpleResult<I, I::Buffer> {
 /// ```
 /// use chomp::prelude::{parse_only, take_while};
 ///
-/// let r = parse_only(|i| take_while(i, |c| c == b'a' || c == b'b'), b"abcdcba");
+/// let r = parse_only(take_while(|c| c == b'a' || c == b'b'), b"abcdcba");
 ///
 /// assert_eq!(r, Ok(&b"ab"[..]));
 /// ```
@@ -193,16 +190,18 @@ pub fn take<I: Input>(mut i: I, num: usize) -> SimpleResult<I, I::Buffer> {
 /// ```
 /// use chomp::prelude::{parse_only, take_while};
 ///
-/// let r = parse_only(|i| take_while(i, |c| c == b'z'), b"abcdcba");
+/// let r = parse_only(take_while(|c| c == b'z'), b"abcdcba");
 ///
 /// assert_eq!(r, Ok(&b""[..]));
 /// ```
 #[inline]
-pub fn take_while<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Buffer>
+pub fn take_while<I: Input, F>(f: F) -> impl Parser<I, Output=I::Buffer, Error=Error<I::Token>>
   where F: FnMut(I::Token) -> bool {
-    let b = i.consume_while(f);
+    move |mut i: I| {
+        let b = i.consume_while(f);
 
-    i.ret(b)
+        (i, Ok(b))
+    }
 }
 
 /// Matches all items while ``f`` returns true, if at least one item matched this parser succeeds
@@ -214,35 +213,39 @@ pub fn take_while<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Buffer>
 /// ```
 /// use chomp::prelude::{parse_only, take_while1};
 ///
-/// let r = parse_only(|i| take_while1(i, |c| c == b'a' || c == b'b'), b"abcdcba");
+/// let r = parse_only(take_while1(|c| c == b'a' || c == b'b'), b"abcdcba");
 ///
 /// assert_eq!(r, Ok(&b"ab"[..]));
 /// ```
 #[inline]
-pub fn take_while1<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, I::Buffer>
+pub fn take_while1<I: Input, F>(f: F) -> impl Parser<I, Output=I::Buffer, Error=Error<I::Token>>
   where F: FnMut(I::Token) -> bool {
-    let b = i.consume_while(f);
+    move |mut i: I| {
+        let b = i.consume_while(f);
 
-    if b.is_empty() {
-        i.err(Error::unexpected())
-    } else {
-        i.ret(b)
+        if b.is_empty() {
+            (i, Err(Error::unexpected()))
+        } else {
+            (i, Ok(b))
+        }
     }
 }
 
 /// Skips over tokens in the input until `f` returns false.
 ///
 /// ```
-/// use chomp::prelude::{parse_only, skip_while};
+/// use chomp::prelude::{Parser, skip_while};
 ///
-/// assert_eq!(parse_only(|i| skip_while(i, |c| c == b'a'), &b"aaabc"[..]), Ok(()));
+/// assert_eq!(skip_while(|c| c == b'a').parse(&b"aaabc"[..]), (&b"bc"[..], Ok(())));
 /// ```
 #[inline]
-pub fn skip_while<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, ()>
+pub fn skip_while<I: Input, F>(f: F) -> impl Parser<I, Output=(), Error=Error<I::Token>>
   where F: FnMut(I::Token) -> bool {
-    i.skip_while(f);
+    move |mut i: I| {
+        i.skip_while(f);
 
-    i.ret(())
+        (i, Ok(()))
+    }
 }
 
 /// Skips over tokens in the input until `f` returns false, skips at least one token and fails if
@@ -270,29 +273,31 @@ pub fn skip_while1<I: Input, F>(i: I, mut f: F) -> SimpleResult<I, ()>
 /// ```
 /// use chomp::prelude::{parse_only, take_till};
 ///
-/// let r = parse_only(|i| take_till(i, |c| c == b'd'), b"abcdef");
+/// let r = parse_only(take_till(|c| c == b'd'), b"abcdef");
 ///
 /// assert_eq!(r, Ok(&b"abc"[..]));
 /// ```
 #[inline]
-pub fn take_till<I: Input, F>(mut i: I, mut f: F) -> SimpleResult<I, I::Buffer>
+pub fn take_till<I: Input, F>(mut f: F) -> impl Parser<I, Output=I::Buffer, Error=Error<I::Token>>
   where F: FnMut(I::Token) -> bool {
-    let mut ok = false;
+    move |mut i: I| {
+        let mut ok = false;
 
-    let b = i.consume_while(|c| {
-        if f(c) {
-            ok = true;
+        let b = i.consume_while(|c| {
+            if f(c) {
+                ok = true;
 
-            false
+                false
+            } else {
+                true
+            }
+        });
+
+        if ok {
+            (i, Ok(b))
         } else {
-            true
+            (i, Err(Error::unexpected()))
         }
-    });
-
-    if ok {
-        i.ret(b)
-    } else {
-        i.err(Error::unexpected())
     }
 }
 
@@ -302,7 +307,7 @@ pub fn take_till<I: Input, F>(mut i: I, mut f: F) -> SimpleResult<I, I::Buffer>
 /// ```
 /// use chomp::prelude::{parse_only, scan};
 ///
-/// let p = |i| scan(i, false, |s, c| match (s, c) {
+/// let p = scan(false, |s, c| match (s, c) {
 ///     (true, b'/') => None,
 ///     (_,    b'*') => Some(true),
 ///     (_, _)       => Some(false),
@@ -311,13 +316,15 @@ pub fn take_till<I: Input, F>(mut i: I, mut f: F) -> SimpleResult<I, I::Buffer>
 /// assert_eq!(parse_only(p, b"/*test*of*scan*/ foo"), Ok(&b"/*test*of*scan*"[..]));
 /// ```
 #[inline]
-pub fn scan<I: Input, S, F>(mut i: I, s: S, mut f: F) -> SimpleResult<I, I::Buffer>
+pub fn scan<I: Input, S, F>(s: S, mut f: F) -> impl Parser<I, Output=I::Buffer, Error=Error<I::Token>>
   where F: FnMut(S, I::Token) -> Option<S> {
-    let mut state = Some(s);
+    move |mut i: I| {
+        let mut state = Some(s);
 
-    let b = i.consume_while(|c| { state = f(mem::replace(&mut state, None).expect("scan: Failed to obtain state, consume_while most likely called closure after end"), c); state.is_some() });
+        let b = i.consume_while(|c| { state = f(mem::replace(&mut state, None).expect("scan: Failed to obtain state, consume_while most likely called closure after end"), c); state.is_some() });
 
-    i.ret(b)
+        (i, Ok(b))
+    }
 }
 
 /// Like `scan` but generalized to return the final state of the scanner.
@@ -325,7 +332,7 @@ pub fn scan<I: Input, S, F>(mut i: I, s: S, mut f: F) -> SimpleResult<I, I::Buff
 /// ```
 /// use chomp::prelude::{parse_only, run_scanner};
 ///
-/// let p = |i| run_scanner(i, 0, |s, c| match (s, c) {
+/// let p = run_scanner(0, |s, c| match (s, c) {
 ///     (b'*', b'/') => None,
 ///     (_,    c)    => Some(c),
 /// });
@@ -334,19 +341,21 @@ pub fn scan<I: Input, S, F>(mut i: I, s: S, mut f: F) -> SimpleResult<I, I::Buff
 /// ```
 #[inline]
 // TODO: Remove Copy bound on S
-pub fn run_scanner<I: Input, S: Copy, F>(mut i: I, s: S, mut f: F) -> SimpleResult<I, (I::Buffer, S)>
+pub fn run_scanner<I: Input, S: Copy, F>(s: S, mut f: F) -> impl Parser<I, Output=(I::Buffer, S), Error=Error<I::Token>>
   where F: FnMut(S, I::Token) -> Option<S> {
-    let mut state = s;
+    move |mut i: I| {
+        let mut state = s;
 
-    let b = i.consume_while(|c| {
-        let t = f(state, c);
-        match t {
-            None    => false,
-            Some(v) => { state = v; true }
-        }
-    });
+        let b = i.consume_while(|c| {
+            let t = f(state, c);
+            match t {
+                None    => false,
+                Some(v) => { state = v; true }
+            }
+        });
 
-    i.ret((b, state))
+        (i, Ok((b, state)))
+    }
 }
 
 /// Matches the remainder of the buffer and returns it, always succeeds.
@@ -354,13 +363,15 @@ pub fn run_scanner<I: Input, S: Copy, F>(mut i: I, s: S, mut f: F) -> SimpleResu
 /// ```
 /// use chomp::prelude::{parse_only, take_remainder};
 ///
-/// assert_eq!(parse_only(take_remainder, b"abcd"), Ok(&b"abcd"[..]));
+/// assert_eq!(parse_only(take_remainder(), b"abcd"), Ok(&b"abcd"[..]));
 /// ```
 #[inline]
-pub fn take_remainder<I: Input>(mut i: I) -> SimpleResult<I, I::Buffer> {
-    let b = i.consume_remaining();
+pub fn take_remainder<I: Input>() -> impl Parser<I, Output=I::Buffer, Error=Error<I::Token>> {
+    move |mut i: I| {
+        let b = i.consume_remaining();
 
-    i.ret(b)
+        (i, Ok(b))
+    }
 }
 
 /// Matches the given slice against the parser, returning the matched slice upon success.
@@ -371,49 +382,51 @@ pub fn take_remainder<I: Input>(mut i: I) -> SimpleResult<I, I::Buffer> {
 /// ```
 /// use chomp::prelude::{parse_only, string};
 ///
-/// assert_eq!(parse_only(|i| string(i, b"abc"), b"abcdef"), Ok(&b"abc"[..]));
+/// assert_eq!(parse_only(string(b"abc"), b"abcdef"), Ok(&b"abc"[..]));
 /// ```
 // TODO: Does not actually work with &str yet
 #[inline]
-pub fn string<T: Copy + PartialEq, I: Input<Token=T>>(mut i: I, s: &[T])
-    -> SimpleResult<I, I::Buffer> {
-    let mut n = 0;
-    let len   = s.len();
+// pub fn string<'a, I: Input>(s: &'a [I::Token]) -> impl Parser<I, Output=I::Buffer, Error=Error<I::Token>> {
+pub fn string<I: Input>(s: &'static [I::Token]) -> impl Parser<I, Output=I::Buffer, Error=Error<I::Token>> {
+    move |mut i: I| {
+        let mut n = 0;
+        let len   = s.len();
 
-    // TODO: There has to be some more efficient way here
-    let b = i.consume_while(|c| {
-        if n >= len || c != s[n] {
-            false
+        // TODO: There has to be some more efficient way here
+        let b = i.consume_while(|c| {
+            if n >= len || c != s[n] {
+                false
+            }
+            else {
+                n += 1;
+
+                true
+            }
+        });
+
+        if n >= len {
+            (i, Ok(b))
+        } else {
+            (i, Err(Error::expected(s[n])))
         }
-        else {
-            n += 1;
-
-            true
-        }
-    });
-
-    if n >= len {
-        i.ret(b)
-    } else {
-        i.err(Error::expected(s[n]))
     }
 }
 
 /// Matches the end of the input.
 ///
 /// ```
-/// use chomp::prelude::{parse_only, token, eof};
+/// use chomp::prelude::{Parser, parse_only, token, eof};
 ///
-/// let r = parse_only(|i| token(i, b'a').then(eof), b"a");
+/// let r = parse_only(token(b'a').then(eof()), b"a");
 ///
 /// assert_eq!(r, Ok(()));
 /// ```
 #[inline]
-pub fn eof<I: Input>(mut i: I) -> SimpleResult<I, ()> {
-    if i.peek() == None {
-        i.ret(())
+pub fn eof<I: Input>() -> impl Parser<I, Output=(), Error=Error<I::Token>> {
+    move |mut i: I| if i.peek() == None {
+        (i, Ok(()))
     } else {
-        i.err(Error::unexpected())
+        (i, Err(Error::unexpected()))
     }
 }
 
@@ -575,9 +588,8 @@ mod error {
 
 #[cfg(test)]
 mod test {
-    use primitives::IntoInner;
     use super::*;
-    use types::{Input, ParseResult};
+    use types::{Buffer, Input, Parser, ret};
 
     #[test]
     fn parse_decimal() {
@@ -585,114 +597,107 @@ mod test {
             c >= b'0' && c <= b'9'
         }
 
-        fn decimal<'i, I: Input<Token=u8, Buffer=&'i [u8]>>(i: I) -> SimpleResult<I, usize> {
-            take_while1(i, is_digit).bind(|i, bytes|
-                i.ret(bytes.iter().fold(0, |a, b| a * 10 + (b - b'0') as usize)))
+        fn decimal<I: Input<Token=u8>>() -> impl Parser<I, Output=usize, Error=Error<u8>> {
+            take_while1(is_digit).bind(|bytes: I::Buffer|
+                ret(bytes.fold(0, |a, b| a * 10 + (b - b'0') as usize)))
         }
 
         let i = &b"123.4567 "[..];
 
-        let p = decimal(i).bind(|i, real|
-            token(i, b'.').bind(|i, _|
-                decimal(i).bind(|i, frac|
-                    i.ret((real, frac)))));
+        let p = decimal().bind(|real| token(b'.').then(decimal().map(move |frac| (real, frac))))
+            .bind(|num| take_remainder().map(move |r| (r, num)));
 
-        // ParseResult necessary here due to inference, for some reason is
-        // `Error<<I as Input>::Token>` not specific enough to actually help inference.
-        let d: ParseResult<_, _, Error<u8>> = p.bind(|i, num| take_remainder(i)
-                                           .bind(|i, r| i.ret((r, num))));
-
-        assert_eq!(d.into_inner(), (&b""[..], Ok((&b" "[..], (123, 4567)))));
+        assert_eq!(p.parse(i), (&b""[..], Ok((&b" "[..], (123, 4567)))));
     }
 
     #[test]
     fn parse_remainder_empty() {
-        assert_eq!(take_remainder(&b""[..]).into_inner(), (&b""[..], Ok(&b""[..])));
+        assert_eq!(take_remainder().parse(&b""[..]), (&b""[..], Ok(&b""[..])));
     }
 
     #[test]
     fn take_while1_empty() {
-        assert_eq!(take_while1(&b""[..], |_| true).into_inner(), (&b""[..], Err(Error::unexpected())));
+        assert_eq!(take_while1(|_| true).parse(&b""[..]), (&b""[..], Err(Error::unexpected())));
     }
 
     #[test]
     fn token_test() {
-        assert_eq!(token(&b""[..],   b'a').into_inner(), (&b""[..],   Err(Error::expected(b'a'))));
-        assert_eq!(token(&b"ab"[..], b'a').into_inner(), (&b"b"[..],  Ok(b'a')));
-        assert_eq!(token(&b"bb"[..], b'a').into_inner(), (&b"bb"[..], Err(Error::expected(b'a'))));
+        assert_eq!(token(b'a').parse(&b""[..]), (&b""[..],   Err(Error::expected(b'a'))));
+        assert_eq!(token(b'a').parse(&b"ab"[..]), (&b"b"[..],  Ok(b'a')));
+        assert_eq!(token(b'a').parse(&b"bb"[..]), (&b"bb"[..], Err(Error::expected(b'a'))));
     }
 
     #[test]
     fn take_test() {
-        assert_eq!(take(&b""[..],   0).into_inner(), (&b""[..],  Ok(&b""[..])));
-        assert_eq!(take(&b"a"[..],  0).into_inner(), (&b"a"[..], Ok(&b""[..])));
-        assert_eq!(take(&b"a"[..],  1).into_inner(), (&b""[..],  Ok(&b"a"[..])));
-        assert_eq!(take(&b"a"[..],  2).into_inner(), (&b"a"[..], Err(Error::unexpected())));
-        assert_eq!(take(&b"a"[..],  3).into_inner(), (&b"a"[..], Err(Error::unexpected())));
-        assert_eq!(take(&b"ab"[..], 1).into_inner(), (&b"b"[..], Ok(&b"a"[..])));
-        assert_eq!(take(&b"ab"[..], 2).into_inner(), (&b""[..],  Ok(&b"ab"[..])));
+        assert_eq!(take(0).parse(&b""[..]), (&b""[..],  Ok(&b""[..])));
+        assert_eq!(take(0).parse(&b"a"[..]), (&b"a"[..], Ok(&b""[..])));
+        assert_eq!(take(1).parse(&b"a"[..]), (&b""[..],  Ok(&b"a"[..])));
+        assert_eq!(take(2).parse(&b"a"[..]), (&b"a"[..], Err(Error::unexpected())));
+        assert_eq!(take(3).parse(&b"a"[..]), (&b"a"[..], Err(Error::unexpected())));
+        assert_eq!(take(1).parse(&b"ab"[..]), (&b"b"[..], Ok(&b"a"[..])));
+        assert_eq!(take(2).parse(&b"ab"[..]), (&b""[..],  Ok(&b"ab"[..])));
     }
 
     #[test]
     fn take_while_test() {
-        assert_eq!(take_while(&b""[..],    |c| c != b'b').into_inner(), (&b""[..],    Ok(&b""[..])));
-        assert_eq!(take_while(&b"a"[..],   |c| c != b'b').into_inner(), (&b""[..],    Ok(&b"a"[..])));
-        assert_eq!(take_while(&b"b"[..],   |c| c != b'b').into_inner(), (&b"b"[..],   Ok(&b""[..])));
-        assert_eq!(take_while(&b"abc"[..], |c| c != b'b').into_inner(), (&b"bc"[..],  Ok(&b"a"[..])));
-        assert_eq!(take_while(&b"bbc"[..], |c| c != b'b').into_inner(), (&b"bbc"[..], Ok(&b""[..])));
-        assert_eq!(take_while(&b"bbc"[..], |c| c != b'b').into_inner(), (&b"bbc"[..], Ok(&b""[..])));
-        assert_eq!(take_while(&b"abc"[..], |c| c != b'b').into_inner(), (&b"bc"[..],  Ok(&b"a"[..])));
-        assert_eq!(take_while(&b"acc"[..], |c| c != b'b').into_inner(), (&b""[..],    Ok(&b"acc"[..])));
+        assert_eq!(take_while(|c| c != b'b').parse(&b""[..]), (&b""[..],    Ok(&b""[..])));
+        assert_eq!(take_while(|c| c != b'b').parse(&b"a"[..]), (&b""[..],    Ok(&b"a"[..])));
+        assert_eq!(take_while(|c| c != b'b').parse(&b"b"[..]), (&b"b"[..],   Ok(&b""[..])));
+        assert_eq!(take_while(|c| c != b'b').parse(&b"abc"[..]), (&b"bc"[..],  Ok(&b"a"[..])));
+        assert_eq!(take_while(|c| c != b'b').parse(&b"bbc"[..]), (&b"bbc"[..], Ok(&b""[..])));
+        assert_eq!(take_while(|c| c != b'b').parse(&b"bbc"[..]), (&b"bbc"[..], Ok(&b""[..])));
+        assert_eq!(take_while(|c| c != b'b').parse(&b"abc"[..]), (&b"bc"[..],  Ok(&b"a"[..])));
+        assert_eq!(take_while(|c| c != b'b').parse(&b"acc"[..]), (&b""[..],    Ok(&b"acc"[..])));
     }
 
     #[test]
     fn take_while1_test() {
-        assert_eq!(take_while1(&b""[..],    |c| c != b'b').into_inner(), (&b""[..],    Err(Error::unexpected())));
-        assert_eq!(take_while1(&b"a"[..],   |c| c != b'b').into_inner(), (&b""[..],    Ok(&b"a"[..])));
-        assert_eq!(take_while1(&b"b"[..],   |c| c != b'b').into_inner(), (&b"b"[..],   Err(Error::unexpected())));
-        assert_eq!(take_while1(&b"ab"[..],  |c| c != b'b').into_inner(), (&b"b"[..],   Ok(&b"a"[..])));
-        assert_eq!(take_while1(&b"abc"[..], |c| c != b'b').into_inner(), (&b"bc"[..],  Ok(&b"a"[..])));
-        assert_eq!(take_while1(&b"bbc"[..], |c| c != b'b').into_inner(), (&b"bbc"[..], Err(Error::unexpected())));
-        assert_eq!(take_while1(&b"bbc"[..], |c| c != b'b').into_inner(), (&b"bbc"[..], Err(Error::unexpected())));
-        assert_eq!(take_while1(&b"abc"[..], |c| c != b'b').into_inner(), (&b"bc"[..],  Ok(&b"a"[..])));
-        assert_eq!(take_while1(&b"acc"[..], |c| c != b'b').into_inner(), (&b""[..],    Ok(&b"acc"[..])));
+        assert_eq!(take_while1(|c| c != b'b').parse(&b""[..]), (&b""[..],    Err(Error::unexpected())));
+        assert_eq!(take_while1(|c| c != b'b').parse(&b"a"[..]), (&b""[..],    Ok(&b"a"[..])));
+        assert_eq!(take_while1(|c| c != b'b').parse(&b"b"[..]), (&b"b"[..],   Err(Error::unexpected())));
+        assert_eq!(take_while1(|c| c != b'b').parse(&b"ab"[..]), (&b"b"[..],   Ok(&b"a"[..])));
+        assert_eq!(take_while1(|c| c != b'b').parse(&b"abc"[..]), (&b"bc"[..],  Ok(&b"a"[..])));
+        assert_eq!(take_while1(|c| c != b'b').parse(&b"bbc"[..]), (&b"bbc"[..], Err(Error::unexpected())));
+        assert_eq!(take_while1(|c| c != b'b').parse(&b"bbc"[..]), (&b"bbc"[..], Err(Error::unexpected())));
+        assert_eq!(take_while1(|c| c != b'b').parse(&b"abc"[..]), (&b"bc"[..],  Ok(&b"a"[..])));
+        assert_eq!(take_while1(|c| c != b'b').parse(&b"acc"[..]), (&b""[..],    Ok(&b"acc"[..])));
     }
 
     #[test]
     fn peek_next_test() {
-        assert_eq!(peek_next(&b"abc"[..]).into_inner(), (&b"abc"[..], Ok(b'a')));
-        assert_eq!(peek_next(&b"abc"[..]).into_inner(), (&b"abc"[..], Ok(b'a')));
-        assert_eq!(peek_next(&b""[..]).into_inner(),    (&b""[..],    Err(Error::unexpected())));
-        assert_eq!(peek_next(&b""[..]).into_inner(),    (&b""[..],    Err(Error::unexpected())));
+        assert_eq!(peek_next().parse(&b"abc"[..]), (&b"abc"[..], Ok(b'a')));
+        assert_eq!(peek_next().parse(&b"abc"[..]), (&b"abc"[..], Ok(b'a')));
+        assert_eq!(peek_next().parse(&b""[..]),    (&b""[..],    Err(Error::unexpected())));
+        assert_eq!(peek_next().parse(&b""[..]),    (&b""[..],    Err(Error::unexpected())));
     }
 
     #[test]
     fn satisfy_with_test() {
         let mut m1 = 0;
         let mut n1 = 0;
-        assert_eq!(satisfy_with(&b"abc"[..], |m| { m1 += 1; m % 8 }, |n| { n1 += 1; n == 1 }).into_inner(), (&b"bc"[..], Ok(1)));
+        assert_eq!(satisfy_with(|m| { m1 += 1; m % 8 }, |n| { n1 += 1; n == 1 }).parse(&b"abc"[..]), (&b"bc"[..], Ok(1)));
         assert_eq!(m1, 1);
         assert_eq!(n1, 1);
 
         let mut m2 = 0;
         let mut n2 = 0;
-        assert_eq!(satisfy_with(&b""[..], |m| { m2 += 1; m % 8 }, |n| { n2 += 1; n == 1 }).into_inner(), (&b""[..], Err(Error::unexpected())));
+        assert_eq!(satisfy_with(|m| { m2 += 1; m % 8 }, |n| { n2 += 1; n == 1 }).parse(&b""[..]), (&b""[..], Err(Error::unexpected())));
         assert_eq!(m2, 0);
         assert_eq!(n2, 0);
     }
 
     #[test]
     fn string_test() {
-        assert_eq!(string(&b""[..],    b"").into_inner(),      (&b""[..],    Ok(&b""[..])));
-        assert_eq!(string(&b""[..],    b"a").into_inner(),     (&b""[..],    Err(Error::expected(b'a'))));
-        assert_eq!(string(&b"a"[..],   b"a").into_inner(),     (&b""[..],    Ok(&b"a"[..])));
-        assert_eq!(string(&b"b"[..],   b"a").into_inner(),     (&b"b"[..],   Err(Error::expected(b'a'))));
-        assert_eq!(string(&b"abc"[..], b"a").into_inner(),     (&b"bc"[..],  Ok(&b"a"[..])));
-        assert_eq!(string(&b"abc"[..], b"ab").into_inner(),    (&b"c"[..],   Ok(&b"ab"[..])));
-        assert_eq!(string(&b"abc"[..], b"abc").into_inner(),   (&b""[..],    Ok(&b"abc"[..])));
-        assert_eq!(string(&b"abc"[..], b"abcd").into_inner(),  (&b""[..],    Err(Error::expected(b'd'))));
-        assert_eq!(string(&b"abc"[..], b"abcde").into_inner(), (&b""[..],    Err(Error::expected(b'd'))));
-        assert_eq!(string(&b"abc"[..], b"ac").into_inner(),    (&b"bc"[..],  Err(Error::expected(b'c'))));
+        assert_eq!(string(b""     ).parse(&b""[..]),      (&b""[..],    Ok(&b""[..])));
+        assert_eq!(string(b"a"    ).parse(&b""[..]),     (&b""[..],    Err(Error::expected(b'a'))));
+        assert_eq!(string(b"a"    ).parse(&b"a"[..]),     (&b""[..],    Ok(&b"a"[..])));
+        assert_eq!(string(b"a"    ).parse(&b"b"[..]),     (&b"b"[..],   Err(Error::expected(b'a'))));
+        assert_eq!(string(b"a"    ).parse(&b"abc"[..]),     (&b"bc"[..],  Ok(&b"a"[..])));
+        assert_eq!(string(b"ab"   ).parse(&b"abc"[..]),    (&b"c"[..],   Ok(&b"ab"[..])));
+        assert_eq!(string(b"abc"  ).parse(&b"abc"[..]),   (&b""[..],    Ok(&b"abc"[..])));
+        assert_eq!(string(b"abcd" ).parse(&b"abc"[..]),  (&b""[..],    Err(Error::expected(b'd'))));
+        assert_eq!(string(b"abcde").parse(&b"abc"[..]), (&b""[..],    Err(Error::expected(b'd'))));
+        assert_eq!(string(b"ac"   ).parse(&b"abc"[..]),    (&b"bc"[..],  Err(Error::expected(b'c'))));
     }
 
     #[test]

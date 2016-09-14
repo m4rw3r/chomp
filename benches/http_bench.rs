@@ -1,4 +1,6 @@
 #![feature(test)]
+#![feature(trace_macros)]
+#![feature(conservative_impl_trait)]
 extern crate test;
 #[macro_use]
 extern crate chomp;
@@ -51,65 +53,66 @@ fn is_not_space(c: u8)        -> bool { c != b' ' }
 fn is_end_of_line(c: u8)      -> bool { c == b'\r' || c == b'\n' }
 fn is_http_version(c: u8)     -> bool { c >= b'0' && c <= b'9' || c == b'.' }
 
-fn end_of_line<I: U8Input>(i: I) -> SimpleResult<I, u8> {
-    parse!{i; (token(b'\r') <|> ret b'\0') >> token(b'\n')}
+fn end_of_line<I: Input<Token=u8>>() -> impl Parser<I, Output=u8, Error=Error<u8>> {
+    parse!{(token(b'\r') <|> ret(b'\0')) >> token(b'\n')}
 }
 
-fn http_version<I: U8Input>(i: I) -> SimpleResult<I, I::Buffer> {
-    parse!{i;
+fn http_version<I: Input<Token=u8>>() -> impl Parser<I, Output=I::Buffer, Error=Error<u8>> {
+    parse!{
         string(b"HTTP/");
         take_while1(is_http_version)
     }
 }
 
-fn request_line<I: U8Input>(i: I) -> SimpleResult<I, Request<I::Buffer>> {
-    parse!{i;
+fn request_line<I: Input<Token=u8>>() -> impl Parser<I, Output=Request<I::Buffer>, Error=Error<u8>> {
+    parse!{
         let method  = take_while1(is_token);
                       take_while1(is_space);
         let uri     = take_while1(is_not_space);
                       take_while1(is_space);
         let version = http_version();
 
-        ret Request {
+        ret(Request {
             method:  method,
             uri:     uri,
             version: version,
-        }
+        })
     }
 }
 
-fn message_header_line<I: U8Input>(i: I) -> SimpleResult<I, I::Buffer> {
-    parse!{i;
+fn message_header_line<I: Input<Token=u8>>() -> impl Parser<I, Output=I::Buffer, Error=Error<u8>> {
+    parse!{
                    take_while1(is_horizontal_space);
         let line = take_till(is_end_of_line);
                    end_of_line();
 
-        ret line
+        ret(line)
     }
 }
 
-fn message_header<I: U8Input>(i: I) -> SimpleResult<I, Header<I::Buffer>> {
-    parse!{i;
+fn message_header<I: Input<Token=u8>>() -> impl Parser<I, Output=Header<I::Buffer>, Error=Error<u8>> {
+    parse!{
         let name  = take_while1(is_token);
                     token(b':');
         let lines = many1(message_header_line);
 
-        ret Header {
+        ret(Header {
             name:  name,
             value: lines,
-        }
+        })
     }
 }
 
 #[inline(never)]
-fn request<I: U8Input>(i: I) -> SimpleResult<I, (Request<I::Buffer>, Vec<Header<I::Buffer>>)> {
-    parse!{i;
+fn request<I: Input<Token=u8>>() -> impl Parser<I, Output=(Request<I::Buffer>, Vec<Header<I::Buffer>>), Error=Error<u8>>
+  where I::Buffer: ::std::ops::Deref<Target=[u8]> {
+    parse!{
         let r = request_line();
                 end_of_line();
         let h = many(message_header);
                 end_of_line();
 
-        ret (r, h)
+        ret((r, h))
     }
 }
 
@@ -126,7 +129,7 @@ Connection: keep-alive\r
 \r";
 
     b.iter(|| {
-        parse_only(request, data)
+        request().parse(&data[..])
     })
 }
 
@@ -138,7 +141,7 @@ Host: localhost\r
 \r";
 
     b.iter(|| {
-        parse_only(request, data)
+        request().parse(&data[..])
     })
 }
 
@@ -157,7 +160,7 @@ Cookie: azk=ue1-5eb08aeed9a7401c9195cb933eb7c966\r
 \r";
 
     b.iter(|| {
-        parse_only(request, data)
+        request().parse(&data[..])
     })
 }
 
@@ -166,7 +169,7 @@ fn multiple_requests(b: &mut Bencher) {
     let data = include_bytes!("./data/http-requests.txt");
 
     b.iter(|| {
-        let r: Result<Vec<_>, _> = parse_only(parser!{many(request)}, data);
+        let (_, r): (_, Result<Vec<_>, _>) = many(request).parse(&data[..]);
 
         r
     })

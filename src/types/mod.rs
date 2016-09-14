@@ -1,10 +1,10 @@
 //! Types which facillitates the chaining of parsers and their results.
 
+use std::marker::PhantomData;
+
 pub mod numbering;
 #[cfg(feature = "tendril")]
 pub mod tendril;
-
-use primitives::{Guard, IntoInner};
 
 /// The buffers yielded parsers consuming a sequence of the input.
 ///
@@ -123,7 +123,7 @@ impl<'a> Buffer for &'a str {
 /// where ``Fn*`` is the appropriate closure/function trait, `I` the input type (can be something
 /// like `[u8]`), `...` additional parameters to the parser, `T` the carried success type and `E`
 /// the potential error type.
-pub trait Input: Sized {
+pub trait Input {
     /// The token type of the input.
     type Token: Copy + PartialEq;
 
@@ -139,123 +139,77 @@ pub trait Input: Sized {
     /// Can eg. provide zero-copy parsing if the input type is built to support it.
     type Buffer: Buffer<Token=Self::Token>;
 
-    /// Returns `t` as a success value in the parsing context.
-    ///
-    /// Equivalent to Haskell's `return` function in the `Monad` typeclass.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use chomp::prelude::{Input, parse_only};
-    ///
-    /// let r = parse_only(|i|
-    ///     // Annotate the error type
-    ///     i.ret::<_, ()>("Wohoo, success!"),
-    ///     b"some input");
-    ///
-    /// assert_eq!(r, Ok("Wohoo, success!"));
-    /// ```
-    #[inline]
-    fn ret<T, E>(self, t: T) -> ParseResult<Self, T, E> {
-        ParseResult(self, Ok(t))
-    }
-
-    /// Returns `e` as an error value in the parsing context.
-    ///
-    /// A more general version of Haskell's `fail` function in the `Monad` typeclass.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use chomp::prelude::{Input, parse_only};
-    ///
-    /// let r = parse_only(|i|
-    ///     // Annotate the value type
-    ///     i.err::<(), _>("Something went wrong"),
-    ///     b"some input");
-    ///
-    /// assert_eq!(r, Err((&b"some input"[..], "Something went wrong")));
-    /// ```
-    #[inline]
-    fn err<T, E>(self, e: E) -> ParseResult<Self, T, E> {
-        ParseResult(self, Err(e))
-    }
-
-    /// Converts a `Result` into a `ParseResult`, preserving parser state.
-    ///
-    /// To convert an `Option` into a `ParseResult` it is recommended to use
-    /// [`Option::ok_or`](https://doc.rust-lang.org/std/option/enum.Option.html#method.ok_or)
-    /// or [`Option::ok_or_else`](https://doc.rust-lang.org/std/option/enum.Option.html#method.ok_or_else)
-    /// in combination with this method.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use chomp::prelude::{Input, parse_only};
-    ///
-    /// let r = parse_only(|i| i.from_result::<_, ()>(Ok("foo")), b"test");
-    ///
-    /// assert_eq!(r, Ok("foo"));
-    ///
-    /// let r = parse_only(|i| i.from_result::<(), _>(Err("error message")), b"test");
-    ///
-    /// assert_eq!(r, Err((&b"test"[..], "error message")));
-    /// ```
-    #[inline]
-    fn from_result<T, E>(self, r: Result<T, E>) -> ParseResult<Self, T, E> {
-        ParseResult(self, r)
-    }
-
     // Primitive methods
 
-    /// **Primitive:** See `Primitives::peek` for documentation.
+    /// Peeks at the next token in the input without consuming it. `None` if no more input is
+    /// available.
+    ///
+    /// Note: Is allowed to refill automatically or any other appropriate action if the input does
+    /// not contain any more data.
     #[inline]
-    #[doc(hidden)]
-    fn _peek(&mut self, Guard) -> Option<Self::Token>;
+    fn peek(&mut self) -> Option<Self::Token>;
 
-    /// **Primitive:** See `Primitives::pop` for documentation.
+    /// Pops a token off the start of the input. `None` if no more input is available.
+    ///
+    /// Note: Is allowed to refill automatically or any other appropriate action if the input does
+    /// not contain any more data.
     #[inline]
-    #[doc(hidden)]
-    fn _pop(&mut self, Guard) -> Option<Self::Token>;
+    fn pop(&mut self) -> Option<Self::Token>;
 
-    /// **Primitive:** See `Primitives::consume` for documentation.
+    /// Attempt to consume `n` tokens, if it fails do not advance the position but return `None`.
+    ///
+    /// Note: Is allowed to refill automatically or any other appropriate action if the input does
+    /// not contain any more data.
     #[inline]
-    #[doc(hidden)]
-    fn _consume(&mut self, Guard, usize) -> Option<Self::Buffer>;
+    fn consume(&mut self, n: usize) -> Option<Self::Buffer>;
 
-    /// **Primitive:** See `Primitives::consume_while` for documentation.
+    /// Runs the closure `F` on the tokens *in order* until it returns false, all tokens up to that
+    /// token will be returned as a buffer and discarded from the current input.
+    ///
+    /// MUST never run the closure more than once on the exact same token.
+    ///
+    /// If the end of the input is reached, the whole input is returned.
+    ///
+    /// Note: Is allowed to refill automatically or any other appropriate action if the input does
+    /// not contain any more data.
     #[inline]
-    #[doc(hidden)]
-    fn _consume_while<F>(&mut self, Guard, F) -> Self::Buffer
+    fn consume_while<F>(&mut self, f: F) -> Self::Buffer
       where F: FnMut(Self::Token) -> bool;
 
-    /// **Primitive:** See `Primitives::consume_from for documentation.
+    /// Returns the buffer from the marker to the current position, discarding the
+    /// backtracking position carried by the marker.
     #[inline]
-    #[doc(hidden)]
-    fn _consume_from(&mut self, Guard, Self::Marker) -> Self::Buffer;
+    fn consume_from(&mut self, m: Self::Marker) -> Self::Buffer;
 
-    /// **Primitive:** See `Primitives::consume_remaining` for documentation.
+    /// Returns the remainder of the input in a buffer.
+    ///
+    /// Note: Will refill the intenal buffer until no more data is available if the underlying
+    /// implementation supports it.
     #[inline]
-    #[doc(hidden)]
-    fn _consume_remaining(&mut self, Guard) -> Self::Buffer;
+    fn consume_remaining(&mut self) -> Self::Buffer;
 
-    /// **Primitive:** See `Primitives::skip_while` for documentation.
+    /// Runs the closure `F` on the tokens *in order* until it returns false, all tokens up to that
+    /// token will be discarded from the current input.
+    ///
+    /// MUST never run the closure more than once on the exact same token.
+    ///
+    /// If the end of the input is reached, the whole input is discarded.
+    ///
+    /// Note: Default implementation uses `consume_while` and makes the assumption that it will
+    /// optimize away the resulting `Self::Buffer`.
     #[inline]
-    #[doc(hidden)]
-    fn _skip_while<F>(&mut self, g: Guard, f: F)
+    fn skip_while<F>(&mut self, f: F)
       where F: FnMut(Self::Token) -> bool {
-        self._consume_while(g, f);
+        self.consume_while(f);
     }
 
-    /// **Primitive:** See `Primitives::mark` for documentation.
+    /// Marks the current position to be able to backtrack to it using `restore`.
     #[inline]
-    #[doc(hidden)]
-    fn _mark(&self, Guard) -> Self::Marker;
+    fn mark(&self) -> Self::Marker;
 
-    /// **Primitive:** See `Primitives::restore` for documentation.
-    #[inline]
-    #[doc(hidden)]
-    fn _restore(self, Guard, Self::Marker) -> Self;
+    /// Resumes from a previously marked state.
+    #[inline(always)]
+    fn restore(self, m: Self::Marker) -> Self;
 }
 
 impl<'a, I: Copy + PartialEq> Input for &'a [I] {
@@ -264,12 +218,12 @@ impl<'a, I: Copy + PartialEq> Input for &'a [I] {
     type Buffer = &'a [I];
 
     #[inline]
-    fn _peek(&mut self, _g: Guard) -> Option<Self::Token> {
+    fn peek(&mut self) -> Option<Self::Token> {
         self.first().cloned()
     }
 
     #[inline]
-    fn _pop(&mut self, _g: Guard) -> Option<Self::Token> {
+    fn pop(&mut self) -> Option<Self::Token> {
         self.first().cloned().map(|c| {
             *self = &self[1..];
 
@@ -278,7 +232,7 @@ impl<'a, I: Copy + PartialEq> Input for &'a [I] {
     }
 
     #[inline]
-    fn _consume(&mut self, _g: Guard, n: usize) -> Option<Self::Buffer> {
+    fn consume(&mut self, n: usize) -> Option<Self::Buffer> {
         if n > self.len() {
             None
         } else {
@@ -291,7 +245,7 @@ impl<'a, I: Copy + PartialEq> Input for &'a [I] {
     }
 
     #[inline]
-    fn _consume_while<F>(&mut self, _g: Guard, mut f: F) -> Self::Buffer
+    fn consume_while<F>(&mut self, mut f: F) -> Self::Buffer
       where F: FnMut(Self::Token) -> bool {
         if let Some(n) = self.iter().position(|c| !f(*c)) {
             let b = &self[..n];
@@ -309,12 +263,12 @@ impl<'a, I: Copy + PartialEq> Input for &'a [I] {
     }
 
     #[inline]
-    fn _consume_from(&mut self, _g: Guard, m: Self::Marker) -> Self::Buffer {
+    fn consume_from(&mut self, m: Self::Marker) -> Self::Buffer {
         &m[..m.len() - self.len()]
     }
 
     #[inline]
-    fn _consume_remaining(&mut self, _g: Guard) -> Self::Buffer {
+    fn consume_remaining(&mut self) -> Self::Buffer {
         let b = &self[..];
 
         *self = &self[..0];
@@ -323,12 +277,12 @@ impl<'a, I: Copy + PartialEq> Input for &'a [I] {
     }
 
     #[inline]
-    fn _mark(&self, _g: Guard) -> Self::Marker {
+    fn mark(&self) -> Self::Marker {
         self
     }
 
     #[inline]
-    fn _restore(self, _g: Guard, m: Self::Marker) -> Self {
+    fn restore(self, m: Self::Marker) -> Self {
         m
     }
 }
@@ -339,12 +293,12 @@ impl<'a> Input for &'a str {
     type Buffer = &'a str;
 
     #[inline]
-    fn _peek(&mut self, _g: Guard) -> Option<Self::Token> {
+    fn peek(&mut self) -> Option<Self::Token> {
         self.chars().next()
     }
 
     #[inline]
-    fn _pop(&mut self, _g: Guard) -> Option<Self::Token> {
+    fn pop(&mut self) -> Option<Self::Token> {
         let mut iter = self.char_indices();
 
         iter.next().map(|(_, c)| {
@@ -358,7 +312,7 @@ impl<'a> Input for &'a str {
     }
 
     #[inline]
-    fn _consume(&mut self, _g: Guard, n: usize) -> Option<Self::Buffer> {
+    fn consume(&mut self, n: usize) -> Option<Self::Buffer> {
         match self.char_indices().enumerate().take(n + 1).last() {
             // num always equal to n if self contains more than n characters
             Some((num, (pos, _))) if n == num => {
@@ -381,7 +335,7 @@ impl<'a> Input for &'a str {
     }
 
     #[inline]
-    fn _consume_while<F>(&mut self, _g: Guard, mut f: F) -> Self::Buffer
+    fn consume_while<F>(&mut self, mut f: F) -> Self::Buffer
       where F: FnMut(Self::Token) -> bool {
         // We need to find the character following the one which did not match
         if let Some((pos, _)) = self.char_indices().skip_while(|&(_, c)| f(c)).next() {
@@ -400,12 +354,12 @@ impl<'a> Input for &'a str {
     }
 
     #[inline]
-    fn _consume_from(&mut self, _g: Guard, m: Self::Marker) -> Self::Buffer {
+    fn consume_from(&mut self, m: Self::Marker) -> Self::Buffer {
         &m[..m.len() - self.len()]
     }
 
     #[inline]
-    fn _consume_remaining(&mut self, _g: Guard) -> Self::Buffer {
+    fn consume_remaining(&mut self) -> Self::Buffer {
         let b = &self[..];
 
         *self = &self[..0];
@@ -414,12 +368,12 @@ impl<'a> Input for &'a str {
     }
 
     #[inline]
-    fn _mark(&self, _g: Guard) -> Self::Marker {
+    fn mark(&self) -> Self::Marker {
         self
     }
 
     #[inline]
-    fn _restore(self, _g: Guard, m: Self::Marker) -> Self {
+    fn restore(self, m: Self::Marker) -> Self {
         m
     }
 }
@@ -430,41 +384,36 @@ pub trait U8Input: Input<Token=u8> {}
 impl<T> U8Input for T
   where T: Input<Token=u8> {}
 
-/// The basic return type of a parser.
-///
-/// This type satisfies a variant of the `Monad` typeclass. Due to the limitations of Rust's
-/// return types closures cannot be returned without boxing which has an unacceptable performance
-/// impact.
-///
-/// To get around this issue and still provide a simple to use and safe (as in hard to accidentally
-/// violate the monad laws or the assumptions taken by the parser type) an `Input` wrapper is
-/// provided which ensures that the parser state is carried properly through every call to `bind`.
-/// This is also known as a Linear Type (emulated through hiding destructors and using the
-/// annotation `#[must_use]`).
+// TODO: More docs
+/// The parser monad type.
 ///
 /// Do-notation is provided by the macro `parse!`.
 ///
 /// # Equivalence with Haskell's `Monad` typeclass:
 ///
 /// ```text
-/// f >>= g   ≡  f(m).bind(g)
-/// f >> g    ≡  f(m).then(g)
-/// return a  ≡  m.ret(a)
-/// fail a    ≡  m.err(a)
+/// f >>= g   ≡  f().bind(g)
+/// f >> g    ≡  f().then(g)
+/// return a  ≡  ret(a)
+/// fail a    ≡  err(a)
 /// ```
 ///
 /// It also satisfies the monad laws:
 ///
-/// ```text
-/// return a >>= f   ≡  f a
-/// m >>= return     ≡  m
-/// (m >>= f) >>= g  ≡  m >>= (\x -> f x >>= g)
+/// ```ignore
+/// ret(a).bind(f)    =  f(a)
+/// m.then(ret)       =  m
+/// m.bind(f).bind(g) =  m.bind(|x| f(x).bind(g))
 /// ```
-#[must_use]
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct ParseResult<I: Input, T, E>(I, Result<T, E>);
+pub trait Parser<I: Input> {
+    /// Output type created by the parser, may refer to data owned by `I`.
+    type Output;
+    /// Error type created by the parser, may refer to data owned by `I`.
+    type Error;
 
-impl<I: Input, T, E> ParseResult<I, T, E> {
+    /// Apply the parser to an input `I`.
+    fn parse(self, I) -> (I, Result<Self::Output, Self::Error>);
+
     /// Sequentially composes the result with a parse action `f`, passing any produced value as
     /// the second parameter.
     ///
@@ -481,13 +430,13 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
     /// # Examples
     ///
     /// ```
-    /// use chomp::prelude::{Input, parse_only};
+    /// #![feature(conservative_impl_trait)]
     ///
-    /// let r = parse_only(|i| {
-    ///         i.ret("data".to_owned())
-    ///         // Explicitly state the error type
-    ///          .bind::<_, _, ()>(|i, x| i.ret(x + " here!"))
-    ///     },
+    /// use chomp::prelude::{Parser, parse_only, ret};
+    ///
+    /// let r = parse_only(ret("data")
+    ///     // Explicitly state the error type
+    ///     .bind(|x| ret::<_, ()>(x.to_owned() + " here!")),
     ///     b"test");
     ///
     /// assert_eq!(r, Ok("data here!".to_owned()));
@@ -497,24 +446,28 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
     /// the type-hint for the error in the function signature:
     ///
     /// ```
-    /// use chomp::prelude::{Input, ParseResult, parse_only};
+    /// #![feature(conservative_impl_trait)]
     ///
-    /// fn parser<I: Input>(i: I, n: i32) -> ParseResult<I, i32, ()> {
-    ///     i.ret(n + 10)
+    /// use chomp::prelude::{Input, Parser, parse_only, ret};
+    ///
+    /// fn parser<I: Input>(n: i32) -> impl Parser<I, Output=i32, Error=()> {
+    ///     ret(n + 10)
     /// }
     ///
-    /// let r = parse_only(|i| i.ret(23).bind(parser), b"test");
+    /// let r = parse_only(ret(23).bind(parser), b"test");
     ///
     /// assert_eq!(r, Ok(33));
     /// ```
-    #[inline]
-    pub fn bind<F, U, V>(self, f: F) -> ParseResult<I, U, V>
-      where F: FnOnce(I, T) -> ParseResult<I, U, V>,
-            V: From<E> {
-        match self.1 {
-            Ok(t)  => f(self.0, t).map_err(From::from),
-            Err(e) => ParseResult(self.0, Err(From::from(e))),
-        }
+    #[inline(always)]
+    // TODO: Add From::from
+    // TODO: Is it possible to remove R here?
+    // I is required to be a type-parameter to the created parser in case Self does not have
+    // anything restricting I, then the parser we are binding to needs to provide that.
+    fn bind<F, R>(self, f: F) -> BindParser<I, Self, F, R>
+      where F: FnOnce(Self::Output) -> R,
+            R: Parser<I, Error=Self::Error>,
+            Self: Sized {
+        BindParser { p: self, f: f, _i: PhantomData }
     }
 
     /// Sequentially composes the result with a parse action `f`, discarding any produced value.
@@ -525,29 +478,33 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
     /// # Relation to `bind`
     ///
     /// ```text
-    /// ParseResult::then(g)  ≡  ParseResult::bind(|i, _| g(i))
+    /// p.then(g)  ≡  p.bind(|_| g)
     /// ```
     ///
     /// # Example
     ///
     /// ```
-    /// use chomp::prelude::{Input, SimpleResult, parse_only};
+    /// #![feature(conservative_impl_trait)]
     ///
-    /// fn g<I: Input>(i: I) -> SimpleResult<I, &'static str> {
-    ///     i.ret("testing!")
+    /// use chomp::prelude::{Input, Parser, parse_only, ret};
+    ///
+    /// fn g<I: Input>() -> impl Parser<I, Output=&'static str, Error=()> {
+    ///     ret("testing!")
     /// }
     ///
-    /// let r1 = parse_only(|i| i.ret("initial state").bind(|i, _| g(i)), b"data");
-    /// let r2 = parse_only(|i| i.ret("initial state").then(g), b"data");
+    /// let r1 = parse_only(ret("initial state").bind(|_| g()), b"data");
+    /// let r2 = parse_only(ret("initial state").then(g()), b"data");
     ///
     /// assert_eq!(r1, Ok("testing!"));
     /// assert_eq!(r2, Ok("testing!"));
     /// ```
-    #[inline]
-    pub fn then<F, U, V>(self, f: F) -> ParseResult<I, U, V>
-      where F: FnOnce(I) -> ParseResult<I, U, V>,
-            V: From<E> {
-        self.bind(|i, _| f(i))
+    #[inline(always)]
+    // TODO: Add From::from
+    // TODO: Tests, also with an unbounded I (from eg. ret or err)
+    fn then<P>(self, p: P) -> ThenParser<I, Self, P>
+      where P: Parser<I, Error=Self::Error>,
+            Self: Sized {
+        ThenParser { p: self, q: p, _i: PhantomData }
     }
 
     /// Applies the function `f` on the contained data if the parser is in a success state.
@@ -555,19 +512,20 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
     /// # Example
     ///
     /// ```
-    /// use chomp::prelude::{parse_only, any};
+    /// use chomp::prelude::{Parser, parse_only, any, ret};
     ///
-    /// let r = parse_only(|i| any(i).map(|c| c + 12), b"abc");
+    /// let r = parse_only(any().map(|c| c + 12), b"abc");
     ///
     /// assert_eq!(r, Ok(b'm'));
+    ///
+    /// assert_eq!(parse_only(ret::<_, ()>(123).map(|c| c + 12), b"abc"), Ok(135));
     /// ```
-    #[inline]
-    pub fn map<U, F>(self, f: F) -> ParseResult<I, U, E>
-      where F: FnOnce(T) -> U {
-        match self {
-            ParseResult(i, Ok(t))  => ParseResult(i, Ok(f(t))),
-            ParseResult(i, Err(e)) => ParseResult(i, Err(e)),
-        }
+    // TODO: Tests
+    #[inline(always)]
+    fn map<F, R>(self, f: F) -> MapParser<I, Self, F>
+      where F: FnOnce(Self::Output) -> R,
+            Self: Sized {
+        MapParser { p: self, f: f, _i: PhantomData }
     }
 
     /// Applies the function `f` on the contained error if the parser is in an error state.
@@ -575,21 +533,20 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
     /// # Example
     ///
     /// ```
-    /// use chomp::prelude::{Input, parse_only};
+    /// use chomp::prelude::{Parser, parse_only, err};
     ///
-    /// let r = parse_only(|i| i.err::<(), _>("this is")
-    ///          .map_err(|e| e.to_owned() + " an error"),
-    ///          b"foo");
+    /// let r = parse_only(err::<(), _>("this is")
+    ///          .map_err(|e| e.to_owned() + " an error"), b"foo");
     ///
     /// assert_eq!(r, Err((&b"foo"[..], "this is an error".to_owned())));
     /// ```
-    #[inline]
-    pub fn map_err<V, F>(self, f: F) -> ParseResult<I, T, V>
-      where F: FnOnce(E) -> V {
-        match self {
-            ParseResult(i, Ok(t))  => ParseResult(i, Ok(t)),
-            ParseResult(i, Err(e)) => ParseResult(i, Err(f(e))),
-        }
+    // TODO: Tests
+    // TODO: Make sure to use an unbounded I too first in tests
+    #[inline(always)]
+    fn map_err<F, E>(self, f: F) -> MapErrParser<I, Self, F>
+      where F: FnOnce(Self::Error) -> E,
+            Self: Sized {
+        MapErrParser { p: self, f: f, _i: PhantomData }
     }
 
     /// Calls the function `f` with a reference of the contained data if the parser is in a success
@@ -598,199 +555,597 @@ impl<I: Input, T, E> ParseResult<I, T, E> {
     /// # Example
     ///
     /// ```
-    /// use chomp::prelude::{parse_only, take_while};
+    /// use chomp::prelude::{Parser, parse_only, take_while};
     ///
-    /// let r = parse_only(|i| take_while(i, |c| c != b' ').inspect(|b| {
+    /// let r = parse_only(take_while(|c| c != b' ').inspect(|b| {
     ///     println!("{:?}", b); // Prints "test"
     /// }), b"test and more");
     ///
     /// assert_eq!(r, Ok(&b"test"[..]));
     /// ```
-    #[inline]
-    pub fn inspect<F>(self, f: F) -> ParseResult<I, T, E>
-      where F: FnOnce(&T) {
-        if let Ok(ref t) = self.1 {
-             f(t)
-        }
+    // TODO: Tests
+    #[inline(always)]
+    fn inspect<F>(self, f: F) -> InspectParser<I, Self, F>
+      where F: FnOnce(&Self::Output),
+            Self: Sized {
+        InspectParser { p: self, f: f, _i: PhantomData }
+    }
 
-        self
+    /// Tries to match the parser `f`, if `f` fails it tries `g`. Returns the success value of
+    /// the first match, otherwise the error of the last one if both fail.
+    ///
+    /// Incomplete state is propagated from the first one to report incomplete.
+    ///
+    /// If multiple `or` combinators are used in the same expression, consider using the `parse!` macro
+    /// and its alternation operator (`<|>`).
+    ///
+    /// ```
+    /// use chomp::prelude::{Error, Parser, parse_only, token};
+    ///
+    /// let p = || token(b'a').or(token(b'b'));
+    ///
+    /// assert_eq!(parse_only(p(), b"abc"), Ok(b'a'));
+    /// assert_eq!(parse_only(p(), b"bbc"), Ok(b'b'));
+    /// assert_eq!(parse_only(p(), b"cbc"), Err((&b"cbc"[..], Error::expected(b'b'))));
+    /// ```
+    // TODO: Write the laws for MonadPlus, or should satisfy MonadPlus laws (stronger guarantees
+    // compared to Alternative typeclass laws)
+    // TODO: Tests
+    #[inline(always)]
+    fn or<P>(self, p: P) -> OrParser<I, Self, P>
+      where P: Parser<I, Output=Self::Output, Error=Self::Error>,
+            Self: Sized {
+        OrParser { p: self, q: p, _i: PhantomData }
+    }
+
+    /// Creates a new parser which matches `Self` and if successful tries to match `P`, if `P` is
+    /// also matched the result of `Self` is yielded.
+    ///
+    /// Equivalent to:
+    ///
+    /// ```ignore
+    /// self.bind(|t| p.map(|_| t))
+    /// ```
+    // TODO: Get more of the Applicative instance in here, make tests
+    // TODO: Docs
+    // TODO: Tests, also include test with unbounded existing parser (ret and err) on lhs
+    #[inline(always)]
+    fn skip<P>(self, p: P) -> SkipParser<I, Self, P>
+      where P: Parser<I, Error=Self::Error>,
+            Self: Sized {
+        // Would be nice to be able to return the following, but conservative impl Trait does not
+        // work on traits:
+        // self.bind(|t| p.map(|_| t))
+        SkipParser{ p: self, q: p, _i: PhantomData }
+    }
+
+    /// Turns the parser into a trait object, using the `BoxedParser` type to provide inference and
+    /// guarantees that it will satisfy any `P: Parser` generic.
+    ///
+    /// Useful to unify the types different parsers when eg. returning two different parsers
+    /// depending on a condition.
+    ///
+    /// ```
+    /// use chomp::prelude::{Parser, Error, any, token};
+    ///
+    /// let a = 3;
+    ///
+    /// let p = if a == 0 {
+    ///     any().boxed()
+    /// } else {
+    ///     token(b'a').boxed()
+    /// };
+    ///
+    /// assert_eq!(p.parse(&b"bcd"[..]), (&b"bcd"[..], Err(Error::expected(b'a'))));
+    /// ```
+    #[inline(always)]
+    fn boxed(self) -> BoxedParser<I, Self::Output, Self::Error>
+      where Self: Sized + 'static {
+        Box::new(self)
     }
 }
 
-/// **Primitive:** Consumes the `ParseResult` and exposes the internal state.
-///
-/// # Primitive
-///
-/// Only used by fundamental parsers and combinators.
-///
-/// # Motivation
-///
-/// The `ParseResult` type is a semi-linear type, supposed to act like a linear type while used in
-/// a parsing context to carry the state. Normally it should be as restrictive as the `Input` type
-/// in terms of how much it exposes its internals, but the `IntoInner` trait implementation
-/// allows fundamental parsers and combinators to expose the inner `Result` of the `ParseResult`
-/// and act on this.
-impl<I: Input, T, E> IntoInner for ParseResult<I, T, E> {
-    type Inner = (I, Result<T, E>);
+/// The type for boxed parsers, created through `Parser::boxed`.
+pub type BoxedParser<I, T, E> = Box<BoxParser<I, Output=T, Error=E>>;
 
-    #[inline(always)]
-    fn into_inner(self) -> Self::Inner {
-        (self.0, self.1)
+/// Trait wrapping a parser to be able to destructure a `Box<BoxParser>` in a sized manner.
+/// Recommended to use the `BoxedParser` type-alias instead of `BoxParser` directly.
+pub trait BoxParser<I: Input> {
+    /// The output type of the boxed parser, analogous to `Parser::Output`.
+    type Output;
+    /// The error type of the boxed parser, analogous to `Parser::Error`.
+    type Error;
+
+    /// Allows destructuring of the box to be able to consume the wrapped contents, analogous to
+    /// `Parser::parse`.
+    #[inline]
+    fn parse_box(self: Box<Self>, i: I) -> (I, Result<Self::Output, Self::Error>);
+}
+
+impl<I, P> BoxParser<I> for P
+  where I: Input,
+        P: Parser<I> {
+    type Output = P::Output;
+    type Error  = P::Error;
+
+    #[cfg_attr(feature="clippy", allow(boxed_local))]
+    #[inline]
+    fn parse_box(self: Box<Self>, i: I) -> (I, Result<P::Output, P::Error>) {
+        (*self).parse(i)
+    }
+}
+
+impl<I, T, E> Parser<I> for Box<BoxParser<I, Output=T, Error=E>>
+  where I: Input {
+    type Output = T;
+    type Error  = E;
+
+    #[inline]
+    fn parse(self, i: I) -> (I, Result<T, E>) {
+        self.parse_box(i)
+    }
+}
+
+/// Returns `t` as a success value in the parsing context.
+///
+/// Equivalent to Haskell's `return` function in the `Monad` typeclass.
+///
+/// # Example
+///
+/// ```
+/// use chomp::types::ret;
+/// use chomp::parse_only;
+///
+/// let r = parse_only(
+///     // Annotate the error type
+///     ret::<_, ()>("Wohoo, success!"),
+///     b"some input");
+///
+/// assert_eq!(r, Ok("Wohoo, success!"));
+/// ```
+#[inline]
+pub fn ret<T, E>(t: T) -> RetParser<T, E> {
+    RetParser { t: t, _e: PhantomData }
+}
+
+/// Returns `e` as an error value in the parsing context.
+///
+/// A more general version of Haskell's `fail` function in the `Monad` typeclass.
+///
+/// # Example
+///
+/// ```
+/// use chomp::types::err;
+/// use chomp::parse_only;
+///
+/// let r = parse_only(
+///     // Annotate the value type
+///     err::<(), _>("Something went wrong"),
+///     b"some input");
+///
+/// assert_eq!(r, Err((&b"some input"[..], "Something went wrong")));
+/// ```
+#[inline]
+pub fn err<T, E>(e: E) -> ErrParser<T, E> {
+    ErrParser { e: e, _t: PhantomData }
+}
+
+/// Converts a `Result` into a `Parser`, preserving parser state.
+///
+/// To convert an `Option` into a `Parser` it is recommended to use
+/// [`Option::ok_or`](https://doc.rust-lang.org/std/option/enum.Option.html#method.ok_or)
+/// or [`Option::ok_or_else`](https://doc.rust-lang.org/std/option/enum.Option.html#method.ok_or_else)
+/// in combination with this method.
+///
+/// # Examples
+///
+/// ```
+/// use chomp::types::from_result;
+/// use chomp::parse_only;
+///
+/// let r = parse_only(from_result::<_, ()>(Ok("foo")), b"test");
+///
+/// assert_eq!(r, Ok("foo"));
+///
+/// let r = parse_only(from_result::<(), _>(Err("error message")), b"test");
+///
+/// assert_eq!(r, Err((&b"test"[..], "error message")));
+/// ```
+#[inline]
+pub fn from_result<T, E>(r: Result<T, E>) -> FromResultParser<T, E> {
+    FromResultParser { r: r }
+}
+
+/// Parser containing a success value.
+///
+/// This is created by `ret`.
+#[derive(Debug)]
+pub struct RetParser<T, E> {
+    t:  T,
+    _e: PhantomData<E>,
+}
+
+impl<I, T, E> Parser<I> for RetParser<T, E>
+  where I: Input {
+    type Output = T;
+    type Error  = E;
+
+    #[inline]
+    fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
+        (i, Ok(self.t))
+    }
+}
+
+/// Parser containing an error value.
+///
+/// This is created by `err`.
+#[derive(Debug)]
+pub struct ErrParser<T, E> {
+    e:  E,
+    _t: PhantomData<T>,
+}
+
+impl<I, T, E> Parser<I> for ErrParser<T, E>
+  where I: Input {
+    type Output = T;
+    type Error  = E;
+
+    #[inline]
+    fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
+        (i, Err(self.e))
+    }
+}
+
+/// Parser containing a `Result<T, E>`.
+///
+/// This is created by `from_result`.
+#[derive(Debug)]
+pub struct FromResultParser<T, E> {
+    r:  Result<T, E>,
+}
+
+impl<I, T, E> Parser<I> for FromResultParser<T, E>
+  where I: Input {
+    type Output = T;
+    type Error  = E;
+
+    #[inline]
+    fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
+        (i, self.r)
+    }
+}
+
+/// Parser for the `Parser::bind` chaining operator, allowing to chain parsers.
+///
+/// This is created by the `Parser::bind` method.
+#[derive(Debug)]
+pub struct BindParser<I, P, F, R>
+  where I: Input,
+        P: Parser<I>,
+        F: FnOnce(P::Output) -> R,
+        R: Parser<I, Error=P::Error> {
+    p:  P,
+    f:  F,
+    // Necessary for inference, if we do not have I here we cannot describe the return value of `F`
+    // and this would make it impossible for rustc to infer the type of the created parser.
+    _i: PhantomData<I>,
+}
+
+impl<I, P, F, R> Parser<I> for BindParser<I, P, F, R>
+  where I: Input,
+        P: Parser<I>,
+        F: FnOnce(P::Output) -> R,
+        R: Parser<I, Error=P::Error> {
+    type Output = R::Output;
+    type Error  = R::Error;
+
+    #[inline]
+    fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
+        match self.p.parse(i) {
+            (r, Ok(t))  => (self.f)(t).parse(r),
+            (r, Err(e)) => (r, Err(e)),
+        }
+    }
+}
+
+/// Parser for the `Parser::then` chaining operator, allowing to chain parsers.
+///
+/// This is created by the `Parser::then` method.
+#[derive(Debug)]
+pub struct ThenParser<I, P, Q> {
+    p:  P,
+    q:  Q,
+    _i: PhantomData<I>,
+}
+
+impl<I, P, Q> Parser<I> for ThenParser<I, P, Q>
+  where I: Input,
+        P: Parser<I>,
+        Q: Parser<I, Error=P::Error> {
+    type Output = Q::Output;
+    type Error  = Q::Error;
+
+    #[inline]
+    fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
+        match self.p.parse(i) {
+            (r, Ok(_))  => (self.q).parse(r),
+            (r, Err(e)) => (r, Err(e)),
+        }
+    }
+}
+
+/// Parser for the `Parser::map` combinator.
+///
+/// This is created by the `Parser::map` method.
+#[derive(Debug)]
+pub struct MapParser<I, P, F> {
+    p:  P,
+    f:  F,
+    _i: PhantomData<I>,
+}
+
+impl<I, P, F, R> Parser<I> for MapParser<I, P, F>
+  where I: Input,
+        P: Parser<I>,
+        F: FnOnce(P::Output) -> R {
+    type Output = R;
+    type Error  = P::Error;
+
+    #[inline]
+    fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
+        match self.p.parse(i) {
+            (r, Ok(t))  => (r, Ok((self.f)(t))),
+            (r, Err(e)) => (r, Err(e)),
+        }
+    }
+}
+
+/// Parser for the `Parser::map_err` combinator.
+///
+/// This is created by the `Parser::map_err` method.
+#[derive(Debug)]
+pub struct MapErrParser<I, P, F> {
+    p:  P,
+    f:  F,
+    _i: PhantomData<I>
+}
+
+impl<I, P, F, E> Parser<I> for MapErrParser<I, P, F>
+  where I: Input,
+        P: Parser<I>,
+        F: FnOnce(P::Error) -> E {
+    type Output = P::Output;
+    type Error  = E;
+
+    #[inline]
+    fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
+        match self.p.parse(i) {
+            (r, Ok(t))  => (r, Ok(t)),
+            (r, Err(e)) => (r, Err((self.f)(e))),
+        }
+    }
+}
+
+/// Parser for the `Parser::inspect` combinator.
+///
+/// This is created by `Parser::inspect`.
+#[derive(Debug)]
+pub struct InspectParser<I, P, F> {
+    p:  P,
+    f:  F,
+    _i: PhantomData<I>,
+}
+
+impl<I, P, F> Parser<I> for InspectParser<I, P, F>
+  where I: Input,
+        P: Parser<I>,
+        F: FnOnce(&P::Output) {
+    type Output = P::Output;
+    type Error  = P::Error;
+
+    #[inline]
+    fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
+        match self.p.parse(i) {
+            (r, Ok(t))      => {
+                (self.f)(&t);
+
+                (r, Ok(t))
+            },
+            (r, Err(e)) => (r, Err(e)),
+        }
+    }
+}
+
+/// Parser for the `Parser::or` combinator.
+///
+/// This is created by `Parser::or`.
+#[derive(Debug)]
+pub struct OrParser<I, P, Q> {
+    p:  P,
+    q:  Q,
+    _i: PhantomData<I>,
+}
+
+impl<I, P, Q> Parser<I> for OrParser<I, P, Q>
+  where I: Input,
+        P: Parser<I>,
+        Q: Parser<I, Output=P::Output, Error=P::Error> {
+    type Output = P::Output;
+    type Error  = P::Error;
+
+    fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
+        let m = i.mark();
+
+        match self.p.parse(i) {
+            (r, Ok(d))  => (r, Ok(d)),
+            (r, Err(_)) => self.q.parse(r.restore(m)),
+        }
+    }
+}
+
+/// Parser for the `Parser::skip` combinator.
+///
+/// This is created by `Parser::skip`.
+#[derive(Debug)]
+pub struct SkipParser<I, P, Q> {
+    p:  P,
+    q:  Q,
+    _i: PhantomData<I>,
+}
+
+impl<I, P, Q> Parser<I> for SkipParser<I, P, Q>
+  where I: Input,
+        P: Parser<I>,
+        Q: Parser<I, Error=P::Error> {
+    type Output = P::Output;
+    type Error  = P::Error;
+
+    fn parse(self, i: I) -> (I, Result<Self::Output, Self::Error>) {
+        // Merge of p.bind(|t| q.map(|_| t))
+        match self.p.parse(i) {
+            (r, Ok(t))  => match self.q.parse(r) {
+                (b, Ok(_))  => (b, Ok(t)),
+                (b, Err(e)) => (b, Err(e)),
+            },
+            (r, Err(e)) => (r, Err(e)),
+        }
+    }
+}
+
+impl<I, T, E, F> Parser<I> for F
+  where I: Input,
+        F: FnOnce(I) -> (I, Result<T, E>) {
+    type Output = T;
+    type Error  = E;
+
+    fn parse(self, i: I) -> (I, Result<T, E>) {
+        (self)(i)
     }
 }
 
 #[cfg(test)]
 pub mod test {
-    use super::{Buffer, Input, ParseResult};
-    use primitives::IntoInner;
+    use super::{Buffer, Input, Parser, ret, err, from_result};
     use std::fmt::Debug;
 
     #[test]
-    fn ret() {
-        let r1: ParseResult<_, u32, ()>   = b"in1".ret::<_, ()>(23u32);
-        let r2: ParseResult<_, i32, &str> = b"in2".ret::<_, &str>(23i32);
-
-        assert_eq!(r1.into_inner(), (&b"in1"[..], Ok(23u32)));
-        assert_eq!(r2.into_inner(), (&b"in2"[..], Ok(23i32)));
+    fn ret_test() {
+        assert_eq!(ret::<_, ()>(23u32).parse(&b"in1"[..]), (&b"in1"[..], Ok(23u32)));
+        assert_eq!(ret::<_, &str>(23i32).parse(&b"in2"[..]), (&b"in2"[..], Ok(23i32)));
     }
 
     #[test]
-    fn err() {
-        let r1: ParseResult<_, (), u32>   = b"in1".err::<(), _>(23u32);
-        let r2: ParseResult<_, &str, i32> = b"in2".err::<&str, _>(23i32);
-
-        assert_eq!(r1.into_inner(), (&b"in1"[..], Err(23u32)));
-        assert_eq!(r2.into_inner(), (&b"in2"[..], Err(23i32)));
+    fn err_test() {
+        assert_eq!(err::<(), _>(23u32).parse(&b"in1"[..]), (&b"in1"[..], Err(23u32)));
+        assert_eq!(err::<&str, _>(23i32).parse(&b"in2"[..]), (&b"in2"[..], Err(23i32)));
     }
 
     #[test]
-    fn from_result() {
+    fn from_result_test() {
         let i1: Result<u32, &str> = Ok(23);
         let i2: Result<&str, &str> = Err("foobar");
 
-        let r1 = b"in1".from_result(i1);
-        let r2 = b"in2".from_result(i2);
-
-        assert_eq!(r1.into_inner(), (&b"in1"[..], Ok(23u32)));
-        assert_eq!(r2.into_inner(), (&b"in2"[..], Err("foobar")));
+        assert_eq!(from_result(i1).parse(&b"in1"[..]), (&b"in1"[..], Ok(23u32)));
+        assert_eq!(from_result(i2).parse(&b"in2"[..]), (&b"in2"[..], Err("foobar")));
     }
 
     #[test]
     fn monad_left_identity() {
-        fn f<I: Input>(i: I, n: u32) -> ParseResult<I, u32, ()> {
-            i.ret(n + 1)
+        fn f<I: Input>(n: u32) -> impl Parser<I, Output=u32, Error=()> {
+            ret(n + 1)
         }
 
         let a = 123;
         // return a >>= f
-        let lhs = b"test".ret(a).bind(f);
+        let lhs = ret(a).bind(f);
         // f a
-        let rhs = f(&b"test"[..], a);
+        let rhs = f(a);
 
-        assert_eq!((lhs.0, lhs.1), (&b"test"[..], Ok(124)));
-        assert_eq!((rhs.0, rhs.1), (&b"test"[..], Ok(124)));
+        assert_eq!(lhs.parse(&b"test"[..]), (&b"test"[..], Ok(124)));
+        assert_eq!(rhs.parse(&b"test"[..]), (&b"test"[..], Ok(124)));
     }
 
     #[test]
     fn monad_right_identity() {
-        let m1 = b"test".ret::<_, ()>(1);
-        let m2 = b"test".ret::<_, ()>(1);
+        let m1 = ret::<_, ()>(1);
+        let m2 = ret::<_, ()>(1);
 
         // m1 >>= ret === m2
-        let lhs = m1.bind::<_, _, ()>(Input::ret);
+        let lhs = m1.bind(ret);
         let rhs = m2;
 
-        assert_eq!((lhs.0, rhs.1), (&b"test"[..], Ok(1)));
-        assert_eq!((rhs.0, lhs.1), (&b"test"[..], Ok(1)));
+        assert_eq!(lhs.parse(&b"test"[..]), (&b"test"[..], Ok(1)));
+        assert_eq!(rhs.parse(&b"test"[..]), (&b"test"[..], Ok(1)));
     }
 
     #[test]
     fn monad_associativity() {
-         fn f<I: Input>(i: I, num: u32) -> ParseResult<I, u64, ()> {
-            i.ret((num + 1) as u64)
+         fn f<I: Input>(num: u32) -> impl Parser<I, Output=u64, Error=()> {
+            ret((num + 1) as u64)
         }
 
-        fn g<I: Input>(i: I, num: u64) -> ParseResult<I, u64, ()> {
-            i.ret(num * 2)
+        fn g<I: Input>(num: u64) -> impl Parser<I, Output=u64, Error=()> {
+            ret(num * 2)
         }
 
-        let lhs_m = b"test".ret::<_, ()>(2);
-        let rhs_m = b"test".ret::<_, ()>(2);
+        let lhs_m = ret::<_, ()>(2);
+        let rhs_m = ret::<_, ()>(2);
 
         // (m >>= f) >>= g
         let lhs = lhs_m.bind(f).bind(g);
         // m >>= (\x -> f x >>= g)
-        let rhs = rhs_m.bind(|i, x| f(i, x).bind(g));
+        let rhs = rhs_m.bind(|x| f(x).bind(g));
 
-        assert_eq!((lhs.0, lhs.1), (&b"test"[..], Ok(6)));
-        assert_eq!((rhs.0, rhs.1), (&b"test"[..], Ok(6)));
+        assert_eq!(lhs.parse(&b"test"[..]), (&b"test"[..], Ok(6)));
+        assert_eq!(rhs.parse(&b"test"[..]), (&b"test"[..], Ok(6)));
     }
+
+    #[test]
+    fn or_test() {
+        use parsers::{Error, any, take, token};
+
+        assert_eq!(any().or(any()).parse(&b""[..]), (&b""[..], Err(Error::unexpected())));
+        assert_eq!(any().or(any()).parse(&b"a"[..]), (&b""[..], Ok(b'a')));
+        assert_eq!(take(2).or(take(1)).parse(&b"a"[..]), (&b""[..], Ok(&b"a"[..])));
+        assert_eq!(take(2).or(take(1)).parse(&b"ab"[..]), (&b""[..], Ok(&b"ab"[..])));
+        assert_eq!(token(b'a').or(token(b'b')).parse(&b"a"[..]), (&b""[..], Ok(b'a')));
+        assert_eq!(token(b'a').or(token(b'b')).parse(&b"b"[..]), (&b""[..], Ok(b'b')));
+        assert_eq!(token(b'a').map_err(|_| "a err").or(token(b'b').map_err(|_| "b err")).parse(&b"c"[..]), (&b"c"[..], Err("b err")));
+    }
+
+    // TODO: More tests for fundamental combinators implemented on Parser
 
     #[test]
     fn parse_result_inspect() {
-        use primitives::IntoInner;
-
         let mut n1 = 0;
         let mut n2 = 0;
-        let i1     = b"test ".ret::<u32, ()>(23);
-        let i2     = b"test ".ret::<u32, ()>(23);
 
-        let r1 = i1.inspect(|d: &u32| {
-            assert_eq!(d, &23);
+        {
+            let i1     = ret::<u32, ()>(23);
+            let i2     = ret::<u32, ()>(23);
+            let i3     = err::<u32, i32>(42);
 
-            n1 += 1;
-        });
-        let r2 = i2.inspect(|d: &u32| {
-            assert_eq!(d, &23);
+            let r1 = i1.inspect(|d: &u32| {
+                assert_eq!(d, &23);
 
-            n2 += 1;
-        });
+                n1 += 1;
+            });
+            let r2 = i2.inspect(|d: &u32| {
+                assert_eq!(d, &23);
 
-        assert_eq!(r1.into_inner(), (&b"test "[..], Ok(23)));
+                n2 += 1;
+            });
+            let r3 = i3.inspect(|_: &u32| {
+                panic!("Success value obtained in error branch in inspect!");
+            });
+
+            assert_eq!(r1.parse(&b"test"[..]), (&b"test"[..], Ok(23)));
+            assert_eq!(r2.parse(&b"test"[..]), (&b"test"[..], Ok(23)));
+            assert_eq!(r3.parse(&b"test"[..]), (&b"test"[..], Err(42)));
+        }
+
         assert_eq!(n1, 1);
-        assert_eq!(r2.into_inner(), (&b"test "[..], Ok(23)));
         assert_eq!(n2, 1);
-    }
-
-    #[test]
-    fn input_propagation() {
-        let mut n_calls = 0;
-
-        let i = b"test1".ret::<_, ()>(23);
-
-        assert_eq!(i.0, b"test1");
-        assert_eq!(i.1, Ok(23));
-
-        let r: ParseResult<_, _, ()> = i.bind(|i, t| { n_calls += 1; i.ret(t) });
-
-        assert_eq!((r.0, r.1), (&b"test1"[..], Ok(23)));
-        assert_eq!(n_calls, 1);
-    }
-
-    #[test]
-    fn error_propagation() {
-        let mut n_calls = 0;
-
-        let i = b"test1".err::<(), _>(23);
-
-        assert_eq!(i.0, b"test1");
-        assert_eq!(i.1, Err(23));
-
-        let r = i.bind(|i, t| { n_calls += 1; i.ret(t) });
-
-        assert_eq!((r.0, r.1), (&b"test1"[..], Err(23)));
-        assert_eq!(n_calls, 0);
-    }
-
-    #[test]
-    fn slice() {
-        fn f<I: Input>(i: I, n: u32) -> ParseResult<I, u32, ()> { i.ret(n + 1) }
-
-        let lhs = (&b"test"[..]).ret(123).bind(f);
-        let rhs = f(&b"test"[..], 123);
-
-        assert_eq!((lhs.0, lhs.1), (&b"test"[..], Ok(124)));
-        assert_eq!((rhs.0, rhs.1), (&b"test"[..], Ok(124)));
     }
 
     #[test]
@@ -807,8 +1162,6 @@ pub mod test {
     pub fn run_primitives_test<I: Input, F: Fn(u8) -> I::Token>(mut s: I, f: F)
       where I::Token:  Debug,
             I::Buffer: Clone {
-        use primitives::Primitives;
-
         fn buffer_eq_slice<B: Buffer + Clone, F: Fn(u8) -> B::Token>(b: B, s: &[u8], f: F)
           where B::Token: Debug, {
             assert_eq!(b.len(), s.len());

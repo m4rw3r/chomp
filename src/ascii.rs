@@ -8,14 +8,9 @@ use conv::{
 };
 use conv::errors::UnwrapOk;
 
-use types::{Buffer, Input};
 use combinators::option;
-use parsers::{
-    SimpleResult,
-    satisfy,
-    skip_while,
-    take_while1,
-};
+use parsers::{Error, satisfy, skip_while, take_while1};
+use types::{Buffer, Input, Parser};
 
 /// Lowercase ASCII predicate.
 #[inline]
@@ -84,11 +79,11 @@ pub fn is_alphanumeric(c: u8) -> bool {
 /// use chomp::parse_only;
 /// use chomp::ascii::skip_whitespace;
 ///
-/// assert_eq!(parse_only(skip_whitespace, b" \t "), Ok(()));
+/// assert_eq!(parse_only(skip_whitespace(), b" \t "), Ok(()));
 /// ```
 #[inline]
-pub fn skip_whitespace<I: Input<Token=u8>>(i: I) -> SimpleResult<I, ()> {
-    skip_while(i, is_whitespace)
+pub fn skip_whitespace<I: Input<Token=u8>>() -> impl Parser<I, Output=(), Error=Error<u8>> {
+    skip_while(is_whitespace)
 }
 
 /// Parses a single digit.
@@ -103,11 +98,11 @@ pub fn skip_whitespace<I: Input<Token=u8>>(i: I) -> SimpleResult<I, ()> {
 /// use chomp::parse_only;
 /// use chomp::ascii::digit;
 ///
-/// assert_eq!(parse_only(digit, b"1"), Ok(b'1'));
+/// assert_eq!(parse_only(digit(), b"1"), Ok(b'1'));
 /// ```
 #[inline]
-pub fn digit<I: Input<Token=u8>>(i: I) -> SimpleResult<I, u8> {
-    satisfy(i, is_digit)
+pub fn digit<I: Input<Token=u8>>() -> impl Parser<I, Output=u8, Error=Error<u8>> {
+    satisfy(is_digit)
 }
 
 /// Parses a number with an optional leading '+' or '-'.
@@ -123,19 +118,18 @@ pub fn digit<I: Input<Token=u8>>(i: I) -> SimpleResult<I, u8> {
 /// use chomp::parse_only;
 /// use chomp::ascii::{decimal, signed};
 ///
-/// let r: Result<i16, _> = parse_only(|i| signed(i, decimal), b"-123");
+/// let r: Result<i16, _> = parse_only(signed(decimal()), b"-123");
 ///
 /// assert_eq!(r, Ok(-123i16));
 /// ```
 #[inline]
-pub fn signed<I: Input<Token=u8>, T, F>(i: I, f: F) -> SimpleResult<I, T>
+pub fn signed<I: Input<Token=u8>, T, F>(f: F) -> impl Parser<I, Output=T, Error=Error<u8>>
   where T: Copy + ValueFrom<i8, Err=NoError> + Add<Output=T> + Mul<Output=T>,
-        F: FnOnce(I) -> SimpleResult<I, T> {
-    option(i,
-           |i| satisfy(i, |c| c == b'-' || c == b'+')
-               .map(|s| T::value_from(if s == b'+' { 1 } else { -1 }).unwrap_ok()),
-           T::value_from(1).unwrap_ok())
-        .bind(|i, sign| f(i).map(|num| sign * num))
+        F: Parser<I, Output=T, Error=Error<u8>> {
+    option(
+        satisfy(|c| c == b'-' || c == b'+').map(|s| T::value_from(if s == b'+' { 1 } else { -1 }).unwrap_ok()),
+        T::value_from(1).unwrap_ok())
+        .bind(|sign| f.map(move |num| sign * num))
 }
 
 /// Parses a series of digits and converts them to an integer.
@@ -150,13 +144,15 @@ pub fn signed<I: Input<Token=u8>, T, F>(i: I, f: F) -> SimpleResult<I, T>
 /// use chomp::parse_only;
 /// use chomp::ascii::decimal;
 ///
-/// let r = parse_only(decimal::<_, u8>, b"123");
+/// let r = parse_only(decimal::<_, u8>(), b"123");
 ///
 /// assert_eq!(r, Ok(123u8));
 /// ```
 #[inline]
-pub fn decimal<I: Input<Token=u8>, T: Copy + ValueFrom<u8, Err=NoError> + Add<Output=T> + Mul<Output=T>>(i: I) -> SimpleResult<I, T> {
-    take_while1(i, is_digit).map(to_decimal)
+pub fn decimal<I, T>() -> impl Parser<I, Output=T, Error=Error<u8>>
+  where I: Input<Token=u8>,
+        T: Copy + ValueFrom<u8, Err=NoError> + Add<Output=T> + Mul<Output=T> {
+    take_while1(is_digit).map(to_decimal)
 }
 
 /// Internal function converting a `[u8]` to the given integer type `T`.

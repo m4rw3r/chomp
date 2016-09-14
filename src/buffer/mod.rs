@@ -9,14 +9,14 @@
 //!
 //! use chomp::buffer;
 //! use chomp::buffer::Stream;
-//! use chomp::prelude::{token, take_while, take_while1};
+//! use chomp::prelude::{Parser, token, take_while, take_while1};
 //! use chomp::ascii::is_whitespace;
 //!
 //! let f = File::open("./README.md").unwrap();
 //!
 //! let mut b = buffer::Source::from_read(f, buffer::FixedSizeBuffer::new());
 //!
-//! let r = b.parse(parser!{
+//! let r = b.parse(parse!{
 //!     take_while(|c| c != b'#');
 //!     token(b'#');
 //!     take_while1(is_whitespace);
@@ -38,9 +38,8 @@ use std::ptr;
 
 use std::cell::Cell;
 
-use types::{Input, ParseResult};
+use types::{Input, Parser};
 use types::Buffer as InputBuffer;
-use primitives::Guard;
 
 pub use self::slice::SliceStream;
 pub use self::data_source::DataSource;
@@ -89,10 +88,8 @@ pub trait Stream<'a, 'i> {
     /// If a `StreamError::Retry` is returned the consuming code it should just retry the action
     /// (the implementation might require a separate call to refill the stream).
     #[inline]
-    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, StreamError<<Self::Input as Input>::Buffer, E>>
-      where F: FnOnce(Self::Input) -> ParseResult<Self::Input, T, E>,
-            T: 'i,
-            E: 'i;
+    fn parse<P>(&'a mut self, P) -> Result<P::Output, StreamError<<Self::Input as Input>::Buffer, P::Error>>
+      where P: Parser<Self::Input>;
 }
 
 /// Input buffer type which contains a flag which tells if we might need to read more data.
@@ -139,7 +136,7 @@ impl<'a, I: Copy + PartialEq> Input for InputBuf<'a, I> {
     type Buffer = &'a [I];
 
     #[inline]
-    fn _peek(&mut self, _g: Guard) -> Option<Self::Token> {
+    fn peek(&mut self) -> Option<Self::Token> {
         if let Some(c) = self.1.first() {
             Some(*c)
         } else {
@@ -150,8 +147,8 @@ impl<'a, I: Copy + PartialEq> Input for InputBuf<'a, I> {
     }
 
     #[inline]
-    fn _pop(&mut self, g: Guard) -> Option<Self::Token> {
-        self._peek(g).map(|c| {
+    fn pop(&mut self) -> Option<Self::Token> {
+        self.peek().map(|c| {
             self.1 = &self.1[1..];
 
             c
@@ -159,7 +156,7 @@ impl<'a, I: Copy + PartialEq> Input for InputBuf<'a, I> {
     }
 
     #[inline]
-    fn _consume(&mut self, _g: Guard, n: usize) -> Option<Self::Buffer> {
+    fn consume(&mut self, n: usize) -> Option<Self::Buffer> {
         if n > self.1.len() {
             self.0 = true;
 
@@ -174,7 +171,7 @@ impl<'a, I: Copy + PartialEq> Input for InputBuf<'a, I> {
     }
 
     #[inline]
-    fn _consume_while<F>(&mut self, g: Guard, mut f: F) -> Self::Buffer
+    fn consume_while<F>(&mut self, mut f: F) -> Self::Buffer
       where F: FnMut(Self::Token) -> bool {
         if let Some(n) = self.1.iter().position(|c| !f(*c)) {
             let b = &self.1[..n];
@@ -183,17 +180,17 @@ impl<'a, I: Copy + PartialEq> Input for InputBuf<'a, I> {
 
             b
         } else {
-            self._consume_remaining(g)
+            self.consume_remaining()
         }
     }
 
     #[inline]
-    fn _consume_from(&mut self, _g: Guard, m: Self::Marker) -> Self::Buffer {
+    fn consume_from(&mut self, m: Self::Marker) -> Self::Buffer {
         &m[..m.len() - self.1.len()]
     }
 
     #[inline]
-    fn _consume_remaining(&mut self, _g: Guard) -> Self::Buffer {
+    fn consume_remaining(&mut self) -> Self::Buffer {
         self.0 = true;
 
         let b = self.1;
@@ -204,14 +201,14 @@ impl<'a, I: Copy + PartialEq> Input for InputBuf<'a, I> {
     }
 
     #[inline]
-    fn _mark(&self, _g: Guard) -> Self::Marker {
+    fn mark(&self) -> Self::Marker {
         // Incomplete state is separate from the parsed state, no matter how we hit incomplete we
         // want to keep it.
         self.1
     }
 
     #[inline]
-    fn _restore(mut self, _g: Guard, m: Self::Marker) -> Self {
+    fn restore(mut self, m: Self::Marker) -> Self {
         self.1 = m;
 
         self
@@ -500,33 +497,27 @@ impl<I: Copy + PartialEq> Buffer<I> for GrowingBuffer<I> {
 #[cfg(test)]
 mod test {
     use super::InputBuf;
-    use types::{Input, ParseResult};
-    use primitives::{IntoInner, Primitives};
+    use types::{Input, Parser};
+    use types::{ret, err};
 
     use types::test::run_primitives_test;
 
     #[test]
-    fn ret() {
+    fn ret_test() {
         let i1: InputBuf<u8> = InputBuf::new(b"in1");
         let i2: InputBuf<u8> = InputBuf::new(b"in2");
 
-        let r1: ParseResult<_, u32, ()> = i1.ret::<_, ()>(23u32);
-        let r2: ParseResult<_, i32, &str> = i2.ret::<_, &str>(23i32);
-
-        assert_eq!(r1.into_inner(), (InputBuf::new(b"in1"), Ok(23u32)));
-        assert_eq!(r2.into_inner(), (InputBuf::new(b"in2"), Ok(23i32)));
+        assert_eq!(ret::<_, ()>(23u32).parse(i1), (InputBuf::new(b"in1"), Ok(23u32)));
+        assert_eq!(ret::<_, &str>(23i32).parse(i2), (InputBuf::new(b"in2"), Ok(23i32)));
     }
 
     #[test]
-    fn err() {
+    fn err_test() {
         let i1: InputBuf<u8> = InputBuf::new(b"in1");
         let i2: InputBuf<u8> = InputBuf::new(b"in2");
 
-        let r1: ParseResult<_, (), u32>   = i1.err::<(), _>(23u32);
-        let r2: ParseResult<_, &str, i32> = i2.err::<&str, _>(23i32);
-
-        assert_eq!(r1.into_inner(), (InputBuf::new(b"in1"), Err(23u32)));
-        assert_eq!(r2.into_inner(), (InputBuf::new(b"in2"), Err(23i32)));
+        assert_eq!(err::<(), _>(23u32).parse(i1), (InputBuf::new(b"in1"), Err(23u32)));
+        assert_eq!(err::<&str, _>(23i32).parse(i2), (InputBuf::new(b"in2"), Err(23i32)));
     }
 
     #[test]

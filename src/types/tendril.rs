@@ -4,7 +4,6 @@
 use std::mem;
 
 use tendril::ByteTendril;
-use primitives::Guard;
 use types::{Buffer, Input};
 
 // TODO: Impl for more than byte tendril
@@ -14,12 +13,12 @@ impl Input for ByteTendril {
     type Buffer = ByteTendril;
 
     #[inline]
-    fn _peek(&mut self, _g: Guard) -> Option<Self::Token> {
+    fn peek(&mut self) -> Option<Self::Token> {
         self.as_ref().first().cloned()
     }
 
     #[inline]
-    fn _pop(&mut self, _g: Guard) -> Option<Self::Token> {
+    fn pop(&mut self) -> Option<Self::Token> {
         if self.len32() > 0 {
             let t = self.as_ref()[0];
 
@@ -32,7 +31,7 @@ impl Input for ByteTendril {
     }
 
     #[inline]
-    fn _consume(&mut self, _g: Guard, n: usize) -> Option<Self::Buffer> {
+    fn consume(&mut self, n: usize) -> Option<Self::Buffer> {
         if n > self.len32() as usize {
             None
         } else {
@@ -45,7 +44,7 @@ impl Input for ByteTendril {
     }
 
     #[inline]
-    fn _consume_while<F>(&mut self, g: Guard, mut f: F) -> Self::Buffer
+    fn consume_while<F>(&mut self, mut f: F) -> Self::Buffer
       where F: FnMut(Self::Token) -> bool {
         match self.iter().position(|c| !f(*c)) {
             Some(n) => {
@@ -55,30 +54,30 @@ impl Input for ByteTendril {
 
                 b
             },
-            None    => self._consume_remaining(g),
+            None    => self.consume_remaining(),
         }
     }
 
     #[inline]
-    fn _consume_from(&mut self, _g: Guard, m: Self::Marker) -> Self::Buffer {
+    fn consume_from(&mut self, m: Self::Marker) -> Self::Buffer {
         // Just the tendril analogue of the slice version:
         m.subtendril(0, m.len32() - self.len32())
     }
 
     #[inline]
-    fn _consume_remaining(&mut self, _g: Guard) -> Self::Buffer {
+    fn consume_remaining(&mut self) -> Self::Buffer {
         let b = self.subtendril(0, 0);
 
         mem::replace(self, b)
     }
 
     #[inline]
-    fn _mark(&self, _g: Guard) -> Self::Marker {
+    fn mark(&self) -> Self::Marker {
         self.clone()
     }
 
     #[inline]
-    fn _restore(self, _g: Guard, m: Self::Marker) -> Self {
+    fn restore(self, m: Self::Marker) -> Self {
         m
     }
 }
@@ -113,14 +112,14 @@ impl Buffer for ByteTendril {
 
 #[cfg(test)]
 mod test {
+    use types::Parser;
     use tendril::Tendril;
 
     #[test]
     fn basic() {
         use ascii::decimal;
-        use primitives::IntoInner;
 
-        assert_eq!(decimal(Tendril::from_slice(&b"123"[..])).into_inner(), (Tendril::from_slice(&b""[..]), Ok(123i32)));
+        assert_eq!(decimal().parse(Tendril::from_slice(&b"123"[..])), (Tendril::from_slice(&b""[..]), Ok(123i32)));
     }
 
     #[test]

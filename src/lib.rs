@@ -1,3 +1,4 @@
+// TODO: Rewrite
 //! Chomp is a fast monadic-style parser combinator library for the Rust programming language. It was
 //! written as the culmination of the experiments detailed in these blog posts:
 //!
@@ -14,6 +15,7 @@
 //! # Example
 //!
 //! ```
+//! #![feature(conservative_impl_trait)]
 //! # #[macro_use] extern crate chomp;
 //! # fn main() {
 //! use chomp::prelude::*;
@@ -24,20 +26,20 @@
 //!     last:  B,
 //! }
 //!
-//! fn name<I: U8Input>(i: I) -> SimpleResult<I, Name<I::Buffer>> {
-//!     parse!{i;
+//! fn name<I: U8Input>() -> impl Parser<I, Output=Name<I::Buffer>, Error=Error<u8>> {
+//!     parse!{
 //!         let first = take_while1(|c| c != b' ');
 //!                     token(b' ');  // skipping this char
 //!         let last  = take_while1(|c| c != b'\n');
 //!
-//!         ret Name{
+//!         ret(Name{
 //!             first: first,
 //!             last:  last,
-//!         }
+//!         })
 //!     }
 //! }
 //!
-//! assert_eq!(parse_only(name, "Martin Wernstål\n".as_bytes()), Ok(Name{
+//! assert_eq!(parse_only(name(), "Martin Wernstål\n".as_bytes()), Ok(Name{
 //!     first: &b"Martin"[..],
 //!     last: "Wernstål".as_bytes()
 //! }));
@@ -93,14 +95,14 @@
 //! # #[macro_use] extern crate chomp;
 //! # fn main() {
 //! # use chomp::prelude::*;
-//! # let r = parse_only(parser!{
+//! # let r = parse_only(
 //! satisfy(|c| {
 //!     match c {
 //!         b'c' | b'h' | b'a' | b'r' => true,
 //!         _ => false,
 //!     }
 //! })
-//! # }, b"h");
+//! # , b"h");
 //! # assert_eq!(r, Ok(b'h'));
 //! # }
 //! ```
@@ -141,22 +143,23 @@
 //! A Chomp parser with a similar structure looks like this:
 //!
 //! ```
+//! #![feature(conservative_impl_trait)]
 //! # #[macro_use] extern crate chomp;
 //! # use chomp::prelude::*;
-//! fn f<I: U8Input>(i: I) -> SimpleResult<I, (u8, u8, u8)> {
-//!     parse!{i;
+//! fn f<I: U8Input>() -> impl Parser<I, Output=(u8, u8, u8), Error=Error<u8>> {
+//!     parse!{
 //!         let a = digit();
 //!         let b = digit();
 //!                 string(b"missiles");
-//!         ret (a, b, a + b)
+//!         ret((a, b, a + b))
 //!     }
 //! }
 //!
-//! fn digit<I: U8Input>(i: I) -> SimpleResult<I, u8> {
-//!     satisfy(i, |c| b'0' <= c && c <= b'9').map(|c| c - b'0')
+//! fn digit<I: U8Input>() -> impl Parser<I, Output=u8, Error=Error<u8>> {
+//!     satisfy(|c| b'0' <= c && c <= b'9').map(|c| c - b'0')
 //! }
 //! # fn main() {
-//! #     let r = parse_only(f, b"33missiles");
+//! #     let r = parse_only(f(), b"33missiles");
 //! #     assert_eq!(r, Ok((3, 3, 6)));
 //! # }
 //! ```
@@ -199,6 +202,7 @@
 //!    The built-in `chomp::parsers::Error` type is zero-sized and carry no error-information. This
 //!    increases performance somewhat.
 
+#![feature(conservative_impl_trait, unboxed_closures, fn_traits)]
 #![warn(missing_docs,
         missing_debug_implementations,
         missing_copy_implementations,
@@ -236,12 +240,10 @@ pub mod ascii;
 pub mod buffer;
 pub mod combinators;
 pub mod parsers;
-pub mod primitives;
 pub mod types;
 
 pub use parse::parse_only;
 pub use parse::parse_only_str;
-pub use parse::run_parser;
 
 /// Basic prelude.
 pub mod prelude {
@@ -264,14 +266,11 @@ pub mod prelude {
         take_while1,
         token,
     };
-    pub use parsers::{
-        Error,
-        SimpleResult,
-    };
+    pub use parsers::Error;
+
     pub use combinators::{
         count,
         option,
-        or,
         either,
         many,
         many1,
@@ -283,10 +282,15 @@ pub mod prelude {
         matched_by,
     };
     pub use types::{
+        ret,
+        err,
+        from_result,
+    };
+    pub use types::{
         Buffer,
         Input,
         U8Input,
-        ParseResult,
+        Parser,
     };
 
     pub use either::*;

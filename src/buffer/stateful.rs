@@ -1,7 +1,6 @@
 use std::io;
 
-use types::{Input, ParseResult};
-use primitives::IntoInner;
+use types::{Input, Parser};
 
 use buffer::{
     Buffer,
@@ -202,12 +201,8 @@ impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
     type Input = InputBuf<'a, S::Item>;
 
     #[inline]
-    fn parse<F, T, E>(&'a mut self, f: F) -> Result<T, StreamError<<Self::Input as Input>::Buffer, E>>
-      where F: FnOnce(Self::Input) -> ParseResult<Self::Input, T, E>,
-            T: 'a,
-            E: 'a {
-        use primitives::Primitives;
-
+    fn parse<P>(&'a mut self, p: P) -> Result<P::Output, StreamError<<Self::Input as Input>::Buffer, P::Error>>
+      where P: Parser<Self::Input> {
         if self.state.contains(INCOMPLETE | AUTOMATIC_FILL) {
             try!(self.fill().map_err(StreamError::IoError));
         }
@@ -216,7 +211,7 @@ impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
             return Err(StreamError::EndOfInput);
         }
 
-        match f(InputBuf::new(&self.buffer)).into_inner() {
+        match p.parse(InputBuf::new(&self.buffer)) {
             (remainder, Ok(data)) => {
                 if remainder.is_incomplete() && !self.state.contains(END_OF_INPUT) {
                     // We can't accept this since we might have hit a premature end
@@ -251,6 +246,7 @@ impl<'a, S: DataSource, B: Buffer<S::Item>> Stream<'a, 'a> for Source<S, B>
     }
 }
 
+/*
 #[cfg(test)]
 mod test {
     use std::io;
@@ -524,3 +520,4 @@ mod test {
         assert_eq!(m, 2);
     }
 }
+*/

@@ -1,27 +1,28 @@
 /// Macro emulating `do`-notation for the parser monad, automatically threading the linear type.
 ///
 /// ```
+/// # #![feature(conservative_impl_trait)]
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
 /// # use chomp::prelude::*;
-/// # fn parser<I: Input>(i: I, _s: &str) -> ParseResult<I, (), ()> { i.ret(()) }
-/// # fn other_parser<I: Input>(i: I) -> ParseResult<I, u8, ()> { i.ret(23) }
+/// # fn parser<I: Input>(_s: &str) -> impl Parser<I, Output=(), Error=()> { ret(()) }
+/// # fn other_parser<I: Input>() -> impl Parser<I, Output=u8, Error=()> { ret(23) }
 /// # fn do_something(_i: u8) -> u32 { 23 }
 /// # let input = &b"foo"[..];
-/// # let _r: ParseResult<_, _, ()> =
-/// parse!{input;
+/// # let _r: (_, Result<_, ()>) =
+/// parse!{
 ///                 parser("parameter");
 ///     let value = other_parser();
 ///
-///     ret do_something(value)
+///     ret(do_something(value))
 /// }
-/// # ;
-/// # let _r: ParseResult<_, _, ()> =
+/// # .parse(input);
+/// # let _r: (_, Result<_, ()>) =
 /// // is equivalent to:
-/// parser(input, "parameter").bind(|i, _|
-///     other_parser(i).bind(|i, value|
-///         i.ret(do_something(value))))
-/// # ;
+/// parser("parameter").bind(|_|
+///     other_parser().bind(|value|
+///         ret(do_something(value))))
+/// # .parse(input);
 /// # }
 /// ```
 ///
@@ -30,9 +31,10 @@
 /// Parsing into a struct using the basic provided parsers:
 ///
 /// ```
+/// # #![feature(conservative_impl_trait)]
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use chomp::prelude::{Buffer, Error, Input, ParseResult, parse_only, take_while1, token};
+/// use chomp::prelude::{Buffer, Input, Error, Parser, parse_only, take_while1, token, ret};
 ///
 /// #[derive(Debug, Eq, PartialEq)]
 /// struct Name<B: Buffer> {
@@ -40,20 +42,20 @@
 ///     last:  B,
 /// }
 ///
-/// fn parser<I: Input<Token=u8>>(i: I) -> ParseResult<I, Name<I::Buffer>, Error<I::Token>> {
-///     parse!{i;
+/// fn parser<I: Input<Token=u8>>() -> impl Parser<I, Output=Name<I::Buffer>, Error=Error<u8>> {
+///     parse!{
 ///         let first = take_while1(|c| c != b' ');
 ///                     token(b' ');
 ///         let last  = take_while1(|c| c != b'\n');
 ///
-///         ret @ _, Error<u8>: Name{
+///         ret(Name{
 ///             first: first,
 ///             last:  last,
-///         }
+///         })
 ///     }
 /// }
 ///
-/// assert_eq!(parse_only(parser, "Martin Wernstål\n".as_bytes()), Ok(Name{
+/// assert_eq!(parse_only(parser(), "Martin Wernstål\n".as_bytes()), Ok(Name{
 ///     first: &b"Martin"[..],
 ///     last: "Wernstål".as_bytes()
 /// }));
@@ -64,24 +66,25 @@
 /// operator to make it more succint:
 ///
 /// ```
+/// # #![feature(conservative_impl_trait)]
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use chomp::prelude::{U8Input, SimpleResult, parse_only, string, token};
+/// use chomp::prelude::{U8Input, Parser, Error, parse_only, string, token, ret};
 /// use chomp::ascii::decimal;
 ///
-/// fn parse_ip<I: U8Input>(i: I) -> SimpleResult<I, (u8, u8, u8, u8)> {
-///     parse!{i;
+/// fn parse_ip<I: U8Input>() -> impl Parser<I, Output=(u8, u8, u8, u8), Error=Error<u8>> {
+///     parse!{
 ///                 string(b"ip:");
 ///         let a = decimal() <* token(b'.');
 ///         let b = decimal() <* token(b'.');
 ///         let c = decimal() <* token(b'.');
 ///         let d = decimal();
 ///                 token(b';');
-///         ret (a, b, c, d)
+///         ret((a, b, c, d))
 ///     }
 /// }
 ///
-/// assert_eq!(parse_only(parse_ip, b"ip:192.168.0.1;"), Ok((192, 168, 0, 1)));
+/// assert_eq!(parse_only(parse_ip(), b"ip:192.168.0.1;"), Ok((192, 168, 0, 1)));
 /// # }
 /// ```
 ///
@@ -90,7 +93,7 @@
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// use chomp::prelude::{parse_only, string};
+/// use chomp::prelude::{Parser, parse_only, string};
 ///
 /// #[derive(Debug, Eq, PartialEq)]
 /// enum Log {
@@ -100,8 +103,8 @@
 ///     Debug,
 /// };
 ///
-/// let level        = |i, b, r| string(i, b).map(|_| r);
-/// let log_severity = parser!{
+/// let level        = |b, r| string(b).map(|_| r);
+/// let log_severity = parse!{
 ///     level(b"ERROR", Log::Error)   <|>
 ///     level(b"WARN",  Log::Warning) <|>
 ///     level(b"INFO",  Log::Info)    <|>
@@ -153,18 +156,19 @@
 /// or by an expression which ends the block.
 ///
 /// ```
+/// # #![feature(conservative_impl_trait)]
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
 /// # use chomp::ascii::decimal;
-/// # use chomp::prelude::{parse_only, U8Input, token, SimpleResult};
-/// # fn my_parser<I: U8Input>(i: I) -> SimpleResult<I, u32> {
-/// parse!{i;
+/// # use chomp::prelude::{parse_only, U8Input, Error, token, Parser, ret};
+/// # fn my_parser<I: U8Input>() -> impl Parser<I, Output=u32, Error=Error<u8>> {
+/// parse!{
 ///     token(b':');
 ///     let n: u32 = decimal();
-///     ret n * 2
+///     ret(n * 2)
 /// }
 /// # }
-/// # assert_eq!(parse_only(my_parser, b":21"), Ok(42));
+/// # assert_eq!(parse_only(my_parser(), b":21"), Ok(42));
 /// # }
 /// ```
 ///
@@ -197,17 +201,18 @@
 /// by a parameter list within parentheses. The parentheses are mandatory.
 ///
 /// ```
+/// # #![feature(conservative_impl_trait)]
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// # use chomp::prelude::{parse_only, U8Input, SimpleResult};
-/// # fn my_parser<I: U8Input>(i: I) -> SimpleResult<I, &'static str> {
-/// fn do_it<'a, I: U8Input>(i: I, s: &'a str) -> SimpleResult<I, &'a str> { i.ret(s) }
+/// # use chomp::prelude::{parse_only, U8Input, Parser, ret};
+/// # fn my_parser<I: U8Input>() -> impl Parser<I, Output=&'static str, Error=()> {
+/// fn do_it<'a, I: U8Input>(s: &'a str) -> impl Parser<I, Output=&'a str, Error=()> { ret(s) }
 ///
-/// parse!{i;
+/// parse!{
 ///     do_it("second parameter")
 /// }
 /// # }
-/// # assert_eq!(parse_only(my_parser, b":21"), Ok("second parameter"));
+/// # assert_eq!(parse_only(my_parser(), b":21"), Ok("second parameter"));
 /// # }
 /// ```
 ///
@@ -219,9 +224,9 @@
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// # use chomp::prelude::{parse_only, Input};
+/// # use chomp::prelude::{parse_only, ret};
 /// let r: Result<_, (_, ())> = parse_only(
-///     parser!{ ret "some success data" },
+///     parse!{ ret("some success data") },
 ///     b"input data"
 /// );
 ///
@@ -237,8 +242,8 @@
 /// ```
 /// # #[macro_use] extern crate chomp;
 /// # fn main() {
-/// # use chomp::prelude::{parse_only, Input};
-/// let r = parse_only(parser!{ err @ u32, _: "some error data" }, b"input data");
+/// # use chomp::prelude::{parse_only, err};
+/// let r = parse_only(parse!{ err::<u32, _>("some error data") }, b"input data");
 ///
 /// assert_eq!(r, Err((&b"input data"[..], "some error data")));
 /// # }
@@ -246,33 +251,6 @@
 ///
 /// Note that we only declare the success type (`u32` above) and leave out the type of the error
 /// (by using `_`) since that can be uniquely inferred.
-///
-/// ### Inline
-///
-/// An inline expression is essentially a closure where the parser state (`Input` type) is exposed.
-/// This is useful for doing eg. inline `match` statements or to delegate to another parser which
-/// requires some plain Rust logic:
-///
-/// ```
-/// # #[macro_use] extern crate chomp;
-/// # fn main() {
-/// # use chomp::prelude::{parse_only, Input, ParseResult};
-/// fn other_parser<I: Input>(i: I) -> ParseResult<I, &'static str, &'static str> {
-///     i.ret("Success!")
-/// }
-///
-/// let condition = true;
-///
-/// let p = parser!{
-///     state -> match condition {
-///         true  => other_parser(state),
-///         false => Input::err(state, "failure"),
-///     }
-/// };
-///
-/// assert_eq!(parse_only(p, b""), Ok("Success!"));
-/// # }
-/// ```
 ///
 /// ### Operators
 ///
@@ -291,8 +269,8 @@
 ///    ```
 ///    # #[macro_use] extern crate chomp;
 ///    # fn main() {
-///    # use chomp::ascii::decimal; use chomp::prelude::{parse_only, token};
-///    let p = parser!{ decimal() <* token(b';') };
+///    # use chomp::ascii::decimal; use chomp::prelude::{Parser, parse_only, token};
+///    let p = parse!{ decimal() <* token(b';') };
 ///
 ///    assert_eq!(parse_only(p, b"123;"), Ok(123u32));
 ///    # }
@@ -306,8 +284,8 @@
 ///    ```
 ///    # #[macro_use] extern crate chomp;
 ///    # fn main() {
-///    # use chomp::prelude::{parse_only, token};
-///    let p = parser!{ token(b'a') <|> token(b'b') };
+///    # use chomp::prelude::{Parser, parse_only, token};
+///    let p = parse!{ token(b'a') <|> token(b'b') };
 ///
 ///    assert_eq!(parse_only(p, b"b"), Ok(b'b'));
 ///    # }
@@ -321,8 +299,8 @@
 ///    ```
 ///    # #[macro_use] extern crate chomp;
 ///    # fn main() {
-///    # use chomp::prelude::{parse_only, token};
-///    let p = parser!{ token(b'a') >> token(b';') };
+///    # use chomp::prelude::{Parser, parse_only, token};
+///    let p = parse!{ token(b'a') >> token(b';') };
 ///
 ///    assert_eq!(parse_only(p, b"a;"), Ok(b';'));
 ///    # }
@@ -331,19 +309,6 @@
 /// These operators correspond to the equivalent operators found in Haskell's `Alternative`,
 /// `Applicative` and `Monad` typeclasses, with the exception of being right-associative (the
 /// operators are left-associative in Haskell).
-///
-/// An Inline expression needs to be wrapped in parenthesis to parse (`$expr` pattern in macros
-/// require `;` or `,` to be terminated at the same nesting level):
-///
-/// ```
-/// # #[macro_use] extern crate chomp;
-/// # fn main() {
-/// # use chomp::prelude::{Input, parse_only};
-/// let p = parser!{ (i -> Input::err(i, "foo")) <|> (i -> Input::ret(i, "bar")) };
-///
-/// assert_eq!(parse_only(p, b"a;"), Ok("bar"));
-/// # }
-/// ```
 ///
 /// # Debugging
 ///
@@ -442,15 +407,7 @@ macro_rules! parse {
     ( $($t:tt)* ) => { __parse_internal!{ $($t)* } };
 }
 
-/// Internal rule to create an or-combinator, separate macro so that tests can override it.
-///
-/// Cannot make a method on `Input` due to type-inference failures due to the exact implementation
-/// of `or` not being fully specified.
-#[macro_export]
-#[doc(hidden)]
-macro_rules! __parse_internal_or {
-    ($input:expr, $lhs:expr, $rhs:expr) => { $crate::combinators::or($input, $lhs, $rhs) };
-}
+// FIXME: Update the grammar
 
 /// Actual implementation of the parse macro, hidden to make the documentation easier to read.
 ///
@@ -463,10 +420,10 @@ macro_rules! __parse_internal {
     // BIND ties an expression together with the following statement
     // The four versions are needed to allow the empty case (no tailing allowed on the empty
     // case), _, $pat and $ident:$ty.
-    ( @BIND(($input:expr ; _)                         $($exp:tt)+) )              => { __parse_internal!{@EXPR($input;) $($exp)* } };
-    ( @BIND(($input:expr ; _)                         $($exp:tt)+) $($tail:tt)+ ) => { (__parse_internal!{@EXPR($input;) $($exp)* }).bind(|i, _| __parse_internal!{i; $($tail)* }) };
-    ( @BIND(($input:expr ; $name:pat)                 $($exp:tt)+) $($tail:tt)+ ) => { (__parse_internal!{@EXPR($input;) $($exp)* }).bind(|i, $name| __parse_internal!{i; $($tail)* }) };
-    ( @BIND(($input:expr ; $name:ident : $name_ty:ty) $($exp:tt)+) $($tail:tt)+ ) => { (__parse_internal!{@EXPR($input;) $($exp)* }).bind(|i, $name : $name_ty| __parse_internal!{i; $($tail)* }) };
+    ( @BIND((_)                         $($exp:tt)+) )              => {  __parse_internal!{@EXPR() $($exp)* } };
+    ( @BIND((_)                         $($exp:tt)+) $($tail:tt)+ ) => { (__parse_internal!{@EXPR() $($exp)* }).bind(move |_| __parse_internal!{$($tail)* }) };
+    ( @BIND(($name:pat)                 $($exp:tt)+) $($tail:tt)+ ) => { (__parse_internal!{@EXPR() $($exp)* }).bind(move |$name| __parse_internal!{$($tail)* }) };
+    ( @BIND(($name:ident : $name_ty:ty) $($exp:tt)+) $($tail:tt)+ ) => { (__parse_internal!{@EXPR() $($exp)* }).bind(move |$name : $name_ty| __parse_internal!{$($tail)* }) };
 
     // Term ::= Ret
     //        | Err
@@ -474,83 +431,86 @@ macro_rules! __parse_internal {
     //        | Inline
     //        | Named
     // Ret ::= "ret" Typed
-    ( @TERM($input:expr) ret @ $t_ty:ty , $e_ty:ty : $e:expr )   => { $input.ret::<$t_ty, $e_ty>($e) };
+    //( @TERM(ret @ $t_ty:ty , $e_ty:ty : $e:expr) )   => { ret::<_, $t_ty, $e_ty>($e) };
     //       | "ret" $expr
-    ( @TERM($input:expr) ret $e:expr )                           => { $input.ret($e) };
+    //( @TERM(ret $e:expr) )                           => { ret($e) };
     // Err ::= "err" Typed
-    ( @TERM($input:expr) err @ $t_ty:ty , $e_ty:ty : $e:expr )   => { $input.err::<$t_ty, $e_ty>($e) };
+    //( @TERM(err @ $t_ty:ty , $e_ty:ty : $e:expr) )   => { err::<_, $t_ty, $e_ty>($e) };
     //       | "err" $expr
-    ( @TERM($input:expr) err $e:expr )                           => { $input.err($e) };
+    //( @TERM(err $e:expr) )                           => { err($e) };
     // '(' Expr ')'
-    ( @TERM($input:expr) ( $($inner:tt)* ) )                     => { __parse_internal!{@EXPR($input;) $($inner)*} };
+    ( @TERM(( $($inner:tt)* )) )                     => { __parse_internal!{@EXPR() $($inner)*} };
     // Inline ::= $ident "->" $expr
-    ( @TERM($input:expr) $state:ident -> $e:expr )               => { { let $state = $input; $e } };
+    //( @TERM() $state:ident -> $e:expr )               => { { let $state = $input; $e } };
     // Named ::= $ident '(' ($expr ',')* (',')* ')'
-    ( @TERM($input:expr) $func:ident ( $($param:expr),* $(,)*) ) => { $func($input, $($param),*) };
+    //( @TERM() $func:ident ( $($param:expr),* $(,)*) ) => { $func($($param),*) };
+    //( @TERM($parser:expr) )                          => { $parser };
+
+    ( @TERM($($t:tt)*) ) => { $($t)* };
 
     // EXPR groups by lowest priority item first which is then ">>"
     // Expr ::= ExprAlt
-    ( @EXPR($input:expr; $($lhs:tt)*) )                          => { __parse_internal!{@EXPR_ALT($input;) $($lhs)*} };
+    ( @EXPR($($lhs:tt)*) )                          => { __parse_internal!{@EXPR_ALT() $($lhs)*} };
     //        | ExprAlt ">>" Expr
-    ( @EXPR($input:expr; $($lhs:tt)*) >> $($tail:tt)* )          => { __parse_internal!{@EXPR_ALT($input;) $($lhs)*}.bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
+    ( @EXPR($($lhs:tt)*) >> $($tail:tt)* )          => { (__parse_internal!{@EXPR_ALT() $($lhs)*}).bind(move |_| __parse_internal!{@EXPR() $($tail)*}) };
     // recurse until >> or end
     // unrolled:
-    // ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $($tail:tt)* )      => { __parse_internal!{@EXPR($input; $($lhs)* $t1) $($tail)*} };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt )                                                               => {  __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1} };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt >> $($tail:tt)* )                                               => { (__parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1}).bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt )                                                        => {  __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2} };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt >> $($tail:tt)* )                                        => { (__parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2}).bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt )                                                 => {  __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3} };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt >> $($tail:tt)* )                                 => { (__parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3}).bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt )                                          => {  __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4} };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt >> $($tail:tt)* )                          => { (__parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4}).bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt )                                   => {  __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5} };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt >> $($tail:tt)* )                   => { (__parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5}).bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt )                            => {  __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6} };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt >> $($tail:tt)* )            => { (__parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6}).bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt )                     => {  __parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7} };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt >> $($tail:tt)* )     => { (__parse_internal!{@EXPR_ALT($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7}).bind(|i, _| __parse_internal!{@EXPR(i;) $($tail)*}) };
-    ( @EXPR($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt $t8:tt $($tail:tt)* ) => {  __parse_internal!{@EXPR($input; $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7 $t8) $($tail)*} };
+    // ( @EXPR($($lhs:tt)*) $t1:tt $($tail:tt)* )      => { __parse_internal!{@EXPR($($lhs)* $t1) $($tail)*} };
+    ( @EXPR($($lhs:tt)*) $t1:tt )                                                               => {  __parse_internal!{@EXPR_ALT() $($lhs)* $t1} };
+    ( @EXPR($($lhs:tt)*) $t1:tt >> $($tail:tt)* )                                               => { (__parse_internal!{@EXPR_ALT() $($lhs)* $t1}).bind(move |_| __parse_internal!{@EXPR() $($tail)*}) };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt )                                                        => {  __parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2} };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt >> $($tail:tt)* )                                        => { (__parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2}).bind(move |_| __parse_internal!{@EXPR() $($tail)*}) };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt )                                                 => {  __parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3} };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt >> $($tail:tt)* )                                 => { (__parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3}).bind(move |_| __parse_internal!{@EXPR() $($tail)*}) };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt )                                          => {  __parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4} };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt >> $($tail:tt)* )                          => { (__parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4}).bind(move |_| __parse_internal!{@EXPR() $($tail)*}) };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt )                                   => {  __parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4 $t5} };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt >> $($tail:tt)* )                   => { (__parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4 $t5}).bind(move |_| __parse_internal!{@EXPR() $($tail)*}) };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt )                            => {  __parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6} };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt >> $($tail:tt)* )            => { (__parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6}).bind(move |_| __parse_internal!{@EXPR() $($tail)*}) };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt )                     => {  __parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7} };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt >> $($tail:tt)* )     => { (__parse_internal!{@EXPR_ALT() $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7}).bind(move |_| __parse_internal!{@EXPR() $($tail)*}) };
+    ( @EXPR($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt $t8:tt $($tail:tt)* ) => {  __parse_internal!{@EXPR($($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7 $t8) $($tail)*} };
 
     // ExprAlt ::= ExprSkip
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) )                      => { __parse_internal!{@EXPR_SKIP($input;) $($lhs)*} };
+    ( @EXPR_ALT($($lhs:tt)*) )                      => { __parse_internal!{@EXPR_SKIP() $($lhs)*} };
     //           | ExprSkip <|> ExprAlt
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) <|> $($tail:tt)* )     => { __parse_internal_or!{$input, |i| __parse_internal!{@EXPR_SKIP(i;) $($lhs)*}, |i| __parse_internal!{@EXPR_ALT(i;) $($tail)*}} };
+    ( @EXPR_ALT($($lhs:tt)*) <|> $($tail:tt)* )     => { __parse_internal!{@EXPR_SKIP() $($lhs)*}.or(__parse_internal!{@EXPR_ALT() $($tail)*}) };
     // recurse until <|> or end
     // unrolled:
-    // ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $($tail:tt)* )  => { __parse_internal!{@EXPR_ALT($input; $($lhs)* $t1) $($tail)*} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt )                                                               => { __parse_internal!{@EXPR_SKIP($input;) $($lhs)* $t1} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt <|> $($tail:tt)* )                                              => { __parse_internal_or!{$input, |i| __parse_internal!{@EXPR_SKIP(i;) $($lhs)* $t1}, |i| __parse_internal!{@EXPR_ALT(i;) $($tail)*}} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt )                                                        => { __parse_internal!{@EXPR_SKIP($input;) $($lhs)* $t1 $t2} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt <|> $($tail:tt)* )                                       => { __parse_internal_or!{$input, |i| __parse_internal!{@EXPR_SKIP(i;) $($lhs)* $t1 $t2}, |i| __parse_internal!{@EXPR_ALT(i;) $($tail)*}} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt )                                                 => { __parse_internal!{@EXPR_SKIP($input;) $($lhs)* $t1 $t2 $t3} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt <|> $($tail:tt)* )                                => { __parse_internal_or!{$input, |i| __parse_internal!{@EXPR_SKIP(i;) $($lhs)* $t1 $t2 $t3}, |i| __parse_internal!{@EXPR_ALT(i;) $($tail)*}} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt )                                          => { __parse_internal!{@EXPR_SKIP($input;) $($lhs)* $t1 $t2 $t3 $t4} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt <|> $($tail:tt)* )                         => { __parse_internal_or!{$input, |i| __parse_internal!{@EXPR_SKIP(i;) $($lhs)* $t1 $t2 $t3 $t4}, |i| __parse_internal!{@EXPR_ALT(i;) $($tail)*}} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt )                                   => { __parse_internal!{@EXPR_SKIP($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt <|> $($tail:tt)* )                  => { __parse_internal_or!{$input, |i| __parse_internal!{@EXPR_SKIP(i;) $($lhs)* $t1 $t2 $t3 $t4 $t5}, |i| __parse_internal!{@EXPR_ALT(i;) $($tail)*}} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt )                            => { __parse_internal!{@EXPR_SKIP($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt <|> $($tail:tt)* )           => { __parse_internal_or!{$input, |i| __parse_internal!{@EXPR_SKIP(i;) $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6}, |i| __parse_internal!{@EXPR_ALT(i;) $($tail)*}} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt )                     => { __parse_internal!{@EXPR_SKIP($input;) $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt <|> $($tail:tt)* )    => { __parse_internal_or!{$input, |i| __parse_internal!{@EXPR_SKIP(i;) $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7}, |i| __parse_internal!{@EXPR_ALT(i;) $($tail)*}} };
-    ( @EXPR_ALT($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt $t8:tt $($tail:tt)* ) => { __parse_internal!{@EXPR_ALT($input; $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7 $t8) $($tail)*} };
+    // ( @EXPR_ALT($($lhs:tt)*) $t1:tt $($tail:tt)* )  => { __parse_internal!{@EXPR_ALT($($lhs)* $t1) $($tail)*} };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt )                                                               => {  __parse_internal!{@EXPR_SKIP() $($lhs)* $t1} };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt <|> $($tail:tt)* )                                              => { (__parse_internal!{@EXPR_SKIP() $($lhs)* $t1}).or(__parse_internal!{@EXPR_ALT() $($tail)*}) };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt )                                                        => {  __parse_internal!{@EXPR_SKIP() $($lhs)* $t1 $t2} };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt <|> $($tail:tt)* )                                       => { (__parse_internal!{@EXPR_SKIP() $($lhs)* $t1 $t2}).or(__parse_internal!{@EXPR_ALT() $($tail)*}) };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt $t3:tt )                                                 => {  __parse_internal!{@EXPR_SKIP() $($lhs)* $t1 $t2 $t3} };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt $t3:tt <|> $($tail:tt)* )                                => { (__parse_internal!{@EXPR_SKIP() $($lhs)* $t1 $t2 $t3}).or(__parse_internal!{@EXPR_ALT() $($tail)*}) };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt )                                          => {  __parse_internal!{@EXPR_SKIP() $($lhs)* $t1 $t2 $t3 $t4} };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt <|> $($tail:tt)* )                         => { (__parse_internal!{@EXPR_SKIP() $($lhs)* $t1 $t2 $t3 $t4}).or(__parse_internal!{@EXPR_ALT() $($tail)*}) };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt )                                   => {  __parse_internal!{@EXPR_SKIP() $($lhs)* $t1 $t2 $t3 $t4 $t5} };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt <|> $($tail:tt)* )                  => { (__parse_internal!{@EXPR_SKIP() $($lhs)* $t1 $t2 $t3 $t4 $t5}).or(__parse_internal!{@EXPR_ALT() $($tail)*}) };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt )                            => {  __parse_internal!{@EXPR_SKIP() $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6} };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt <|> $($tail:tt)* )           => { (__parse_internal!{@EXPR_SKIP() $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6}).or(__parse_internal!{@EXPR_ALT() $($tail)*}) };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt )                     => {  __parse_internal!{@EXPR_SKIP() $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7} };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt <|> $($tail:tt)* )    => { (__parse_internal!{@EXPR_SKIP() $($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7}).or(__parse_internal!{@EXPR_ALT() $($tail)*}) };
+    ( @EXPR_ALT($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $t6:tt $t7:tt $t8:tt $($tail:tt)* ) => {  __parse_internal!{@EXPR_ALT($($lhs)* $t1 $t2 $t3 $t4 $t5 $t6 $t7 $t8) $($tail)*} };
 
     // ExprSkip ::= Term
-    ( @EXPR_SKIP($input:expr; $($lhs:tt)*) )                     => { __parse_internal!{@TERM($input) $($lhs)*} };
+    ( @EXPR_SKIP($($lhs:tt)*) )                     => { __parse_internal!{@TERM($($lhs)*)} };
     //            | Term <* ExprSkip
-    ( @EXPR_SKIP($input:expr; $($lhs:tt)*) <* $($tail:tt)* )     => { __parse_internal!{@TERM($input) $($lhs)*}.bind(|i, l| __parse_internal!{@EXPR_SKIP(i;) $($tail)*}.map(|_| l)) };
+    ( @EXPR_SKIP($($lhs:tt)*) <* $($tail:tt)* )     => { __parse_internal!{@TERM($($lhs)*)}.skip(__parse_internal!{@EXPR_SKIP() $($tail)*}) };
     // recurse until <* or end
     // unrolled:
-    // ( @EXPR_SKIP($input:expr; $($lhs:tt)*) $t1:tt $($tail:tt)* ) => { __parse_internal!{@EXPR_SKIP($input; $($lhs)* $t1) $($tail)*} };
-    ( @EXPR_SKIP($input:expr; $($lhs:tt)*) $t1:tt )                                          => { __parse_internal!{@TERM($input) $($lhs)* $t1} };
-    ( @EXPR_SKIP($input:expr; $($lhs:tt)*) $t1:tt <* $($tail:tt)* )                          => { __parse_internal!{@TERM($input) $($lhs)* $t1}.bind(|i, l| __parse_internal!{@EXPR_SKIP(i;) $($tail)*}.map(|_| l)) };
-    ( @EXPR_SKIP($input:expr; $($lhs:tt)*) $t1:tt $t2:tt )                                   => { __parse_internal!{@TERM($input) $($lhs)* $t1 $t2} };
-    ( @EXPR_SKIP($input:expr; $($lhs:tt)*) $t1:tt $t2:tt <* $($tail:tt)* )                   => { __parse_internal!{@TERM($input) $($lhs)* $t1 $t2}.bind(|i, l| __parse_internal!{@EXPR_SKIP(i;) $($tail)*}.map(|_| l)) };
-    ( @EXPR_SKIP($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt )                            => { __parse_internal!{@TERM($input) $($lhs)* $t1 $t2 $t3} };
-    ( @EXPR_SKIP($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt <* $($tail:tt)* )            => { __parse_internal!{@TERM($input) $($lhs)* $t1 $t2 $t3}.bind(|i, l| __parse_internal!{@EXPR_SKIP(i;) $($tail)*}.map(|_| l)) };
-    ( @EXPR_SKIP($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt )                     => { __parse_internal!{@TERM($input) $($lhs)* $t1 $t2 $t3 $t4} };
-    ( @EXPR_SKIP($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt <* $($tail:tt)* )     => { __parse_internal!{@TERM($input) $($lhs)* $t1 $t2 $t3 $t4}.bind(|i, l| __parse_internal!{@EXPR_SKIP(i;) $($tail)*}.map(|_| l)) };
-    ( @EXPR_SKIP($input:expr; $($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $($tail:tt)* ) => { __parse_internal!{@EXPR_SKIP($input; $($lhs)* $t1 $t2 $t3 $t4 $t5) $($tail)*} };
+    // ( @EXPR_SKIP($($lhs:tt)*) $t1:tt $($tail:tt)* ) => { __parse_internal!{@EXPR_SKIP($($lhs)* $t1) $($tail)*} };
+    ( @EXPR_SKIP($($lhs:tt)*) $t1:tt )                                          => { __parse_internal!{@TERM($($lhs)* $t1)} };
+    ( @EXPR_SKIP($($lhs:tt)*) $t1:tt <* $($tail:tt)* )                          => { __parse_internal!{@TERM($($lhs)* $t1)}.skip(__parse_internal!{@EXPR_SKIP() $($tail)*}) };
+    ( @EXPR_SKIP($($lhs:tt)*) $t1:tt $t2:tt )                                   => { __parse_internal!{@TERM($($lhs)* $t1 $t2)} };
+    ( @EXPR_SKIP($($lhs:tt)*) $t1:tt $t2:tt <* $($tail:tt)* )                   => { __parse_internal!{@TERM($($lhs)* $t1 $t2)}.skip(__parse_internal!{@EXPR_SKIP() $($tail)*}) };
+    ( @EXPR_SKIP($($lhs:tt)*) $t1:tt $t2:tt $t3:tt )                            => { __parse_internal!{@TERM($($lhs)* $t1 $t2 $t3)} };
+    ( @EXPR_SKIP($($lhs:tt)*) $t1:tt $t2:tt $t3:tt <* $($tail:tt)* )            => { __parse_internal!{@TERM($($lhs)* $t1 $t2 $t3)}.skip(__parse_internal!{@EXPR_SKIP() $($tail)*}) };
+    ( @EXPR_SKIP($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt )                     => { __parse_internal!{@TERM($($lhs)* $t1 $t2 $t3 $t4)} };
+    ( @EXPR_SKIP($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt <* $($tail:tt)* )     => { __parse_internal!{@TERM($($lhs)* $t1 $t2 $t3 $t4)}.skip(__parse_internal!{@EXPR_SKIP() $($tail)*}) };
+    ( @EXPR_SKIP($($lhs:tt)*) $t1:tt $t2:tt $t3:tt $t4:tt $t5:tt $($tail:tt)* ) => { __parse_internal!{@EXPR_SKIP($($lhs)* $t1 $t2 $t3 $t4 $t5) $($tail)*} };
 
     // STATEMENT eats and groups a full parse! expression until the next ;
     ( @STATEMENT($args:tt $($data:tt)*) )                        => { __parse_internal!{@BIND($args $($data)*)} };
@@ -586,94 +546,133 @@ macro_rules! __parse_internal {
     // Statement ::= Bind ';'
     //             | Expr ';'
     //           ::= 'let' $pat '=' Expr
-    ( $input:expr ; let $name:pat = $($tail:tt)+ )                 => { __parse_internal!{@STATEMENT(($input; $name)) $($tail)+} };
+    ( let $name:pat = $($tail:tt)+ )                 => { __parse_internal!{@STATEMENT(($name)) $($tail)+} };
     //             | 'let' $ident ':' $ty '=' Expr
-    ( $input:expr ; let $name:ident : $name_ty:ty = $($tail:tt)+ ) => { __parse_internal!{@STATEMENT(($input; $name:$name_ty)) $($tail)+} };
+    ( let $name:ident : $name_ty:ty = $($tail:tt)+ ) => { __parse_internal!{@STATEMENT(($name:$name_ty)) $($tail)+} };
     //           ::= Expr ';'
-    ( $input:expr ; $($tail:tt)+ )                                 => { __parse_internal!{@STATEMENT(($input; _)) $($tail)+} };
+    ( $($tail:tt)+ )                                 => { __parse_internal!{@STATEMENT((_)) $($tail)+} };
 
+    //( $e:expr ) => { $e };
 
     // Empty
-    ( $input:expr )   => { $input };
-    ( $input:expr ; ) => { $input };
+    //( )   => { };
 }
 
-/// Macro wrapping an invocation to ``parse!`` in a closure, useful for creating parsers inline.
-///
-/// ```
-/// # #[macro_use] extern crate chomp;
-/// # fn main() {
-/// use chomp::prelude::{parse_only, string};
-///
-/// let r = parser!{ string(b"ab") <|> string(b"ac") };
-///
-/// assert_eq!(parse_only(r, b"ac"), Ok(&b"ac"[..]));
-/// # }
-/// ```
-#[macro_export]
-macro_rules! parser {
-    ( $($t:tt)* ) => { |i| parse!{i; $($t)* } }
-}
-
+// FIXME: Update
 #[cfg(test)]
 mod test {
-    /// Override the or-combinator used by parse! to make it possible to use the simplified
-    /// test-types.
-    macro_rules! __parse_internal_or {
-        ($input:expr, $lhs:expr, $rhs:expr) => {
-            {
-                let Input(i) = $input;
-
-                match ($lhs)(Input(i)) {
-                    Data::Value(j, t) => Data::Value(j, t),
-                    Data::Error(_, _) => ($rhs)(Input(i)),
-                }
-            }
-        };
-    }
-
-    /// Simplified implementation of the emulated monad using linear types.
-    #[derive(Debug, Eq, PartialEq)]
+    /// Simplified implementation of the Input type, no Copy
+    #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
     struct Input(i64);
-    /// Simplified implementation of the emulated monad using linear types.
-    #[derive(Debug, Eq, PartialEq)]
-    enum Data<T, E> {
-        Value(i64, T),
-        Error(i64, E),
+
+    fn ret<T, E>(t: T) -> impl FnOnce(Input) -> (Input, Result<T, E>) {
+        move |i| (i, Ok(t))
     }
 
-    impl Input {
-        fn ret<T, E>(self, t: T) -> Data<T, E> {
-            Data::Value(self.0, t)
+    fn err<T, E>(e: E) -> impl FnOnce(Input) -> (Input, Result<T, E>) {
+        move |i| (i, Err(e))
+    }
+
+    trait Parser {
+        type Output;
+        type Error;
+
+        fn parse(self, Input) -> (Input, Result<Self::Output, Self::Error>);
+
+        fn bind<F, R>(self, f: F) -> BindParser<Self, F, R>
+          where F: FnOnce(Self::Output) -> R,
+                R: Parser<Error=Self::Error>,
+                Self: Sized {
+            BindParser { p: self, f: f }
         }
 
-        fn err<T, E>(self, e: E) -> Data<T, E> {
-            Data::Error(self.0, e)
+        fn or<P>(self, p: P) -> OrParser<Self, P>
+          where P: Parser<Output=Self::Output, Error=Self::Error>,
+                Self: Sized {
+            OrParser{ p: self, q: p }
+        }
+        fn skip<P>(self, p: P) -> SkipParser<Self, P>
+          where P: Parser<Error=Self::Error>,
+                Self: Sized {
+            SkipParser{ p: self, q: p }
         }
     }
 
-    impl<T, E> Data<T, E> {
-        fn bind<F, U, V>(self, f: F) -> Data<U, V>
-          where F: FnOnce(Input, T) -> Data<U, V>,
-                V: From<E> {
-            match self {
-                // Embedded f(Input(i), t).map_err(From::from),
-                // reason is that the API parse! uses is only ret, err, bind and map (in addition
-                // to the __parse_internal_or macro).
-                Data::Value(i, t) => match f(Input(i), t) {
-                    Data::Value(i, t) => Data::Value(i, t),
-                    Data::Error(i, e) => Data::Error(i, From::from(e)),
+    struct BindParser<P, F, R>
+      where P: Parser,
+            F: FnOnce(P::Output) -> R,
+            R: Parser<Error=P::Error> {
+        p:  P,
+        f:  F,
+    }
+
+    impl<P, F, R> Parser for BindParser<P, F, R>
+      where P: Parser,
+            F: FnOnce(P::Output) -> R,
+            R: Parser<Error=P::Error> {
+        type Output = R::Output;
+        type Error  = R::Error;
+
+        #[inline]
+        fn parse(self, i: Input) -> (Input, Result<Self::Output, Self::Error>) {
+            match self.p.parse(i) {
+                (i, Ok(t))  => (self.f)(t).parse(i),
+                (i, Err(e)) => (i, Err(e)),
+            }
+        }
+    }
+
+    struct OrParser<P, Q> {
+        p: P,
+        q: Q,
+    }
+
+    impl<P, Q> Parser for OrParser<P, Q>
+      where P: Parser,
+            Q: Parser<Output=P::Output, Error=P::Error> {
+        type Output = P::Output;
+        type Error  = P::Error;
+
+        fn parse(self, i: Input) -> (Input, Result<Self::Output, Self::Error>) {
+            let m = i.clone();
+
+            match self.p.parse(i) {
+                (i, Ok(d))  => (i, Ok(d)),
+                (_, Err(_)) => self.q.parse(m),
+            }
+        }
+    }
+
+    struct SkipParser<P, Q> {
+        p: P,
+        q: Q,
+    }
+
+    impl<P, Q> Parser for SkipParser<P, Q>
+      where P: Parser,
+            Q: Parser<Error=P::Error> {
+        type Output = P::Output;
+        type Error  = P::Error;
+
+        fn parse(self, i: Input) -> (Input, Result<Self::Output, Self::Error>) {
+            // Merge of p.bind(|t| q.map(|_| t))
+            match self.p.parse(i) {
+                (i, Ok(t))  => match self.q.parse(i) {
+                    (i, Ok(_))  => (i, Ok(t)),
+                    (i, Err(e)) => (i, Err(e)),
                 },
-                Data::Error(i, e) => Data::Error(i, From::from(e)),
+                (i, Err(e)) => (i, Err(e)),
             }
         }
+    }
 
-        fn map<F, U>(self, f: F) -> Data<U, E>
-          where F: FnOnce(T) -> U {
-            match self {
-                Data::Value(i, t) => Data::Value(i, f(t)),
-                Data::Error(i, e) => Data::Error(i, e),
-            }
+    impl<F, T, E> Parser for F
+      where F: FnOnce(Input) -> (Input, Result<T, E>) {
+        type Output = T;
+        type Error  = E;
+
+        fn parse(self, i: Input) -> (Input, Result<T, E>) {
+            self(i)
         }
     }
 
@@ -694,433 +693,482 @@ mod test {
     }
 
     #[test]
-    fn ret() {
+    fn ret_test() {
         let i = Input(123);
 
-        // Type annotation necessary since ret leaves E free
-        let r: Data<_, ()> = parse!{i; ret "foo"};
+        let r: (_, Result<_, ()>) = parse!{ret("foo")}.parse(i);
 
-        assert_eq!(r, Data::Value(123, "foo"));
+        assert_eq!(r, (Input(123), Ok("foo")));
     }
 
     #[test]
-    fn ret_typed() {
+    fn ret_test_typed() {
         let i = Input(123);
 
-        let r = parse!{i; ret @ _, (): "foo"};
+        let r = parse!{ret::<_, ()>("foo")};
 
-        assert_eq!(r, Data::Value(123, "foo"));
+        assert_eq!(r.parse(i), (Input(123), Ok("foo")));
     }
 
     #[test]
-    fn ret_typed2() {
+    fn ret_test_typed2() {
         let i = Input(123);
 
-        let r = parse!{i; ret @ &str, (): "foo"};
+        let r = parse!{ret::<&str, ()>("foo")};
 
-        assert_eq!(r, Data::Value(123, "foo"));
+        assert_eq!(r.parse(i), (Input(123), Ok("foo")));
     }
 
     #[test]
-    fn err() {
+    fn err_test() {
         let i = Input(123);
 
         // Type annotation necessary since err leaves T free
-        let r: Data<(), _> = parse!{i; err "foo"};
+        let r: (_, Result<(), _>) = parse!{err("foo")}.parse(i);
 
-        assert_eq!(r, Data::Error(123, "foo"));
+        assert_eq!(r, (Input(123), Err("foo")));
     }
 
     #[test]
-    fn err_typed() {
+    fn err_test_typed() {
         let i = Input(123);
 
-        let r = parse!{i; err @(), _: "foo"};
+        let r = parse!{err::<(), _>("foo")};
 
-        assert_eq!(r, Data::Error(123, "foo"));
+        assert_eq!(r.parse(i), (Input(123), Err("foo")));
     }
 
     #[test]
-    fn err_typed2() {
+    fn err_test_typed2() {
         let i = Input(123);
 
-        let r = parse!{i; err @(), &str: "foo"};
+        let r = parse!{err::<(), &str>("foo")};
 
-        assert_eq!(r, Data::Error(123, "foo"));
+        assert_eq!(r.parse(i), (Input(123), Err("foo")));
     }
 
     #[test]
     fn action() {
-        fn doit(i: Input) -> Data<&'static str, ()> {
-            Data::Value(i.0, "doit")
+        fn doit() -> impl Parser<Output=&'static str, Error=()> {
+            move |i| (i, Ok("doit"))
         }
 
         let i = Input(123);
 
-        let r = parse!(i; doit());
+        let r = parse!(doit());
 
-        assert_eq!(r, Data::Value(123, "doit"));
+        assert_eq!(r.parse(i), (Input(123), Ok("doit")));
     }
 
     #[test]
     fn action2() {
-        fn doit(i: Input, p: &str) -> Data<&str, ()> {
-            Data::Value(i.0, p)
+        fn doit<'a>(p: &'a str) -> impl Parser<Output=&'a str, Error=()> {
+            move |i| (i, Ok(p))
         }
 
         let i = Input(123);
 
-        let r = parse!(i; doit("doit"));
+        let r = parse!(doit("doit"));
 
-        assert_eq!(r, Data::Value(123, "doit"));
+        assert_eq!(r.parse(i), (Input(123), Ok("doit")));
     }
 
     #[test]
     fn action3() {
-        fn doit(i: Input, p: &str, u: u32) -> Data<(&str, u32), ()> {
-            Data::Value(i.0, (p, u))
+        fn doit<'a>(p: &'a str, u: u32) -> impl Parser<Output=(&'a str, u32), Error=()> {
+            move |i| (i, Ok((p, u)))
         }
 
         let i = Input(123);
 
-        let r = parse!(i; doit("doit", 1337));
+        let r = parse!(doit("doit", 1337));
 
-        assert_eq!(r, Data::Value(123, ("doit", 1337)));
+        assert_eq!(r.parse(i), (Input(123), Ok(("doit", 1337))));
     }
 
     #[test]
     fn two_actions() {
-        fn doit(i: Input) -> Data<u32, ()> {
-            assert_eq!(i.0, 123);
+        fn doit() -> impl Parser<Output=u32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i.0, 123);
 
-            Data::Value(321, 1)
+                (Input(321), Ok(1))
+            }
         }
-        fn something(i: Input) -> Data<u32, ()> {
-            assert_eq!(i.0, 321);
+        fn something() -> impl Parser<Output=u32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i.0, 321);
 
-            Data::Value(123, 2)
+                (Input(123), Ok(2))
+            }
         }
 
         let i = Input(123);
 
-        let r = parse!(i; doit(); something());
+        let r = parse!(doit(); something());
 
-        assert_eq!(r, Data::Value(123, 2));
+        assert_eq!(r.parse(i), (Input(123), Ok(2)));
     }
 
     #[test]
     fn two_actions2() {
-        fn doit(i: Input, n: u32) -> Data<u32, ()> {
-            assert_eq!(i.0, 123);
+        fn doit(n: u32) -> impl Parser<Output=u32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i.0, 123);
 
-            Data::Value(321, n)
+                (Input(321), Ok(n))
+            }
         }
-        fn something(i: Input, n: u32) -> Data<u32, ()> {
-            assert_eq!(i.0, 321);
+        fn something(n: u32) -> impl Parser<Output=u32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i.0, 321);
 
-            Data::Value(123, n)
+                (Input(123), Ok(n))
+            }
         }
 
         let i = Input(123);
 
-        let r = parse!(i; doit(22); something(33));
+        let r = parse!(doit(22); something(33));
 
-        assert_eq!(r, Data::Value(123, 33));
+        assert_eq!(r.parse(i), (Input(123), Ok(33)));
     }
 
     #[test]
     fn two_actions3() {
-        fn doit(i: Input, n: u32, x: i32) -> Data<(u32, i32), ()> {
-            assert_eq!(i.0, 123);
+        fn doit(n: u32, x: i32) -> impl Parser<Output=(u32, i32), Error=()> {
+            move |i: Input| {
+                assert_eq!(i.0, 123);
 
-            Data::Value(321, (n, x))
+                (Input(321), Ok((n, x)))
+            }
         }
-        fn something(i: Input, n: u32, x: i32) -> Data<(u32, i32), ()> {
-            assert_eq!(i.0, 321);
+        fn something(n: u32, x: i32) -> impl Parser<Output=(u32, i32), Error=()> {
+            move |i: Input| {
+                assert_eq!(i.0, 321);
 
-            Data::Value(123, (n, x))
+                (Input(123), Ok((n, x)))
+            }
         }
 
         let i = Input(123);
 
-        let r = parse!(i; doit(22, 1); something(33, 2));
+        let r = parse!(doit(22, 1); something(33, 2));
 
-        assert_eq!(r, Data::Value(123, (33, 2)));
+        assert_eq!(r.parse(i), (Input(123), Ok((33, 2))));
     }
 
     #[test]
     fn action_ret() {
-        fn doit(i: Input, x: i32) -> Data<i32, ()> {
-            assert_eq!(i.0, 123);
+        fn doit(x: i32) -> impl Parser<Output=i32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i.0, 123);
 
-            Data::Value(321, x)
+                (Input(321), Ok(x))
+            }
         }
 
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<_, ()> = parse!(i1; doit(2); ret 5);
-        let r2              = parse!(i2; doit(2); ret @ _, (): 5);
+        let r1: (_, Result<_, ()>) = parse!(doit(2); ret(5)).parse(i1);
+        let r2                     = parse!(doit(2); ret::<_, ()>(5)).parse(i2);
 
-        assert_eq!(r1, Data::Value(321, 5));
-        assert_eq!(r2, Data::Value(321, 5));
+        assert_eq!(r1, (Input(321), Ok(5)));
+        assert_eq!(r2, (Input(321), Ok(5)));
     }
 
     #[test]
     fn action_ret2() {
-        fn doit(i: Input, x: i32) -> Data<i32, ()> {
-            assert_eq!(i.0, 123);
+        fn doit(x: i32) -> impl Parser<Output=i32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i.0, 123);
 
-            Data::Value(321, x)
+                (Input(321), Ok(x))
+            }
         }
-        fn something(i: Input, n: u32, x: i32) -> Data<(u32, i32), ()> {
-            assert_eq!(i.0, 321);
+        fn something(n: u32, x: i32) -> impl Parser<Output=(u32, i32), Error=()> {
+            move |i: Input| {
+                assert_eq!(i.0, 321);
 
-            Data::Value(111, (n, x))
+                (Input(111), Ok((n, x)))
+            }
         }
 
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<_, ()> = parse!{i1; doit(2); something(4, 5); ret 5};
-        let r2              = parse!{i2; doit(2); something(4, 5); ret @ _, (): 5};
+        let r1: (_, Result<_, ()>) = parse!{doit(2); something(4, 5); ret(5)}.parse(i1);
+        let r2                     = parse!{doit(2); something(4, 5); ret::<_, ()>(5)}.parse(i2);
 
-        assert_eq!(r1, Data::Value(111, 5));
-        assert_eq!(r2, Data::Value(111, 5));
+        assert_eq!(r1, (Input(111), Ok(5)));
+        assert_eq!(r2, (Input(111), Ok(5)));
     }
 
     #[test]
     fn bind() {
-        fn doit(i: Input, x: i32) -> Data<i32, ()> {
-            assert_eq!(i.0, 123);
+        fn doit(x: i32) -> impl Parser<Output=i32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i.0, 123);
 
-            Data::Value(321, x)
+                (Input(321), Ok(x))
+            }
         }
 
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<_, ()> = parse!{i1; let n = doit(40); ret n + 2};
-        let r2              = parse!{i2; let n = doit(40); ret @ _, (): n + 2};
+        let r1: (_, Result<_, ()>) = parse!{let n = doit(40); ret(n + 2)}.parse(i1);
+        let r2                = parse!{let n = doit(40); ret::<_, ()>(n + 2)}.parse(i2);
 
-        assert_eq!(r1, Data::Value(321, 42));
-        assert_eq!(r2, Data::Value(321, 42));
+        assert_eq!(r1, (Input(321), Ok(42)));
+        assert_eq!(r2, (Input(321), Ok(42)));
     }
 
     #[test]
     fn bind2() {
-        fn doit(i: Input, x: i32) -> Data<i32, ()> {
-            assert_eq!(i.0, 123);
+        fn doit(x: i32) -> impl Parser<Output=i32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i.0, 123);
 
-            Data::Value(321, x)
+                (Input(321), Ok(x))
+            }
         }
-        fn something(i: Input, n: i32, x: u32) -> Data<i32, ()> {
-            assert_eq!(i.0, 321);
+        fn something(n: i32, x: u32) -> impl Parser<Output=i32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i.0, 321);
 
-            Data::Value(111, n - x as i32)
+                (Input(111), Ok(n - x as i32))
+            }
         }
 
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<_, ()> = parse!{i1; let n = doit(40); let x = something(n, 4); ret x + 6};
-        let r2              = parse!{i2; let n = doit(40); let x = something(n, 4);
-                                  ret @ _, (): x + 6};
+        let r1: (_, Result<_, ()>) = parse!{let n = doit(40); let x = something(n, 4); ret(x + 6)}.parse(i1);
+        let r2                     = parse!{let n = doit(40); let x = something(n, 4); ret::<_, ()>(x + 6)}.parse(i2);
 
-        assert_eq!(r1, Data::Value(111, 42));
-        assert_eq!(r2, Data::Value(111, 42));
+        assert_eq!(r1, (Input(111), Ok(42)));
+        assert_eq!(r2, (Input(111), Ok(42)));
     }
 
     #[test]
     fn bind3() {
-        fn doit(i: Input, x: i32) -> Data<i32, u8> {
-            assert_eq!(i.0, 123);
+        fn doit(x: i32) -> impl Parser<Output=i32, Error=u8> {
+            move |i: Input| {
+                assert_eq!(i.0, 123);
 
-            Data::Value(321, x)
+                (Input(321), Ok(x))
+            }
         }
 
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<(), u8> = parse!{i1; let n = doit(40); err n as u8 + 2};
-        let r2               = parse!{i2; let n = doit(40); err @ (), u8: n as u8 + 2};
+        let r1: (_, Result<(), u8>) = parse!{let n = doit(40); err(n as u8 + 2)}.parse(i1);
+        let r2                      = parse!{let n = doit(40); err::<(), u8>(n as u8 + 2)}.parse(i2);
 
-        assert_eq!(r1, Data::Error(321, 42));
-        assert_eq!(r2, Data::Error(321, 42));
+        assert_eq!(r1, (Input(321), Err(42)));
+        assert_eq!(r2, (Input(321), Err(42)));
     }
 
     #[test]
     fn bind4() {
-        fn doit(i: Input, x: i32) -> Data<i32, u8> {
-            assert_eq!(i.0, 123);
+        fn doit(x: i32) -> impl Parser<Output=i32, Error=u8> {
+            move |i: Input| {
+                assert_eq!(i.0, 123);
 
-            Data::Value(321, x)
+                (Input(321), Ok(x))
+            }
         }
-        fn something(i: Input, n: i32, x: u32) -> Data<i32, u8> {
-            assert_eq!(i.0, 321);
+        fn something(n: i32, x: u32) -> impl Parser<Output=i32, Error=u8> {
+            move |i: Input| {
+                assert_eq!(i.0, 321);
 
-            Data::Value(111, n - x as i32)
+                (Input(111), Ok(n - x as i32))
+            }
         }
 
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<(), u8> = parse!{i1; let n = doit(40); let x = something(n, 4); err x as u8 + 6};
-        let r2               = parse!{i2; let n = doit(40); let x = something(n, 4);
-                                  err @ (), u8: x as u8 + 6};
+        let r1: (_, Result<(), u8>) = parse!{let n = doit(40); let x = something(n, 4); err(x as u8 + 6)}.parse(i1);
+        let r2                      = parse!{let n = doit(40); let x = something(n, 4); err::<(), u8>(x as u8 + 6)}.parse(i2);
 
-        assert_eq!(r1, Data::Error(111, 42));
-        assert_eq!(r2, Data::Error(111, 42));
+        assert_eq!(r1, (Input(111), Err(42)));
+        assert_eq!(r2, (Input(111), Err(42)));
     }
 
     #[test]
     fn bind_then() {
-        fn doit(i: Input, x: i32) -> Data<i32, ()> {
-            assert_eq!(i.0, 111);
+        fn doit(x: i32) -> impl Parser<Output=i32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i.0, 111);
 
-            Data::Value(321, x)
+                (Input(321), Ok(x))
+            }
         }
-        fn something(i: Input, n: i32, x: u32) -> Data<i32, ()> {
-            assert_eq!(i.0, 123);
+        fn something(n: i32, x: u32) -> impl Parser<Output=i32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i.0, 123);
 
-            Data::Value(111, n - x as i32)
+                (Input(111), Ok(n - x as i32))
+            }
         }
 
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<_, ()> = parse!{i1; let x = something(6, 4); doit(x)};
-        let r2              = parse!{i2; let x = something(6, 4); doit(x)};
+        let r1: (_, Result<_, ()>) = parse!{let x = something(6, 4); doit(x)}.parse(i1);
+        let r2                     = parse!{let x = something(6, 4); doit(x)}.parse(i2);
 
-        assert_eq!(r1, Data::Value(321, 2));
-        assert_eq!(r2, Data::Value(321, 2));
+        assert_eq!(r1, (Input(321), Ok(2)));
+        assert_eq!(r2, (Input(321), Ok(2)));
     }
 
     #[test]
     fn bind_then2() {
-        fn doit(i: Input, x: i32) -> Data<i32, ()> {
-            assert_eq!(i.0, 111);
+        fn doit(x: i32) -> impl Parser<Output=i32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i.0, 111);
 
-            Data::Value(321, x)
+                (Input(321), Ok(x))
+            }
         }
-        fn something(i: Input, n: i32, x: u32) -> Data<i32, ()> {
-            assert_eq!(i.0, 123);
+        fn something(n: i32, x: u32) -> impl Parser<Output=i32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i.0, 123);
 
-            Data::Value(111, n - x as i32)
+                (Input(111), Ok(n - x as i32))
+            }
         }
 
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<_, ()> = parse!{i1; let _x = something(6, 4); doit(3)};
-        let r2              = parse!{i2; let _x = something(6, 4); doit(3)};
+        let r1: (_, Result<_, ()>) = parse!{let _x = something(6, 4); doit(3)}.parse(i1);
+        let r2              = parse!{let _x = something(6, 4); doit(3)}.parse(i2);
 
-        assert_eq!(r1, Data::Value(321, 3));
-        assert_eq!(r2, Data::Value(321, 3));
+        assert_eq!(r1, (Input(321), Ok(3)));
+        assert_eq!(r2, (Input(321), Ok(3)));
     }
 
     #[test]
     fn bind_type() {
-        fn doit<N>(i: Input, x: N) -> Data<N, ()> {
-            assert_eq!(i.0, 123);
+        fn doit<N>(x: N) -> impl Parser<Output=N, Error=()> {
+            move |i: Input| {
+                assert_eq!(i.0, 123);
 
-            Data::Value(321, x)
+                (Input(321), Ok(x))
+            }
         }
 
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<_, ()> = parse!{i1; let n: u64 = doit(42); ret n};
-        let r2              = parse!{i2; let n: u64 = doit(42); ret @ _, (): n};
+        let r1: (_, Result<_, ()>) = parse!{let n: u64 = doit(42); ret(n)}.parse(i1);
+        let r2                     = parse!{let n: u64 = doit(42); ret::<_, ()>(n)}.parse(i2);
 
-        assert_eq!(r1, Data::Value(321, 42u64));
-        assert_eq!(r2, Data::Value(321, 42u64));
+        assert_eq!(r1, (Input(321), Ok(42u64)));
+        assert_eq!(r2, (Input(321), Ok(42u64)));
     }
 
     #[test]
     fn bind_pattern() {
-        fn something(i: Input, n: u32, x: u32) -> Data<(u32, u32), ()> {
-            assert_eq!(i.0, 123);
+        fn something(n: u32, x: u32) -> impl Parser<Output=(u32, u32), Error=()> {
+            move |i: Input| {
+                assert_eq!(i.0, 123);
 
-            Data::Value(111, (n, x))
+                (Input(111), Ok((n, x)))
+            }
         }
 
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<_, ()> = parse!{i1; let (x, y) = something(2, 4); ret x + y};
-        let r2              = parse!{i2; let (x, y) = something(2, 4); ret @ _, (): x + y};
+        let r1: (_, Result<_, ()>) = parse!{let (x, y) = something(2, 4); ret(x + y)}.parse(i1);
+        let r2                     = parse!{let (x, y) = something(2, 4); ret::<_, ()>(x + y)}.parse(i2);
 
-        assert_eq!(r1, Data::Value(111, 6));
-        assert_eq!(r2, Data::Value(111, 6));
+        assert_eq!(r1, (Input(111), Ok(6)));
+        assert_eq!(r2, (Input(111), Ok(6)));
     }
 
     #[test]
     fn bind_pattern2() {
-        fn doit(i: Input, x: i32) -> Data<i32, ()> {
-            assert_eq!(i.0, 123);
+        fn doit(x: i32) -> impl Parser<Output=i32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i.0, 123);
 
-            Data::Value(321, x)
+                (Input(321), Ok(x))
+            }
         }
-        fn something(i: Input, n: i32, x: u32) -> Data<(i32, u32), ()> {
-            assert_eq!(i.0, 321);
+        fn something(n: i32, x: u32) -> impl Parser<Output=(i32, u32), Error=()> {
+            move |i: Input| {
+                assert_eq!(i.0, 321);
 
-            Data::Value(111, (n, x))
+                (Input(111), Ok((n, x)))
+            }
         }
 
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<_, ()> = parse!{i1; let n = doit(40); let (x, y) = something(n, 4);
-                                  ret x + y as i32};
-        let r2              = parse!{i2; let n = doit(40); let (x, y) = something(n, 4);
-                                  ret @ _, (): x + y as i32};
+        let r1: (_, Result<_, ()>) = parse!{let n = doit(40); let (x, y) = something(n, 4); ret(x + y as i32)}.parse(i1);
+        let r2                     = parse!{let n = doit(40); let (x, y) = something(n, 4); ret::<_, ()>(x + y as i32)}.parse(i2);
 
-        assert_eq!(r1, Data::Value(111, 44));
-        assert_eq!(r2, Data::Value(111, 44));
+        assert_eq!(r1, (Input(111), Ok(44)));
+        assert_eq!(r2, (Input(111), Ok(44)));
     }
 
     #[test]
     fn action_err() {
-        fn doit(i: Input, x: i32) -> Data<i32, u8> {
-            assert_eq!(i.0, 123);
+        fn doit(x: i32) -> impl Parser<Output=i32, Error=u8> {
+            move |i: Input| {
+                assert_eq!(i.0, 123);
 
-            Data::Value(321, x)
+                (Input(321), Ok(x))
+            }
         }
 
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<(), u8> = parse!(i1; doit(2); err 5);
-        let r2               = parse!(i2; doit(2); err @ (), u8: 5);
+        let r1: (_, Result<(), u8>) = parse!(doit(2); err(5)).parse(i1);
+        let r2                      = parse!(doit(2); err::<(), u8>(5)).parse(i2);
 
-        assert_eq!(r1, Data::Error(321, 5));
-        assert_eq!(r2, Data::Error(321, 5));
+        assert_eq!(r1, (Input(321), Err(5)));
+        assert_eq!(r2, (Input(321), Err(5)));
     }
 
     #[test]
     fn action_err2() {
-        fn doit(i: Input, x: i32) -> Data<i32, u8> {
-            assert_eq!(i.0, 123);
+        fn doit(x: i32) -> impl Parser<Output=i32, Error=u8> {
+            move |i: Input| {
+                assert_eq!(i.0, 123);
 
-            Data::Value(321, x)
+                (Input(321), Ok(x))
+            }
         }
-        fn something(i: Input, n: u32, x: i32) -> Data<(u32, i32), u8> {
-            assert_eq!(i.0, 321);
+        fn something(n: u32, x: i32) -> impl Parser<Output=(u32, i32), Error=u8> {
+            move |i: Input| {
+                assert_eq!(i.0, 321);
 
-            Data::Value(111, (n, x))
+                (Input(111), Ok((n, x)))
+            }
         }
 
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<(), u8> = parse!{i1; doit(2); something(4, 5); err 5};
-        let r2               = parse!{i2; doit(2); something(4, 5); err @ (), u8: 5};
+        let r1: (_, Result<(), u8>) = parse!{doit(2); something(4, 5); err(5)}.parse(i1);
+        let r2                      = parse!{doit(2); something(4, 5); err::<(), u8>(5)}.parse(i2);
 
-        assert_eq!(r1, Data::Error(111, 5));
-        assert_eq!(r2, Data::Error(111, 5));
+        assert_eq!(r1, (Input(111), Err(5)));
+        assert_eq!(r2, (Input(111), Err(5)));
     }
 
+    // TODO: Replace with inline closures
+    /*
     #[test]
     fn inline_action() {
         let i = Input(123);
@@ -1134,15 +1182,15 @@ mod test {
             }
         };
 
-        assert_eq!(r, Data::Value(123, 23));
+        assert_eq!(r, (Input(123), Ok(23)));
     }
 
     #[test]
     fn inline_action2() {
         fn doit(i: Input) -> Data<u32, ()> {
-            assert_eq!(i, Input(123));
+            assert_eq!(i.0, Input(123));
 
-            Data::Value(321, 2)
+            (321, Ok(2))
         }
 
         let i = Input(123);
@@ -1157,7 +1205,7 @@ mod test {
             }
         };
 
-        assert_eq!(r, Data::Value(321, 23));
+        assert_eq!(r, (321, Ok(23)));
     }
 
     #[test]
@@ -1168,7 +1216,7 @@ mod test {
             s -> s.ret::<u8, ()>(23)
         };
 
-        assert_eq!(r, Data::Value(123, 23));
+        assert_eq!(r, (Input(123), Ok(23)));
     }
 
     #[test]
@@ -1184,15 +1232,15 @@ mod test {
             ret @ u32, (): v + 2
         };
 
-        assert_eq!(r, Data::Value(123, 25));
+        assert_eq!(r, (Input(123), Ok(25)));
     }
 
     #[test]
     fn inline_action_bind2() {
         fn doit(i: Input) -> Data<u32, ()> {
-            assert_eq!(i, Input(123));
+            assert_eq!(i.0, Input(123));
 
-            Data::Value(321, 2)
+            (321, Ok(2))
         }
 
         let i = Input(123);
@@ -1208,19 +1256,20 @@ mod test {
             ret @ u32, (): v + 3
         };
 
-        assert_eq!(r, Data::Value(321, 28));
+        assert_eq!(r, (321, Ok(28)));
     }
+    */
 
     #[test]
     fn expr_ret() {
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<_, ()> = parse!{i1; let a = ret "test"; ret a};
-        let r2: Data<_, ()> = parse!{i2; ret "throwaway"; ret "foo"};
+        let r1: (_, Result<_, ()>) = parse!{let a = ret("test"); ret(a)}.parse(i1);
+        let r2: (_, Result<_, ()>) = parse!{ret("throwaway"); ret("foo")}.parse(i2);
 
-        assert_eq!(r1, Data::Value(123, "test"));
-        assert_eq!(r2, Data::Value(123, "foo"));
+        assert_eq!(r1, (Input(123), Ok("test")));
+        assert_eq!(r2, (Input(123), Ok("foo")));
     }
 
     #[test]
@@ -1228,289 +1277,276 @@ mod test {
         let i1 = Input(123);
         let i2 = Input(123);
 
-        let r1: Data<&str, &str> = parse!{i1; let a = err "error"; ret a};
+        let r1: (_, Result<&str, &str>) = parse!{let a = err("error"); ret(a)}.parse(i1);
         // Necessary with type annotation here since the value type is not defined in the first
         // statement in parse
-        let r2: Data<(), &str>   = parse!{i2; err @ (), _: "this"; err "not this"};
+        let r2: (_, Result<(), &str>)   = parse!{err::<(), _>("this"); err("not this")}.parse(i2);
 
-        assert_eq!(r1, Data::Error(123, "error"));
-        assert_eq!(r2, Data::Error(123, "this"));
+        assert_eq!(r1, (Input(123), Err("error")));
+        assert_eq!(r2, (Input(123), Err("this")));
     }
 
     #[test]
     fn alt() {
-        fn fail(i: Input) -> Data<u32, ()> {
-            assert_eq!(i, Input(123));
+        fn fail() -> impl Parser<Output=u32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i, Input(123));
 
-            Data::Error(456, ())
+                (Input(456), Err(()))
+            }
         }
-        fn doit(i: Input) -> Data<u32, ()> {
-            assert_eq!(i, Input(123));
+        fn doit() -> impl Parser<Output=u32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i, Input(123));
 
-            Data::Value(321, 2)
+                (Input(321), Ok(2))
+            }
         }
 
-        let i1 = Input(123);
-        let i2 = Input(123);
-        let i3 = Input(123);
-        let i4 = Input(123);
+        let r1 = parse!{fail() <|> doit()};
+        let r2 = parse!{doit() <|> fail()};
+        let r3 = parse!{doit() <|> doit()};
+        let r4 = parse!{fail() <|> fail()};
 
-        let r1 = parse!{i1; fail() <|> doit() };
-        let r2 = parse!{i2; doit() <|> fail() };
-        let r3 = parse!{i3; doit() <|> doit() };
-        let r4 = parse!{i4; fail() <|> fail() };
-
-        assert_eq!(r1, Data::Value(321, 2));
-        assert_eq!(r2, Data::Value(321, 2));
-        assert_eq!(r3, Data::Value(321, 2));
-        assert_eq!(r4, Data::Error(456, ()));
+        assert_eq!(r1.parse(Input(123)), (Input(321), Ok(2)));
+        assert_eq!(r2.parse(Input(123)), (Input(321), Ok(2)));
+        assert_eq!(r3.parse(Input(123)), (Input(321), Ok(2)));
+        assert_eq!(r4.parse(Input(123)), (Input(456), Err(())));
     }
 
     #[test]
     fn alt2() {
-        fn fail(i: Input) -> Data<u32, ()> {
-            assert_eq!(i, Input(123));
+        fn fail() -> impl Parser<Output=u32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i, Input(123));
 
-            Data::Error(456, ())
+                (Input(456), Err(()))
+            }
         }
-        fn doit(i: Input) -> Data<u32, ()> {
-            assert_eq!(i, Input(123));
+        fn doit() -> impl Parser<Output=u32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i, Input(123));
 
-            Data::Value(321, 2)
+                (Input(321), Ok(2))
+            }
         }
 
         let i = Input(123);
 
+        let r1 = parse!{fail() <|> fail() <|> doit() }.parse(i);
 
-        let r1 = parse!{i; fail() <|> fail() <|> doit() };
-
-        assert_eq!(r1, Data::Value(321, 2));
+        assert_eq!(r1, (Input(321), Ok(2)));
     }
 
     #[test]
     fn chain_alt() {
-        fn fail(i: Input) -> Data<u32, ()> {
-            assert_eq!(i, Input(123));
+        fn fail() -> impl Parser<Output=u32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i, Input(123));
 
-            Data::Error(456, ())
+                (Input(456), Err(()))
+            }
         }
-        fn doit(i: Input) -> Data<u32, ()> {
-            assert_eq!(i, Input(123));
+        fn doit() -> impl Parser<Output=u32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i, Input(123));
 
-            Data::Value(321, 2)
+                (Input(321), Ok(2))
+            }
         }
-        fn next(i: Input) -> Data<u32, ()> {
-            assert_eq!(i, Input(321));
+        fn next() -> impl Parser<Output=u32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i, Input(321));
 
-            Data::Value(322, 42)
+                (Input(322), Ok(42))
+            }
         }
 
+        let r1 = parse!{fail() <|> doit(); next() };
+        let r2 = parse!{doit() <|> fail(); next() };
+        let r3 = parse!{fail() <|> fail(); next() };
 
-        let i1 = Input(123);
-        let i2 = Input(123);
-        let i3 = Input(123);
-
-        let r1 = parse!{i1; fail() <|> doit(); next() };
-        let r2 = parse!{i2; doit() <|> fail(); next() };
-        let r3 = parse!{i3; fail() <|> fail(); next() };
-
-        assert_eq!(r1, Data::Value(322, 42));
-        assert_eq!(r2, Data::Value(322, 42));
-        assert_eq!(r3, Data::Error(456, ()));
+        assert_eq!(r1.parse(Input(123)), (Input(322), Ok(42)));
+        assert_eq!(r2.parse(Input(123)), (Input(322), Ok(42)));
+        assert_eq!(r3.parse(Input(123)), (Input(456), Err(())));
     }
 
     #[test]
     fn precedence_skip_then() {
-        fn a(i: Input) -> Data<u32, ()> {
-            assert_eq!(i, Input(123));
+        fn a() -> impl Parser<Output=u32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i, Input(123));
 
-            Data::Value(321, 2)
+                (Input(321), Ok(2))
+            }
         }
-        fn b(i: Input) -> Data<u32, ()> {
-            assert_eq!(i, Input(321));
+        fn b() -> impl Parser<Output=u32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i, Input(321));
 
-            Data::Value(322, 42)
+                (Input(322), Ok(42))
+            }
         }
-        fn c(i: Input) -> Data<u32, ()> {
-            assert_eq!(i, Input(322));
+        fn c() -> impl Parser<Output=u32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i, Input(322));
 
-            Data::Value(323, 43)
+                (Input(323), Ok(43))
+            }
         }
 
-        let i1  = Input(123);
-        let i2  = Input(123);
-        let i3  = Input(123);
-        let i4  = Input(123);
-        let i5  = Input(123);
-        let i6  = Input(123);
-        let i7  = Input(123);
-        let i_8 = Input(123);
-        let i9  = Input(123);
-        let i10 = Input(123);
-        let i11 = Input(123);
-        let i12 = Input(123);
+        let r1  = parse!{a() <* b() <* c()};
+        let r2  = parse!{a() <* b() >> c()};
+        let r3  = parse!{a() >> b() <* c()};
+        let r4  = parse!{a() >> b() >> c()};
 
-        let r1  = parse!{i1; a() <* b() <* c()};
-        let r2  = parse!{i2; a() <* b() >> c()};
-        let r3  = parse!{i3; a() >> b() <* c()};
-        let r4  = parse!{i4; a() >> b() >> c()};
+        let r5  = parse!{ (a() <* b()) <* c()};
+        let r6  = parse!{  a() <* (b() <* c())};
+        let r7  = parse!{ (a() <* b()) >> c()};
+        let r8  = parse!{ a() <* (b() >> c())};
+        let r9  = parse!{ (a() >> b()) <* c()};
+        let r10 = parse!{ a() >> (b() <* c())};
+        let r11 = parse!{(a() >> b()) >> c()};
+        let r12 = parse!{ a() >> (b() >> c())};
 
-        let r5  = parse!{i5;  (a() <* b()) <* c()};
-        let r6  = parse!{i6;   a() <* (b() <* c())};
-        let r7  = parse!{i7;  (a() <* b()) >> c()};
-        let r8  = parse!{i_8;  a() <* (b() >> c())};
-        let r9  = parse!{i9;  (a() >> b()) <* c()};
-        let r10 = parse!{i10;  a() >> (b() <* c())};
-        let r11 = parse!{i11; (a() >> b()) >> c()};
-        let r12 = parse!{i12;  a() >> (b() >> c())};
+        assert_eq!(r1.parse(Input(123)), (Input(323), Ok(2)));
+        assert_eq!(r2.parse(Input(123)), (Input(323), Ok(43)));
+        assert_eq!(r3.parse(Input(123)), (Input(323), Ok(42)));
+        assert_eq!(r4.parse(Input(123)), (Input(323), Ok(43)));
 
-        assert_eq!(r1, Data::Value(323, 2));
-        assert_eq!(r2, Data::Value(323, 43));
-        assert_eq!(r3, Data::Value(323, 42));
-        assert_eq!(r4, Data::Value(323, 43));
-
-        assert_eq!(r5,  Data::Value(323, 2));
-        assert_eq!(r6,  Data::Value(323, 2));
-        assert_eq!(r7,  Data::Value(323, 43));
-        assert_eq!(r8,  Data::Value(323, 2));
-        assert_eq!(r9,  Data::Value(323, 42));
-        assert_eq!(r10, Data::Value(323, 42));
-        assert_eq!(r11, Data::Value(323, 43));
-        assert_eq!(r12, Data::Value(323, 43));
+        assert_eq!(r5.parse(Input(123)),  (Input(323), Ok(2)));
+        assert_eq!(r6.parse(Input(123)),  (Input(323), Ok(2)));
+        assert_eq!(r7.parse(Input(123)),  (Input(323), Ok(43)));
+        assert_eq!(r8.parse(Input(123)),  (Input(323), Ok(2)));
+        assert_eq!(r9.parse(Input(123)),  (Input(323), Ok(42)));
+        assert_eq!(r10.parse(Input(123)), (Input(323), Ok(42)));
+        assert_eq!(r11.parse(Input(123)), (Input(323), Ok(43)));
+        assert_eq!(r12.parse(Input(123)), (Input(323), Ok(43)));
     }
 
     #[test]
     fn precedence_skip_alt() {
-        fn a(i: Input) -> Data<u32, ()> {
-            assert_eq!(i, Input(123));
+        fn a() -> impl Parser<Output=u32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i, Input(123));
 
-            Data::Value(321, 2)
+                (Input(321), Ok(2))
+            }
         }
-        fn b(i: Input) -> Data<u32, ()> {
-            assert_eq!(i, Input(321));
+        fn b() -> impl Parser<Output=u32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i, Input(321));
 
-            Data::Value(322, 42)
+                (Input(322), Ok(42))
+            }
         }
-        fn c(i: Input) -> Data<u32, ()> {
-            assert_eq!(i, Input(322));
+        fn c() -> impl Parser<Output=u32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i, Input(322));
 
-            Data::Value(323, 43)
+                (Input(323), Ok(43))
+            }
         }
         // version of c following a:
-        fn c_a(i: Input) -> Data<u32, ()> {
-            assert_eq!(i, Input(321));
+        fn c_a() -> impl Parser<Output=u32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i, Input(321));
 
-            Data::Value(323, 43)
+                (Input(323), Ok(43))
+            }
         }
 
-        let i1  = Input(123);
-        let i2  = Input(123);
-        let i3  = Input(123);
-        let i4  = Input(123);
-        let i5  = Input(123);
-        let i6  = Input(123);
-        let i7  = Input(123);
-        let i_8 = Input(123);
-        let i9  = Input(123);
-        let i10 = Input(123);
-        let i11 = Input(123);
-        let i12 = Input(123);
+        let r1 = parse!{a() <* b() <* c()};
+        let r2 = parse!{a() <* b() <|> c()};
+        let r3 = parse!{a() <|> b() <* c()};
+        let r4 = parse!{a() <|> b() <|> c()};
 
-        let r1 = parse!{i1; a() <* b() <* c()};
-        let r2 = parse!{i2; a() <* b() <|> c()};
-        let r3 = parse!{i3; a() <|> b() <* c()};
-        let r4 = parse!{i4; a() <|> b() <|> c()};
+        let r5  = parse!{ (a() <*  b()) <* c()};
+        let r6  = parse!{ (a() <*  b()) <|> c()};
+        let r7  = parse!{ (a() <|> b()) <* c_a()};
+        let r8  = parse!{ (a() <|> b()) <|> c()};
+        let r9  = parse!{  a() <*  (b() <* c())};
+        let r10 = parse!{  a() <*  (b() <|> c())};
+        let r11 = parse!{  a() <|> (b() <* c())};
+        let r12 = parse!{  a() <|> (b() <|> c())};
 
-        let r5  = parse!{i5;  (a() <*  b()) <* c()};
-        let r6  = parse!{i6;  (a() <*  b()) <|> c()};
-        let r7  = parse!{i7;  (a() <|> b()) <* c_a()};
-        let r8  = parse!{i_8; (a() <|> b()) <|> c()};
-        let r9  = parse!{i9;   a() <*  (b() <* c())};
-        let r10 = parse!{i10;  a() <*  (b() <|> c())};
-        let r11 = parse!{i11;  a() <|> (b() <* c())};
-        let r12 = parse!{i12;  a() <|> (b() <|> c())};
+        assert_eq!(r1.parse(Input(123)), (Input(323), Ok(2)));
+        assert_eq!(r2.parse(Input(123)), (Input(322), Ok(2)));
+        assert_eq!(r3.parse(Input(123)), (Input(321), Ok(2)));
+        assert_eq!(r4.parse(Input(123)), (Input(321), Ok(2)));
 
-        assert_eq!(r1, Data::Value(323, 2));
-        assert_eq!(r2, Data::Value(322, 2));
-        assert_eq!(r3, Data::Value(321, 2));
-        assert_eq!(r4, Data::Value(321, 2));
-
-        assert_eq!(r5, Data::Value(323, 2));
-        assert_eq!(r6, Data::Value(322, 2));
-        assert_eq!(r7, Data::Value(323, 2));
-        assert_eq!(r8, Data::Value(321, 2));
-        assert_eq!(r9, Data::Value(323, 2));
-        assert_eq!(r10, Data::Value(322, 2));
-        assert_eq!(r11, Data::Value(321, 2));
-        assert_eq!(r12, Data::Value(321, 2));
+        assert_eq!(r5.parse(Input(123)), (Input(323), Ok(2)));
+        assert_eq!(r6.parse(Input(123)), (Input(322), Ok(2)));
+        assert_eq!(r7.parse(Input(123)), (Input(323), Ok(2)));
+        assert_eq!(r8.parse(Input(123)), (Input(321), Ok(2)));
+        assert_eq!(r9.parse(Input(123)), (Input(323), Ok(2)));
+        assert_eq!(r10.parse(Input(123)), (Input(322), Ok(2)));
+        assert_eq!(r11.parse(Input(123)), (Input(321), Ok(2)));
+        assert_eq!(r12.parse(Input(123)), (Input(321), Ok(2)));
     }
 
     #[test]
     fn precedence_alt_then() {
-        fn a(i: Input) -> Data<u32, ()> {
-            assert_eq!(i, Input(123));
+        fn a() -> impl Parser<Output=u32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i, Input(123));
 
-            Data::Value(321, 2)
+                (Input(321), Ok(2))
+            }
         }
-        fn b(i: Input) -> Data<u32, ()> {
-            assert_eq!(i, Input(321));
+        fn b() -> impl Parser<Output=u32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i, Input(321));
 
-            Data::Value(322, 42)
+                (Input(322), Ok(42))
+            }
         }
-        fn c(i: Input) -> Data<u32, ()> {
-            assert_eq!(i, Input(322));
+        fn c() -> impl Parser<Output=u32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i, Input(322));
 
-            Data::Value(323, 43)
+                (Input(323), Ok(43))
+            }
         }
         // version of c with check for a's state:
-        fn c_a(i: Input) -> Data<u32, ()> {
-            assert_eq!(i, Input(321));
+        fn c_a() -> impl Parser<Output=u32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i, Input(321));
 
-            Data::Value(323, 43)
+                (Input(323), Ok(43))
+            }
         }
 
-        let i1  = Input(123);
-        let i2  = Input(123);
-        let i3  = Input(123);
-        let i4  = Input(123);
-        let i5  = Input(123);
-        let i6  = Input(123);
-        let i7  = Input(123);
-        let i_8 = Input(123);
-        let i9  = Input(123);
-        let i10 = Input(123);
-        let i11 = Input(123);
-        let i12 = Input(123);
+        let r1 = parse!{a() <|> b() <|> c()};
+        let r2 = parse!{a() <|> b() >> c_a()};
+        let r3 = parse!{a() >> b() <|> c()};
+        let r4 = parse!{a() >> b() >> c()};
 
-        let r1 = parse!{i1; a() <|> b() <|> c()};
-        let r2 = parse!{i2; a() <|> b() >> c_a()};
-        let r3 = parse!{i3; a() >> b() <|> c()};
-        let r4 = parse!{i4; a() >> b() >> c()};
+        let r5  = parse!{ (a() <|> b()) <|> c()};
+        let r6  = parse!{ (a() <|> b()) >> c_a()};
+        let r7  = parse!{ (a() >>  b()) <|> c()};
+        let r8  = parse!{ (a() >>  b()) >> c()};
+        let r9  = parse!{  a() <|> (b() <|> c())};
+        let r10 = parse!{  a() <|> (b() >> c_a())};
+        let r11 = parse!{  a() >>  (b() <|> c())};
+        let r12 = parse!{  a() >>  (b() >> c())};
 
-        let r5  = parse!{i5;  (a() <|> b()) <|> c()};
-        let r6  = parse!{i6;  (a() <|> b()) >> c_a()};
-        let r7  = parse!{i7;  (a() >>  b()) <|> c()};
-        let r8  = parse!{i_8; (a() >>  b()) >> c()};
-        let r9  = parse!{i9;   a() <|> (b() <|> c())};
-        let r10 = parse!{i10;  a() <|> (b() >> c_a())};
-        let r11 = parse!{i11;  a() >>  (b() <|> c())};
-        let r12 = parse!{i12;  a() >>  (b() >> c())};
+        assert_eq!(r1.parse(Input(123)), (Input(321), Ok(2)));
+        assert_eq!(r2.parse(Input(123)), (Input(323), Ok(43)));
+        assert_eq!(r3.parse(Input(123)), (Input(322), Ok(42)));
+        assert_eq!(r4.parse(Input(123)), (Input(323), Ok(43)));
 
-        assert_eq!(r1, Data::Value(321, 2));
-        assert_eq!(r2, Data::Value(323, 43));
-        assert_eq!(r3, Data::Value(322, 42));
-        assert_eq!(r4, Data::Value(323, 43));
-
-        assert_eq!(r5, Data::Value(321, 2));
-        assert_eq!(r6, Data::Value(323, 43));
-        assert_eq!(r7, Data::Value(322, 42));
-        assert_eq!(r8, Data::Value(323, 43));
-        assert_eq!(r9, Data::Value(321, 2));
-        assert_eq!(r10, Data::Value(321, 2));
-        assert_eq!(r11, Data::Value(322, 42));
-        assert_eq!(r12, Data::Value(323, 43));
+        assert_eq!(r5.parse(Input(123)), (Input(321), Ok(2)));
+        assert_eq!(r6.parse(Input(123)), (Input(323), Ok(43)));
+        assert_eq!(r7.parse(Input(123)), (Input(322), Ok(42)));
+        assert_eq!(r8.parse(Input(123)), (Input(323), Ok(43)));
+        assert_eq!(r9.parse(Input(123)), (Input(321), Ok(2)));
+        assert_eq!(r10.parse(Input(123)), (Input(321), Ok(2)));
+        assert_eq!(r11.parse(Input(123)), (Input(322), Ok(42)));
+        assert_eq!(r12.parse(Input(123)), (Input(323), Ok(43)));
     }
 
+    /*
     #[test]
     fn alt_inline_action() {
         let i = Input(123);
@@ -1523,11 +1559,11 @@ mod test {
             }) <|> (input -> {
                 assert_eq!(input, Input(321));
 
-                Data::Value(333, 42)
+                (Input(333), Ok(42))
             })
         };
 
-        assert_eq!(r, Data::Value(321, 21));
+        assert_eq!(r, (Input(321), Ok(21)));
     }
 
     #[test]
@@ -1538,15 +1574,15 @@ mod test {
             (input -> {
                 assert_eq!(input, Input(123));
 
-                Data::Value(321, 21)
+                (Input(321), Ok(21))
             }) >> (input -> {
                 assert_eq!(input, Input(321));
 
-                Data::Value(333, 42)
+                (Input(333), Ok(42))
             })
         };
 
-        assert_eq!(r, Data::Value(333, 42));
+        assert_eq!(r, (Input(333), Ok(42)));
     }
 
     #[test]
@@ -1557,30 +1593,33 @@ mod test {
             (input -> {
                 assert_eq!(input, Input(123));
 
-                Data::Value(321, 21)
+                (Input(321), Ok(21))
             }) <* (input -> {
                 assert_eq!(input, Input(321));
 
-                Data::Value(333, 42)
+                (Input(333), Ok(42))
             })
         };
 
-        assert_eq!(r, Data::Value(333, 21));
+        assert_eq!(r, (Input(333), Ok(21)));
     }
+    */
 
     // Test to make sure we do not hit the default macro iteration limit (64)
     #[test]
     fn max_alt() {
-        fn a(i: Input) -> Data<u32, ()> {
-            assert_eq!(i, Input(123));
+        fn a() -> impl Parser<Output=u32, Error=()> {
+            move |i: Input| {
+                assert_eq!(i, Input(123));
 
-            Data::Value(321, 2)
+                (Input(321), Ok(2))
+            }
         }
 
         let i = Input(123);
 
-        let r = parse!{i; a() <|> a() <|> a() <|> a() <|> a() <|> a() <|> a() <|> a() <|> a()};
+        let r = parse!{a() <|> a() <|> a() <|> a() <|> a() <|> a() <|> a() <|> a() <|> a()};
 
-        assert_eq!(r, Data::Value(321, 2));
+        assert_eq!(r.parse(i), (Input(321), Ok(2)));
     }
 }
