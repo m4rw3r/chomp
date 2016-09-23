@@ -174,9 +174,6 @@ pub trait Float: Sized {
     ///
     /// NOTES:
     ///
-    /// * Failing the parse will make `ascii::float` backtrack and error at the beginning of the
-    ///   floating point number which was parsed into the supplied buffer.
-    ///
     /// * Unsafe because the `parse_buffer` implementation should be able to rely on the format of
     ///   the incoming buffer (including well-formed UTF-8).
     unsafe fn parse_buffer<I: Input<Token=u8>, B: Buffer<Token=u8>>(i: I, b: B) -> SimpleResult<I, Self>;
@@ -187,18 +184,18 @@ impl Float for f32 {
         // TODO: Maybe we can use specialization to avoid allocation by specializing for a Buffer=&[u8]?
         let v = b.into_vec();
 
-        // v only contains [-+0-9.eE], utf-8 safe
+        // v only contains [-+0-9.eE], UTF-8 safe
         let s: &str = transmute(&v[..]);
 
         // We can skip this Result if we can guarantee that: a) the float is well-formatted, and b) the
         // float is not too large (ie. larger than what Rust's FromStr implementation can support).
         //
         // In this case we cannot wholly guarantee the size, so in that case we error (note that
-        // the error is placed in the wrong position, after the parsed flaot, so the caller needs to
-        // backtrack and reissue the error.
+        // the error is placed after the float in this case).
         if let Some(f) = s.parse().ok() {
             i.ret(f)
         } else {
+            // TODO: Add FloatParseError to Error type?
             i.err(Error::unexpected())
         }
     }
@@ -212,6 +209,7 @@ impl Float for f64 {
         if let Some(f) = s.parse().ok() {
             i.ret(f)
         } else {
+            // TODO: Add FloatParseError to Error type?
             i.err(Error::unexpected())
         }
     }
@@ -262,10 +260,7 @@ pub fn match_float<I: Input<Token=u8>>(i: I) -> SimpleResult<I, I::Buffer> {
 /// assert_eq!(parse_only(float, &b"3.14159265359"[..]), Ok(3.14159265359));
 /// ```
 pub fn float<I: Input<Token=u8>, F: Float>(i: I) -> SimpleResult<I, F> {
-    // We backtrack here using or because if an error occurs we want it to happen at the start
-    // of the float
-    // TODO: Add FloatParseError to Error type?
-    or(i, |i| match_float(i).bind(|i, b| unsafe { F::parse_buffer(i, b) }), |i| i.err(Error::unexpected()))
+    match_float(i).bind(|i, b| unsafe { F::parse_buffer(i, b) })
 }
 
 #[cfg(test)]
