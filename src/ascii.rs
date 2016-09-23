@@ -172,11 +172,13 @@ pub trait Float: Sized {
     /// convert this buffer into the proper float-representation, error if it is not possible
     /// to determine the correct representation.
     ///
-    /// NOTE: Failing the parse will make `ascii::float` backtrack and error at the beginning of
-    /// the floating point number which was parsed into the supplied buffer.
+    /// NOTES:
     ///
-    /// NOTE: Unsafe because the `parse_buffer` implementation should be able to rely on the format
-    /// of the incoming buffer (including well-formed UTF-8).
+    /// * Failing the parse will make `ascii::float` backtrack and error at the beginning of the
+    ///   floating point number which was parsed into the supplied buffer.
+    ///
+    /// * Unsafe because the `parse_buffer` implementation should be able to rely on the format of
+    ///   the incoming buffer (including well-formed UTF-8).
     unsafe fn parse_buffer<I: Input<Token=u8>, B: Buffer<Token=u8>>(i: I, b: B) -> SimpleResult<I, Self>;
 }
 
