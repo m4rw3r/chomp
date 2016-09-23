@@ -7,7 +7,12 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 
+- `ascii::float` parses a floating-point number with optional sign, fraction and exponent.
 - `parsers::skip_while1` skips at least one token matching a predicate.
+
+### Changes
+
+- Updated `either` dependency to `1.0.0`.
 
 ## [0.3.1] - 2016-09-06
 
