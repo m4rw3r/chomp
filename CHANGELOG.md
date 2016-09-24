@@ -8,6 +8,7 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ### Added
 
 - `ascii::float` parses a floating-point number with optional sign, fraction and exponent.
+- `combinators::choice` which attempts multiple heterogenous parsers from an iterator until one succeeds.
 - `parsers::skip_while1` skips at least one token matching a predicate.
 
 ### Changes
