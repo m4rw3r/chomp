@@ -126,6 +126,63 @@ pub fn either<I, T, U, E, F, G>(i: I, f: F, g: G) -> ParseResult<I, Either<T, U>
     }
 }
 
+/// Attempts each parser yielded by an iterator in order, returning the result of the first
+/// successful parser. This combinator requires boxing of all the parsers returned from the
+/// iterator.
+///
+/// Panics if the list/iteartor is empty.
+///
+/// NOTE: Since we are supporting stable, `FnMut` is required here since `FnBox` cannot be used
+/// yet.
+///
+/// ```
+/// use chomp::combinators::choice;
+/// use chomp::parsers::token;
+/// use chomp::parse_only;
+///
+/// let v: Vec<Box<FnMut(_) -> _>> = vec![
+///     Box::new(|i| token(i, b'b')),
+///     Box::new(|i| token(i, b'a')),
+/// ];
+/// assert_eq!(parse_only(|i| choice(i, v), &b"abc"[..]), Ok(b'a'));
+/// ```
+///
+/// ```
+/// use chomp::combinators::choice;
+/// use chomp::parsers::{Error, token};
+/// use chomp::parse_only;
+///
+/// let v: Vec<Box<FnMut(_) -> _>> = vec![
+///     Box::new(|i| token(i, b'b')),
+///     Box::new(|i| token(i, b'a')),
+/// ];
+/// assert_eq!(parse_only(|i| choice(i, v), &b"c"[..]), Err((&b"c"[..], Error::expected(b'a'))));
+/// ```
+#[inline]
+pub fn choice<I, T, E, R>(mut i: I, parsers: R) -> ParseResult<I, T, E>
+  where I: Input,
+        R: IntoIterator<Item=Box<FnMut(I) -> ParseResult<I, T, E>>> {
+    let mut ps  = parsers.into_iter();
+    let mut m   = i.mark();
+    let mut err = None;
+
+    loop {
+        if let Some(mut p) = ps.next() {
+            match p(i).into_inner() {
+                (b, Ok(t))  => return b.ret(t),
+                (b, Err(e)) => {
+                    i   = b.restore(m);
+                    m   = i.mark();
+                    err = Some(e);
+                },
+            }
+        }
+        else {
+            return i.err(err.expect("choice: Iterator cannot be empty"));
+        }
+    }
+}
+
 /// Parses many instances of `f` until it does no longer match, collecting all matches into the
 /// type `T: FromIterator`.
 ///
@@ -550,5 +607,23 @@ mod test {
         assert_eq!(look_ahead(&b"abc"[..], any).into_inner(), (&b"abc"[..], Ok(b'a')));
         assert_eq!(look_ahead(&b"a"[..], |i| string(i, b"abc")).into_inner(), (&b"a"[..], Err(Error::expected(b'b'))));
         assert_eq!(look_ahead(&b"aa"[..], |i| token(i, b'a').then(|i| token(i, b'b')).map_err(|_| "err")).into_inner(), (&b"aa"[..], Err("err")));
+    }
+
+    #[test]
+    fn choice_test() {
+        let v: Vec<Box<FnMut(_) -> _>> = vec![Box::new(|i| token(i, b'a')), Box::new(|i| token(i, b'b'))];
+        assert_eq!(choice(&b"abc"[..], v).into_inner(), (&b"bc"[..], Ok(b'a')));
+
+        let v: Vec<Box<FnMut(_) -> _>> = vec![Box::new(|i| token(i, b'a')), Box::new(|i| token(i, b'b'))];
+        assert_eq!(choice(&b"bca"[..], v).into_inner(), (&b"ca"[..], Ok(b'b')));
+
+        let v: Vec<Box<FnMut(_) -> _>> = vec![Box::new(|i| token(i, b'a')), Box::new(|i| token(i, b'b'))];
+        assert_eq!(choice(&b"cab"[..], v).into_inner(), (&b"cab"[..], Err(Error::expected(b'b'))));
+    }
+
+    #[test]
+    #[should_panic]
+    fn choice_empty() {
+        assert_eq!(choice::<_, (), (), _>(&b"abc"[..], vec![]).into_inner(), (&b"abc"[..], Err(())));
     }
 }

@@ -21,7 +21,7 @@ Add the following line to the dependencies section of your `Cargo.toml`:
 
 ```toml
 [dependencies]
-chomp = "0.3.0"
+chomp = "0.3.1"
 ```
 
 ##Usage
@@ -107,9 +107,23 @@ assert_eq!(parse_only(name, "Martin Wernstål\n".as_bytes()), Ok(Name{
     first: &b"Martin"[..],
     last: "Wernstål".as_bytes()
 }));
-# }
 ```
+
+## License
+
+Licensed under either of
+
+ * Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+ * MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+
+at your option.
+
+### Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in
+the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any
+additional terms or conditions.
 
 ##Contact
 
-You can contact the author either through an issue here on GitHub, or you can query him at m4rw3r on mozilla's irc network.
+File an issue [here](https://github.com/m4rw3r/chomp/issues/new) on Github or visit [gitter.im/m4rw3r/chomp](https://gitter.im/m4rw3r/chomp).

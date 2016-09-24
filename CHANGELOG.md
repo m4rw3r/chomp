@@ -7,7 +7,23 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 
+- `ascii::float` parses a floating-point number with optional sign, fraction and exponent.
+- `combinators::choice` which attempts multiple heterogenous parsers from an iterator until one succeeds.
+- `parsers::skip_while1` skips at least one token matching a predicate.
+
+### Changes
+
+- Updated `either` dependency to `1.0.0`.
+
+## [0.3.1] - 2016-09-06
+
+### Added
+
 - `combinators::either`: Like `or` but allows different result types from the parsers.
+
+### Changes
+
+- Chomp is now licensed under both MIT and Apache-2.0 licenses.
 
 ### Bugfixes
 

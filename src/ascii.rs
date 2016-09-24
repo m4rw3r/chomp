@@ -1,6 +1,7 @@
 //! Utilities and parsers for dealing with ASCII data in `u8` format.
 
 use std::ops::{Add, Mul};
+use std::mem::transmute;
 
 use conv::{
     NoError,
@@ -9,13 +10,8 @@ use conv::{
 use conv::errors::UnwrapOk;
 
 use types::{Buffer, Input};
-use combinators::option;
-use parsers::{
-    SimpleResult,
-    satisfy,
-    skip_while,
-    take_while1,
-};
+use combinators::{matched_by, option, or};
+use parsers::{Error, SimpleResult, satisfy, skip_while, skip_while1, take_while1, token};
 
 /// Lowercase ASCII predicate.
 #[inline]
@@ -170,9 +166,109 @@ fn to_decimal<T: Copy + ValueFrom<u8, Err=NoError> + Add<Output=T> + Mul<Output=
     iter.fold(T::value_from(0).unwrap_ok(), |a, n| a * T::value_from(10).unwrap_ok() + T::value_from(n - b'0').unwrap_ok())
 }
 
+/// Trait enabling the conversion from a matched `Buffer` to a float of the correct type.
+pub trait Float: Sized {
+    /// Given an input and a buffer matching `/[+-]?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)/`,
+    /// convert this buffer into the proper float-representation, error if it is not possible
+    /// to determine the correct representation.
+    ///
+    /// NOTES:
+    ///
+    /// * Unsafe because the `parse_buffer` implementation should be able to rely on the format of
+    ///   the incoming buffer (including well-formed UTF-8).
+    unsafe fn parse_buffer<I: Input<Token=u8>, B: Buffer<Token=u8>>(i: I, b: B) -> SimpleResult<I, Self>;
+}
+
+impl Float for f32 {
+    unsafe fn parse_buffer<I: Input<Token=u8>, B: Buffer<Token=u8>>(i: I, b: B) -> SimpleResult<I, Self> {
+        // TODO: Maybe we can use specialization to avoid allocation by specializing for a Buffer=&[u8]?
+        let v = b.into_vec();
+
+        // v only contains [-+0-9.eE], UTF-8 safe
+        let s: &str = transmute(&v[..]);
+
+        // We can skip this Result if we can guarantee that: a) the float is well-formatted, and b) the
+        // float is not too large (ie. larger than what Rust's FromStr implementation can support).
+        //
+        // In this case we cannot wholly guarantee the size, so in that case we error (note that
+        // the error is placed after the float in this case).
+        if let Some(f) = s.parse().ok() {
+            i.ret(f)
+        } else {
+            // TODO: Add FloatParseError to Error type?
+            i.err(Error::unexpected())
+        }
+    }
+}
+
+impl Float for f64 {
+    unsafe fn parse_buffer<I: Input<Token=u8>, B: Buffer<Token=u8>>(i: I, b: B) -> SimpleResult<I, Self> {
+        let v       = b.into_vec();
+        let s: &str = transmute(&v[..]);
+
+        if let Some(f) = s.parse().ok() {
+            i.ret(f)
+        } else {
+            // TODO: Add FloatParseError to Error type?
+            i.err(Error::unexpected())
+        }
+    }
+}
+
+/// Matches a floating point number in base-10 with an optional exponent, returning a buffer.
+///
+/// Matches `/[+-]?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)/`
+#[inline]
+pub fn match_float<I: Input<Token=u8>>(i: I) -> SimpleResult<I, I::Buffer> {
+    /// Parses a sign
+    #[inline]
+    fn sign<I: Input<Token=u8>>(i: I) -> SimpleResult<I, u8> {
+        or(i, |i| token(i, b'+'), |i| token(i, b'-'))
+    }
+
+    /// Parses a signed decimal with optional leading sign
+    #[inline]
+    fn signed_decimal<I: Input<Token=u8>>(i: I) -> SimpleResult<I, ()> {
+        option(i, sign, b'+').then(|i| skip_while1(i, is_digit))
+    }
+
+    /// Parses e or E
+    #[inline]
+    fn e<I: Input<Token=u8>>(i: I) -> SimpleResult<I, u8> {
+        or(i, |i| token(i, b'e'), |i| token(i, b'E'))
+    }
+
+    matched_by(i, |i|
+        signed_decimal(i).then(|i|
+        option(i, |i| token(i, b'.').then(|i| skip_while1(i, is_digit)), ()).then(|i|
+        option(i, |i| e(i).then(signed_decimal), ())))).map(|(b, _)| b)
+}
+
+// TODO: Maybe we can use specialization to avoid allocation by specializing for a Buffer=&[u8]
+/// Parses a float into a `f64` or `f32`, will error with an `Error::unexpected` if the float
+/// does not map to a proper float.
+///
+/// Supports the format `/[+-]?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)/`
+///
+/// NOTE: Currently requires an allocation due to being generic over `Input::Buffer` and
+/// internally Rust's `f32` requires a `&str` to be able to parse.
+///
+/// ```
+/// use chomp::parse_only;
+/// use chomp::ascii::float;
+///
+/// assert_eq!(parse_only(float, &b"3.14159265359"[..]), Ok(3.14159265359));
+/// ```
+pub fn float<I: Input<Token=u8>, F: Float>(i: I) -> SimpleResult<I, F> {
+    match_float(i).bind(|i, b| unsafe { F::parse_buffer(i, b) })
+}
+
 #[cfg(test)]
 mod test {
+    use super::*;
     use super::to_decimal;
+    use parsers::Error;
+    use primitives::IntoInner;
 
     macro_rules! test_to_decimal {
         ( $($n:ty),+ ) => { $(
@@ -189,5 +285,49 @@ mod test {
     #[test]
     fn test_to_decimal_u8() {
         test_to_decimal!(u8, u16, u32, u64, i16, i32, i64);
+    }
+
+    #[test]
+    fn match_float_test() {
+        assert_eq!(match_float(&b"abc"[..]).into_inner(),           (&b"abc"[..], Err(Error::unexpected())));
+        assert_eq!(match_float(&b"1.0e+1"[..]).into_inner(),        (&b""[..], Ok(&b"1.0e+1"[..])));
+        assert_eq!(match_float(&b"1.0e1"[..]).into_inner(),         (&b""[..], Ok(&b"1.0e1"[..])));
+        assert_eq!(match_float(&b"1e1"[..]).into_inner(),           (&b""[..], Ok(&b"1e1"[..])));
+        assert_eq!(match_float(&b"3.12159265359"[..]).into_inner(), (&b""[..], Ok(&b"3.12159265359"[..])));
+        assert_eq!(match_float(&b"1.0"[..]).into_inner(),           (&b""[..], Ok(&b"1.0"[..])));
+        assert_eq!(match_float(&b"1"[..]).into_inner(),             (&b""[..], Ok(&b"1"[..])));
+        assert_eq!(match_float(&b"1."[..]).into_inner(),            (&b"."[..], Ok(&b"1"[..])));
+        assert_eq!(match_float(&b"1.."[..]).into_inner(),           (&b".."[..], Ok(&b"1"[..])));
+        assert_eq!(match_float(&b"1.abc"[..]).into_inner(),         (&b".abc"[..], Ok(&b"1"[..])));
+        assert_eq!(match_float(&b"0.234"[..]).into_inner(),         (&b""[..], Ok(&b"0.234"[..])));
+        assert_eq!(match_float(&b"0.234e-123"[..]).into_inner(),    (&b""[..], Ok(&b"0.234e-123"[..])));
+        assert_eq!(match_float(&b"0.234e-123  "[..]).into_inner(),  (&b"  "[..], Ok(&b"0.234e-123"[..])));
+        assert_eq!(match_float(&b"0.234e-123ee"[..]).into_inner(),  (&b"ee"[..], Ok(&b"0.234e-123"[..])));
+        assert_eq!(match_float(&b"0.234e-123.."[..]).into_inner(),  (&b".."[..], Ok(&b"0.234e-123"[..])));
+        assert_eq!(match_float(&b"0.234e-.."[..]).into_inner(),     (&b"e-.."[..], Ok(&b"0.234"[..])));
+    }
+
+    #[test]
+    fn float_test() {
+        assert_eq!(float(&b"3.14159265359"[..]).into_inner(), (&b""[..], Ok(3.14159265359)));
+        assert_eq!(float(&b"+3.14159265359"[..]).into_inner(), (&b""[..], Ok(3.14159265359)));
+        assert_eq!(float(&b"-3.14159265359"[..]).into_inner(), (&b""[..], Ok(-3.14159265359)));
+        assert_eq!(float(&b"0.0"[..]).into_inner(), (&b""[..], Ok(0.0)));
+        assert_eq!(float(&b"0"[..]).into_inner(), (&b""[..], Ok(0.0)));
+        assert_eq!(float(&b"1"[..]).into_inner(), (&b""[..], Ok(1.0)));
+        assert_eq!(float(&b"1E0"[..]).into_inner(), (&b""[..], Ok(1.0)));
+        assert_eq!(float(&b"1E1"[..]).into_inner(), (&b""[..], Ok(10.0)));
+        assert_eq!(float(&b"1E2"[..]).into_inner(), (&b""[..], Ok(100.0)));
+        assert_eq!(float(&b"1e0"[..]).into_inner(), (&b""[..], Ok(1.0)));
+        assert_eq!(float(&b"1e1"[..]).into_inner(), (&b""[..], Ok(10.0)));
+        assert_eq!(float(&b"1e2"[..]).into_inner(), (&b""[..], Ok(100.0)));
+        assert_eq!(float(&b"2E2"[..]).into_inner(), (&b""[..], Ok(200.0)));
+        assert_eq!(float(&b"2e2"[..]).into_inner(), (&b""[..], Ok(200.0)));
+        assert_eq!(float(&b"1E-0"[..]).into_inner(), (&b""[..], Ok(1.0)));
+        assert_eq!(float(&b"1E-1"[..]).into_inner(), (&b""[..], Ok(0.1)));
+        assert_eq!(float(&b"1E-2"[..]).into_inner(), (&b""[..], Ok(0.01)));
+        assert_eq!(float(&b"1e-0"[..]).into_inner(), (&b""[..], Ok(1.0)));
+        assert_eq!(float(&b"1e-1"[..]).into_inner(), (&b""[..], Ok(0.1)));
+        assert_eq!(float(&b"1e-2"[..]).into_inner(), (&b""[..], Ok(0.01)));
     }
 }

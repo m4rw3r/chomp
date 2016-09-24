@@ -245,6 +245,22 @@ pub fn skip_while<I: Input, F>(mut i: I, f: F) -> SimpleResult<I, ()>
     i.ret(())
 }
 
+/// Skips over tokens in the input until `f` returns false, skips at least one token and fails if
+/// `f` does not succeed on it.
+///
+/// ```
+/// use chomp::parse_only;
+/// use chomp::parsers::{Error, skip_while1};
+///
+/// assert_eq!(parse_only(|i| skip_while1(i, |c| c == b'a'), &b"aaabc"[..]), Ok(()));
+/// assert_eq!(parse_only(|i| skip_while1(i, |c| c == b'a'), &b"bbc"[..]), Err((&b"bbc"[..], Error::unexpected())));
+/// ```
+#[inline]
+pub fn skip_while1<I: Input, F>(i: I, mut f: F) -> SimpleResult<I, ()>
+  where F: FnMut(I::Token) -> bool {
+    satisfy(i, &mut f).then(|i| skip_while(i, f))
+}
+
 /// Matches all items until ``f`` returns true, all items to that point will be returned as a slice
 /// upon success.
 ///
@@ -681,6 +697,14 @@ mod test {
         assert_eq!(string(&b"abc"[..], b"abcd").into_inner(),  (&b""[..],    Err(Error::expected(b'd'))));
         assert_eq!(string(&b"abc"[..], b"abcde").into_inner(), (&b""[..],    Err(Error::expected(b'd'))));
         assert_eq!(string(&b"abc"[..], b"ac").into_inner(),    (&b"bc"[..],  Err(Error::expected(b'c'))));
+    }
+
+    #[test]
+    fn skip_while1_test() {
+        assert_eq!(skip_while1(&b"aaabc"[..], |c| c == b'a').into_inner(), (&b"bc"[..], Ok(())));
+        assert_eq!(skip_while1(&b"aabc"[..], |c| c == b'a').into_inner(), (&b"bc"[..], Ok(())));
+        assert_eq!(skip_while1(&b"abc"[..], |c| c == b'a').into_inner(), (&b"bc"[..], Ok(())));
+        assert_eq!(skip_while1(&b"bc"[..], |c| c == b'a').into_inner(), (&b"bc"[..], Err(Error::unexpected())));
     }
 
     #[test]
