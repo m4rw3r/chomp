@@ -9,6 +9,7 @@ repository    = "http://github.com/m4rw3r/chomp"
 readme        = "README.md"
 keywords      = ["parser", "parser-combinators", "parsing", "streaming"]
 license       = "MIT/Apache-2.0"
+build         = "build.rs"
 
 include = [
     "benches/**/*.rs",
@@ -32,6 +33,9 @@ tendril    = { version = "0.2.2", optional = true }
 # compiletest_rs fails to compile on stable and beta
 compiletest_rs = { version = "0.2.1", optional = true }
 clippy         = { version = ">0.0.1", optional = true }
+
+[build-dependencies]
+rustc_version = { version = "0.1.7" }
 
 [features]
 # Feature for running extra (compiletime fail) tests on nightly

@@ -1,7 +1,6 @@
 //! Utilities and parsers for dealing with ASCII data in `u8` format.
 
 use std::ops::{Add, Mul};
-use std::mem::transmute;
 
 use conv::{
     NoError,
@@ -11,7 +10,7 @@ use conv::errors::UnwrapOk;
 
 use types::{Buffer, Input};
 use combinators::{matched_by, option, or};
-use parsers::{Error, SimpleResult, satisfy, skip_while, skip_while1, take_while1, token};
+use parsers::{SimpleResult, satisfy, skip_while, skip_while1, take_while1, token};
 
 /// Lowercase ASCII predicate.
 #[inline]
@@ -167,7 +166,7 @@ fn to_decimal<T: Copy + ValueFrom<u8, Err=NoError> + Add<Output=T> + Mul<Output=
 }
 
 /// Trait enabling the conversion from a matched `Buffer` to a float of the correct type.
-pub trait Float: Sized {
+pub trait Float<B: Buffer<Token=u8>>: Sized {
     /// Given an input and a buffer matching `/[+-]?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)/`,
     /// convert this buffer into the proper float-representation, error if it is not possible
     /// to determine the correct representation.
@@ -176,41 +175,104 @@ pub trait Float: Sized {
     ///
     /// * Unsafe because the `parse_buffer` implementation should be able to rely on the format of
     ///   the incoming buffer (including well-formed UTF-8).
-    unsafe fn parse_buffer<I: Input<Token=u8>, B: Buffer<Token=u8>>(i: I, b: B) -> SimpleResult<I, Self>;
+    unsafe fn parse_buffer<I: Input<Token=u8, Buffer=B>>(i: I, b: B) -> SimpleResult<I, Self>;
 }
 
-impl Float for f32 {
-    unsafe fn parse_buffer<I: Input<Token=u8>, B: Buffer<Token=u8>>(i: I, b: B) -> SimpleResult<I, Self> {
-        // TODO: Maybe we can use specialization to avoid allocation by specializing for a Buffer=&[u8]?
-        let v = b.into_vec();
+mod float_impl {
+    use std::mem::transmute;
 
-        // v only contains [-+0-9.eE], UTF-8 safe
-        let s: &str = transmute(&v[..]);
+    use types::{Buffer, Input};
+    use parsers::{Error, SimpleResult};
 
-        // We can skip this Result if we can guarantee that: a) the float is well-formatted, and b) the
-        // float is not too large (ie. larger than what Rust's FromStr implementation can support).
-        //
-        // In this case we cannot wholly guarantee the size, so in that case we error (note that
-        // the error is placed after the float in this case).
-        if let Some(f) = s.parse().ok() {
-            i.ret(f)
-        } else {
-            // TODO: Add FloatParseError to Error type?
-            i.err(Error::unexpected())
+    use super::Float;
+
+    /// The macro here is to provide the default keyword in case we support specialization
+    #[cfg(has_specialization)]
+    macro_rules! parse_buffer {
+        ( $i:ident, $b:ident: $b_ty:ty, $content:block ) => {
+            default unsafe fn parse_buffer<I: Input<Token=u8>>($i: I, $b: $b_ty) -> SimpleResult<I, Self> $content
         }
+    }
+
+    #[cfg(not(has_specialization))]
+    macro_rules! parse_buffer {
+        ( $i:ident, $b:ident: $b_ty:ty, $content:block ) => {
+            unsafe fn parse_buffer<I: Input<Token=u8>>($i: I, $b: $b_ty) -> SimpleResult<I, Self> $content
+        }
+    }
+
+    impl<B> Float<B> for f64
+      where B: Buffer<Token=u8> {
+        parse_buffer!(i, b: B, {
+            let v = b.into_vec();
+
+            // v only contains [-+0-9.eE], UTF-8 safe
+            let s: &str = transmute(&v[..]);
+
+            // We can skip this Result if we can guarantee that: a) the float is well-formatted, and b) the
+            // float is not too large (ie. larger than what Rust's FromStr implementation can support).
+            //
+            // In this case we cannot wholly guarantee the size, so in that case we error (note that
+            // the error is placed after the float in this case).
+            if let Some(f) = s.parse().ok() {
+                i.ret(f)
+            } else {
+                // TODO: Add FloatParseError to Error type?
+                i.err(Error::unexpected())
+            }
+        });
+    }
+
+    impl<B> Float<B> for f32
+      where B: Buffer<Token=u8> {
+        parse_buffer!(i, b: B, {
+            let v       = b.into_vec();
+            let s: &str = transmute(&v[..]);
+
+            if let Some(f) = s.parse().ok() {
+                i.ret(f)
+            } else {
+                // TODO: Add FloatParseError to Error type?
+                i.err(Error::unexpected())
+            }
+        });
     }
 }
 
-impl Float for f64 {
-    unsafe fn parse_buffer<I: Input<Token=u8>, B: Buffer<Token=u8>>(i: I, b: B) -> SimpleResult<I, Self> {
-        let v       = b.into_vec();
-        let s: &str = transmute(&v[..]);
+/// Internal module containing specialized implementations of `Float` for `&[u8]`-buffers, used
+/// when `has_specialization` is on since we can enable the unstable `specialization` feature.
+#[cfg(has_specialization)]
+mod float_impl_specialized {
+    use std::mem::transmute;
 
-        if let Some(f) = s.parse().ok() {
-            i.ret(f)
-        } else {
-            // TODO: Add FloatParseError to Error type?
-            i.err(Error::unexpected())
+    use types::Input;
+    use parsers::{Error, SimpleResult};
+
+    use super::Float;
+
+    impl<'a> Float<&'a [u8]> for f64 {
+        unsafe fn parse_buffer<I: Input<Token=u8>>(i: I, b: &'a [u8]) -> SimpleResult<I, Self> {
+            let s: &str = transmute(b);
+
+            if let Some(f) = s.parse().ok() {
+                i.ret(f)
+            } else {
+                // TODO: Add FloatParseError to Error type?
+                i.err(Error::unexpected())
+            }
+        }
+    }
+
+    impl<'a> Float<&'a [u8]> for f32 {
+        unsafe fn parse_buffer<I: Input<Token=u8>>(i: I, b: &'a [u8]) -> SimpleResult<I, Self> {
+            let s: &str = transmute(b);
+
+            if let Some(f) = s.parse().ok() {
+                i.ret(f)
+            } else {
+                // TODO: Add FloatParseError to Error type?
+                i.err(Error::unexpected())
+            }
         }
     }
 }
@@ -251,7 +313,9 @@ pub fn match_float<I: Input<Token=u8>>(i: I) -> SimpleResult<I, I::Buffer> {
 /// Supports the format `/[+-]?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)/`
 ///
 /// NOTE: Currently requires an allocation due to being generic over `Input::Buffer` and
-/// internally Rust's `f32` requires a `&str` to be able to parse.
+/// internally Rust's `f32` requires a `&str` to be able to parse. If the nightly compiler is used
+/// the `Float` trait implementation for `f32` and `f64` will be specialized if the `Buffer` is
+/// `&[u8]` and will not require an allocation.
 ///
 /// ```
 /// use chomp::parse_only;
@@ -259,7 +323,7 @@ pub fn match_float<I: Input<Token=u8>>(i: I) -> SimpleResult<I, I::Buffer> {
 ///
 /// assert_eq!(parse_only(float, &b"3.14159265359"[..]), Ok(3.14159265359));
 /// ```
-pub fn float<I: Input<Token=u8>, F: Float>(i: I) -> SimpleResult<I, F> {
+pub fn float<I: Input<Token=u8>, F: Float<I::Buffer>>(i: I) -> SimpleResult<I, F> {
     match_float(i).bind(|i, b| unsafe { F::parse_buffer(i, b) })
 }
 

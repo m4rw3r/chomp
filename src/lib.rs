@@ -206,6 +206,8 @@
         unused_import_braces,
         unused_qualifications)]
 
+#![cfg_attr(has_specialization, feature(specialization))]
+
 #![cfg_attr(feature="clippy", feature(plugin))]
 #![cfg_attr(feature="clippy", plugin(clippy))]
 #![cfg_attr(feature="clippy", warn(
