@@ -178,6 +178,8 @@ pub trait Float<B: Buffer<Token=u8>>: Sized {
     unsafe fn parse_buffer<I: Input<Token=u8, Buffer=B>>(i: I, b: B) -> SimpleResult<I, Self>;
 }
 
+/// Only use the generic `Float` impl if we can rely on `Vec`.
+#[cfg(not(feature="core"))]
 mod float_impl {
     use std::mem::transmute;
 
@@ -241,7 +243,9 @@ mod float_impl {
 
 /// Internal module containing specialized implementations of `Float` for `&[u8]`-buffers, used
 /// when `has_specialization` is on since we can enable the unstable `specialization` feature.
-#[cfg(has_specialization)]
+/// We also use this when using `core` since the default implementation is not provided since it
+/// relies on `Vec`.
+#[cfg(any(has_specialization, feature="core"))]
 mod float_impl_specialized {
     use std::mem::transmute;
 

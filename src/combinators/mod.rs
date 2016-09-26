@@ -158,6 +158,7 @@ pub fn either<I, T, U, E, F, G>(i: I, f: F, g: G) -> ParseResult<I, Either<T, U>
 /// ];
 /// assert_eq!(parse_only(|i| choice(i, v), &b"c"[..]), Err((&b"c"[..], Error::expected(b'a'))));
 /// ```
+#[cfg(not(feature="core"))]
 #[inline]
 pub fn choice<I, T, E, R>(mut i: I, parsers: R) -> ParseResult<I, T, E>
   where I: Input,
