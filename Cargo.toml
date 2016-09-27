@@ -39,8 +39,8 @@ rustc_version = { version = "0.1.7" }
 
 [features]
 core          = []
-noop_error    = []
 backtrace     = ["debugtrace/backtrace"]
+noop_error    = []
 # Feature for running extra (compiletime fail) tests on nightly
 unstable      = ["compiletest_rs"]
 

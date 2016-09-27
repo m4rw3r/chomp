@@ -198,6 +198,21 @@
 //!
 //!    The built-in `chomp::parsers::Error` type is zero-sized and carry no error-information. This
 //!    increases performance somewhat.
+//!
+//! * `core`:
+#![cfg_attr(not(feature="core"), doc = " disabled (default).")]
+#![cfg_attr(feature="core", doc = " enabled.")]
+//!
+//!    Chomp excludes all features which rely on Rust's `std` library, using the `no_std` feature.
+//!
+//!    Excluded items:
+//!
+//!     * `ascii::float` support for `type::Buffer` implementations other than `&[u8]`.
+//!     * `buffer` module.
+//!     * `combinators::choice` combinator.
+//!     * `parsers::Error` no longer implements the `std::error::Error` trait.
+//!     * `types::Buffer::to_vec`
+//!     * `types::Buffer::into_vec`
 
 #![warn(missing_docs,
         missing_debug_implementations,
@@ -243,9 +258,10 @@ mod macros;
 mod parse;
 
 pub mod ascii;
-// FIXME: Import but make it compatible with core by exposing a minimal buffer-helper which doesn't
-// require std
-//pub mod buffer;
+// TODO: Rework buffer module so that at least a part of it can be exposed provided the user
+// provides their own buffers allocated from outside.
+#[cfg(not(feature="core"))]
+pub mod buffer;
 pub mod combinators;
 pub mod parsers;
 pub mod primitives;
