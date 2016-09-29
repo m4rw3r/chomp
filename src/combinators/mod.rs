@@ -610,21 +610,28 @@ mod test {
         assert_eq!(look_ahead(&b"aa"[..], |i| token(i, b'a').then(|i| token(i, b'b')).map_err(|_| "err")).into_inner(), (&b"aa"[..], Err("err")));
     }
 
-    #[test]
-    fn choice_test() {
-        let v: Vec<Box<FnMut(_) -> _>> = vec![Box::new(|i| token(i, b'a')), Box::new(|i| token(i, b'b'))];
-        assert_eq!(choice(&b"abc"[..], v).into_inner(), (&b"bc"[..], Ok(b'a')));
+    #[cfg(not(feature="core"))]
+    mod choice_tests {
+        use combinators::choice;
+        use parsers::{Error, token};
+        use primitives::IntoInner;
 
-        let v: Vec<Box<FnMut(_) -> _>> = vec![Box::new(|i| token(i, b'a')), Box::new(|i| token(i, b'b'))];
-        assert_eq!(choice(&b"bca"[..], v).into_inner(), (&b"ca"[..], Ok(b'b')));
+        #[test]
+        fn choice_test() {
+            let v: Vec<Box<FnMut(_) -> _>> = vec![Box::new(|i| token(i, b'a')), Box::new(|i| token(i, b'b'))];
+            assert_eq!(choice(&b"abc"[..], v).into_inner(), (&b"bc"[..], Ok(b'a')));
 
-        let v: Vec<Box<FnMut(_) -> _>> = vec![Box::new(|i| token(i, b'a')), Box::new(|i| token(i, b'b'))];
-        assert_eq!(choice(&b"cab"[..], v).into_inner(), (&b"cab"[..], Err(Error::expected(b'b'))));
-    }
+            let v: Vec<Box<FnMut(_) -> _>> = vec![Box::new(|i| token(i, b'a')), Box::new(|i| token(i, b'b'))];
+            assert_eq!(choice(&b"bca"[..], v).into_inner(), (&b"ca"[..], Ok(b'b')));
 
-    #[test]
-    #[should_panic]
-    fn choice_empty() {
-        assert_eq!(choice::<_, (), (), _>(&b"abc"[..], vec![]).into_inner(), (&b"abc"[..], Err(())));
+            let v: Vec<Box<FnMut(_) -> _>> = vec![Box::new(|i| token(i, b'a')), Box::new(|i| token(i, b'b'))];
+            assert_eq!(choice(&b"cab"[..], v).into_inner(), (&b"cab"[..], Err(Error::expected(b'b'))));
+        }
+
+        #[test]
+        #[should_panic]
+        fn choice_empty() {
+            assert_eq!(choice::<_, (), (), _>(&b"abc"[..], vec![]).into_inner(), (&b"abc"[..], Err(())));
+        }
     }
 }

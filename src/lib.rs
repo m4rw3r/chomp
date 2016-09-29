@@ -236,10 +236,12 @@
     single_match_else))]
 #![cfg_attr(feature="clippy", allow(inline_always, many_single_char_names))]
 
-#![cfg_attr(feature="core", no_std)]
+#![cfg_attr(all(feature="core", not(test)), no_std)]
 
 /// Inner module to emulate std when using `core`.
-#[cfg(feature = "core")]
+///
+/// Skipped when using test since we use std for tests.
+#[cfg(all(feature = "core", not(test)))]
 mod std {
     pub use core::{cell, cmp, fmt, iter, marker, mem, ops, ptr};
 }

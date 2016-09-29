@@ -816,7 +816,7 @@ pub mod test {
         use primitives::Primitives;
 
         fn buffer_eq_slice<B: Buffer + Clone, F: Fn(u8) -> B::Token>(b: B, s: &[u8], f: F)
-          where B::Token: Debug, {
+          where B::Token: Debug {
             assert_eq!(b.len(), s.len());
             assert_eq!(b.is_empty(), s.is_empty());
             assert_eq!(b.clone().fold(0, |n, c| {
@@ -824,8 +824,18 @@ pub mod test {
 
                 n + 1
             }), s.iter().count());
+            buffer_to_vec(b, s, f);
+        }
+
+        #[cfg(not(feature="core"))]
+        fn buffer_to_vec<B: Buffer + Clone, F: Fn(u8) -> B::Token>(b: B, s: &[u8], f: F)
+          where B::Token: Debug {
             assert_eq!(b.to_vec(), s.iter().cloned().map(f).collect::<Vec<_>>());
         }
+
+        #[cfg(feature="core")]
+        fn buffer_to_vec<B: Buffer + Clone, F: Fn(u8) -> B::Token>(_: B, _: &[u8], _: F)
+          where B::Token: Debug {}
 
         let m = s.mark();
         assert_eq!(s.peek(), Some(f(b'a')));
