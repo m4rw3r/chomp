@@ -3,8 +3,8 @@ extern crate test;
 #[macro_use]
 extern crate chomp;
 
+use std::str;
 use std::str::FromStr;
-use std::mem::transmute;
 
 use test::Bencher;
 
@@ -78,10 +78,10 @@ fn float_small_no_conversion(b: &mut Bencher) {
 /// Reference, 32-bit
 #[bench]
 fn from_str_f32(b: &mut Bencher) {
-    assert_eq!(FromStr::from_str(unsafe { transmute(&PI_SLICE[..]) }), Ok(PI_F32));
+    assert_eq!(FromStr::from_str(unsafe { str::from_utf8_unchecked(&PI_SLICE[..]) }), Ok(PI_F32));
 
     b.iter(|| {
-        let f: Result<f32, _> = FromStr::from_str(unsafe { transmute(&PI_SLICE[..]) });
+        let f: Result<f32, _> = FromStr::from_str(unsafe { str::from_utf8_unchecked(&PI_SLICE[..]) });
 
         f
     })
@@ -90,10 +90,10 @@ fn from_str_f32(b: &mut Bencher) {
 /// Reference, 64-bit
 #[bench]
 fn from_str_f64(b: &mut Bencher) {
-    assert_eq!(FromStr::from_str(unsafe { transmute(&PI_SLICE[..]) }), Ok(PI_F64));
+    assert_eq!(FromStr::from_str(unsafe { str::from_utf8_unchecked(&PI_SLICE[..]) }), Ok(PI_F64));
 
     b.iter(|| {
-        let f: Result<f64, _> = FromStr::from_str(unsafe { transmute(&PI_SLICE[..]) });
+        let f: Result<f64, _> = FromStr::from_str(unsafe { str::from_utf8_unchecked(&PI_SLICE[..]) });
 
         f
     })
@@ -103,10 +103,10 @@ fn from_str_f64(b: &mut Bencher) {
 /// Reference, 32-bit, small
 #[bench]
 fn from_str_small_f32(b: &mut Bencher) {
-    assert_eq!(FromStr::from_str(unsafe { transmute(&b"1"[..]) }), Ok(1.0f32));
+    assert_eq!(FromStr::from_str(unsafe { str::from_utf8_unchecked(&b"1"[..]) }), Ok(1.0f32));
 
     b.iter(|| {
-        let f: Result<f32, _> = FromStr::from_str(unsafe { transmute(&b"1"[..]) });
+        let f: Result<f32, _> = FromStr::from_str(unsafe { str::from_utf8_unchecked(&b"1"[..]) });
 
         f
     })
@@ -115,10 +115,10 @@ fn from_str_small_f32(b: &mut Bencher) {
 /// Reference, 64-bit
 #[bench]
 fn from_str_small_f64(b: &mut Bencher) {
-    assert_eq!(FromStr::from_str(unsafe { transmute(&b"1"[..]) }), Ok(1.0f64));
+    assert_eq!(FromStr::from_str(unsafe { str::from_utf8_unchecked(&b"1"[..]) }), Ok(1.0f64));
 
     b.iter(|| {
-        let f: Result<f64, _> = FromStr::from_str(unsafe { transmute(&b"1"[..]) });
+        let f: Result<f64, _> = FromStr::from_str(unsafe { str::from_utf8_unchecked(&b"1"[..]) });
 
         f
     })
