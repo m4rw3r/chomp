@@ -243,7 +243,7 @@
 /// Skipped when using test since we use std for tests.
 #[cfg(all(feature = "core", not(test)))]
 mod std {
-    pub use core::{cell, cmp, fmt, iter, marker, mem, ops, ptr};
+    pub use core::{cell, cmp, fmt, iter, marker, mem, ops, ptr, str};
 }
 
 #[cfg(feature = "tendril")]
