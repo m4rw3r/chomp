@@ -179,7 +179,7 @@ pub trait Float<B: Buffer<Token=u8>>: Sized {
 }
 
 mod float_impl {
-    use std::mem::transmute;
+    use std::str;
 
     use types::{Buffer, Input};
     use parsers::{Error, SimpleResult};
@@ -207,7 +207,7 @@ mod float_impl {
             let v = b.into_vec();
 
             // v only contains [-+0-9.eE], UTF-8 safe
-            let s: &str = transmute(&v[..]);
+            let s: &str = str::from_utf8_unchecked(&v[..]);
 
             // We can skip this Result if we can guarantee that: a) the float is well-formatted, and b) the
             // float is not too large (ie. larger than what Rust's FromStr implementation can support).
@@ -227,7 +227,7 @@ mod float_impl {
       where B: Buffer<Token=u8> {
         parse_buffer!(i, b: B, {
             let v       = b.into_vec();
-            let s: &str = transmute(&v[..]);
+            let s: &str = str::from_utf8_unchecked(&v[..]);
 
             if let Some(f) = s.parse().ok() {
                 i.ret(f)
@@ -243,7 +243,7 @@ mod float_impl {
 /// when `has_specialization` is on since we can enable the unstable `specialization` feature.
 #[cfg(has_specialization)]
 mod float_impl_specialized {
-    use std::mem::transmute;
+    use std::str;
 
     use types::Input;
     use parsers::{Error, SimpleResult};
@@ -252,7 +252,7 @@ mod float_impl_specialized {
 
     impl<'a> Float<&'a [u8]> for f64 {
         unsafe fn parse_buffer<I: Input<Token=u8>>(i: I, b: &'a [u8]) -> SimpleResult<I, Self> {
-            let s: &str = transmute(b);
+            let s: &str = str::from_utf8_unchecked(b);
 
             if let Some(f) = s.parse().ok() {
                 i.ret(f)
@@ -265,7 +265,7 @@ mod float_impl_specialized {
 
     impl<'a> Float<&'a [u8]> for f32 {
         unsafe fn parse_buffer<I: Input<Token=u8>>(i: I, b: &'a [u8]) -> SimpleResult<I, Self> {
-            let s: &str = transmute(b);
+            let s: &str = str::from_utf8_unchecked(b);
 
             if let Some(f) = s.parse().ok() {
                 i.ret(f)
