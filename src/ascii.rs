@@ -216,7 +216,7 @@ mod float_impl {
             //
             // In this case we cannot wholly guarantee the size, so in that case we error (note that
             // the error is placed after the float in this case).
-            if let Some(f) = s.parse().ok() {
+            if let Ok(f) = s.parse() {
                 i.ret(f)
             } else {
                 // TODO: Add FloatParseError to Error type?
@@ -231,7 +231,7 @@ mod float_impl {
             let v       = b.into_vec();
             let s: &str = str::from_utf8_unchecked(&v[..]);
 
-            if let Some(f) = s.parse().ok() {
+            if let Ok(f) = s.parse() {
                 i.ret(f)
             } else {
                 // TODO: Add FloatParseError to Error type?
@@ -258,7 +258,7 @@ mod float_impl_specialized {
         unsafe fn parse_buffer<I: Input<Token=u8>>(i: I, b: &'a [u8]) -> SimpleResult<I, Self> {
             let s: &str = str::from_utf8_unchecked(b);
 
-            if let Some(f) = s.parse().ok() {
+            if let Ok(f) = s.parse() {
                 i.ret(f)
             } else {
                 // TODO: Add FloatParseError to Error type?
@@ -271,7 +271,7 @@ mod float_impl_specialized {
         unsafe fn parse_buffer<I: Input<Token=u8>>(i: I, b: &'a [u8]) -> SimpleResult<I, Self> {
             let s: &str = str::from_utf8_unchecked(b);
 
-            if let Some(f) = s.parse().ok() {
+            if let Ok(f) = s.parse() {
                 i.ret(f)
             } else {
                 // TODO: Add FloatParseError to Error type?
