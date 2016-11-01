@@ -199,13 +199,14 @@
 //!    The built-in `chomp::parsers::Error` type is zero-sized and carry no error-information. This
 //!    increases performance somewhat.
 //!
-//! * `core`:
-#![cfg_attr(not(feature="core"), doc = " disabled (default).")]
-#![cfg_attr(feature="core", doc = " enabled.")]
+//! * `std`:
+#![cfg_attr(not(feature="std"), doc = " disabled.")]
+#![cfg_attr(feature="std", doc = " enabled (default).")]
 //!
-//!    Chomp excludes all features which rely on Rust's `std` library, using the `no_std` feature.
+//!    Chomp includes all features which rely on Rust's `std` library. If this is diabled Chomp
+//!    will use the `no_std` feature, only using Rust's `core` library.
 //!
-//!    Excluded items:
+//!    Items excluded when `std` is disabled:
 //!
 //!     * `ascii::float` support for `type::Buffer` implementations other than `&[u8]`.
 //!     * `buffer` module.
@@ -236,17 +237,18 @@
     single_match_else))]
 #![cfg_attr(feature="clippy", allow(inline_always, many_single_char_names))]
 
-#![cfg_attr(all(feature="core", not(test)), no_std)]
+// `std` is required for tests.
+#![cfg_attr(all(not(feature="std"), not(test)), no_std)]
 
-/// Inner module to emulate std when using `core`.
+/// Inner module to emulate std when using the `core` crate.
 ///
 /// Skipped when using test since we use std for tests.
-#[cfg(all(feature = "core", not(test)))]
+#[cfg(all(not(feature="std"), not(test)))]
 mod std {
     pub use core::{cell, cmp, fmt, iter, marker, mem, ops, ptr, str};
 }
 
-#[cfg(feature = "tendril")]
+#[cfg(feature="tendril")]
 extern crate tendril;
 
 #[macro_use]
@@ -262,7 +264,7 @@ mod parse;
 pub mod ascii;
 // TODO: Rework buffer module so that at least a part of it can be exposed provided the user
 // provides their own buffers allocated from outside.
-#[cfg(not(feature="core"))]
+#[cfg(feature="std")]
 pub mod buffer;
 pub mod combinators;
 pub mod parsers;

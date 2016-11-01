@@ -179,7 +179,7 @@ pub trait Float<B: Buffer<Token=u8>>: Sized {
 }
 
 /// Only use the generic `Float` impl if we can rely on `Vec`.
-#[cfg(not(feature="core"))]
+#[cfg(feature="std")]
 mod float_impl {
     use std::str;
 
@@ -243,9 +243,9 @@ mod float_impl {
 
 /// Internal module containing specialized implementations of `Float` for `&[u8]`-buffers, used
 /// when `has_specialization` is on since we can enable the unstable `specialization` feature.
-/// We also use this when using `core` since the default implementation is not provided since it
+/// We also use this when not using `std` since the default implementation is not provided since it
 /// relies on `Vec`.
-#[cfg(any(has_specialization, feature="core"))]
+#[cfg(any(has_specialization, not(feature="std")))]
 mod float_impl_specialized {
     use std::str;
 

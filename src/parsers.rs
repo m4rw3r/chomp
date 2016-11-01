@@ -418,9 +418,9 @@ pub fn eof<I: Input>(mut i: I) -> SimpleResult<I, ()> {
 }
 
 mod error {
-    #[cfg(not(feature = "core"))]
+    #[cfg(feature="std")]
     use std::any;
-    #[cfg(not(feature = "core"))]
+    #[cfg(feature="std")]
     use std::error;
     use std::fmt;
 
@@ -498,7 +498,7 @@ mod error {
     }
 
     #[cfg(feature="noop_error")]
-    #[cfg(not(feature = "core"))]
+    #[cfg(feature="std")]
     impl<I: any::Any + fmt::Debug> error::Error for Error<I> {
         fn description(&self) -> &str {
             &"parse error"
@@ -506,7 +506,7 @@ mod error {
     }
 
     #[cfg(not(feature="noop_error"))]
-    #[cfg(not(feature = "core"))]
+    #[cfg(feature="std")]
     impl<I: any::Any + fmt::Debug> error::Error for Error<I> {
         fn description(&self) -> &str {
             match self.0.as_ref() {

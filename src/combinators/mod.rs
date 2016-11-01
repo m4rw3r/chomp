@@ -158,7 +158,7 @@ pub fn either<I, T, U, E, F, G>(i: I, f: F, g: G) -> ParseResult<I, Either<T, U>
 /// ];
 /// assert_eq!(parse_only(|i| choice(i, v), &b"c"[..]), Err((&b"c"[..], Error::expected(b'a'))));
 /// ```
-#[cfg(not(feature="core"))]
+#[cfg(feature="std")]
 #[inline]
 pub fn choice<I, T, E, R>(mut i: I, parsers: R) -> ParseResult<I, T, E>
   where I: Input,
@@ -610,7 +610,7 @@ mod test {
         assert_eq!(look_ahead(&b"aa"[..], |i| token(i, b'a').then(|i| token(i, b'b')).map_err(|_| "err")).into_inner(), (&b"aa"[..], Err("err")));
     }
 
-    #[cfg(not(feature="core"))]
+    #[cfg(feature="std")]
     mod choice_tests {
         use combinators::choice;
         use parsers::{Error, token};

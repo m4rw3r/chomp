@@ -38,9 +38,10 @@ clippy         = { version = ">0.0.1", optional = true }
 rustc_version = { version = "0.1.7" }
 
 [features]
-core          = []
 backtrace     = ["debugtrace/backtrace"]
+default       = ["std"]
 noop_error    = []
+std           = []
 # Feature for running extra (compiletime fail) tests on nightly
 unstable      = ["compiletest_rs"]
 

@@ -36,14 +36,14 @@ pub trait Buffer: PartialEq<Self> {
     fn len(&self) -> usize;
 
     /// Copies all the tokens in this buffer to a new `Vec`.
-    #[cfg(not(feature = "core"))]
+    #[cfg(feature="std")]
     fn to_vec(&self) -> Vec<Self::Token>;
 
     /// Consumes self to create an owned vector of tokens.
     ///
     /// Will allocate if the implementation borrows storage or does not use an owned type
     /// compatible with `Vec` internally.
-    #[cfg(not(feature = "core"))]
+    #[cfg(feature="std")]
     fn into_vec(self) -> Vec<Self::Token>;
 
     /// Returns true if this buffer is empty.
@@ -72,12 +72,12 @@ impl<'a, I: Copy + PartialEq> Buffer for &'a [I] {
         (&self[..]).len()
     }
 
-    #[cfg(not(feature = "core"))]
+    #[cfg(feature="std")]
     fn to_vec(&self) -> Vec<Self::Token> {
         (&self[..]).to_vec()
     }
 
-    #[cfg(not(feature = "core"))]
+    #[cfg(feature="std")]
     fn into_vec(self) -> Vec<Self::Token> {
         (&self[..]).to_vec()
     }
@@ -106,12 +106,12 @@ impl<'a> Buffer for &'a str {
         (&self[..]).is_empty()
     }
 
-    #[cfg(not(feature = "core"))]
+    #[cfg(feature="std")]
     fn to_vec(&self) -> Vec<Self::Token> {
         (&self[..]).chars().collect()
     }
 
-    #[cfg(not(feature = "core"))]
+    #[cfg(feature="std")]
     fn into_vec(self) -> Vec<Self::Token> {
         (&self[..]).chars().collect()
     }
@@ -827,13 +827,13 @@ pub mod test {
             buffer_to_vec(b, s, f);
         }
 
-        #[cfg(not(feature="core"))]
+        #[cfg(feature="std")]
         fn buffer_to_vec<B: Buffer + Clone, F: Fn(u8) -> B::Token>(b: B, s: &[u8], f: F)
           where B::Token: Debug {
             assert_eq!(b.to_vec(), s.iter().cloned().map(f).collect::<Vec<_>>());
         }
 
-        #[cfg(feature="core")]
+        #[cfg(not(feature="std"))]
         fn buffer_to_vec<B: Buffer + Clone, F: Fn(u8) -> B::Token>(_: B, _: &[u8], _: F)
           where B::Token: Debug {}
 
