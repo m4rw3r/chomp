@@ -38,10 +38,12 @@ clippy         = { version = ">0.0.1", optional = true }
 rustc_version = { version = "0.1.7" }
 
 [features]
+backtrace     = ["debugtrace/backtrace"]
+default       = ["std"]
+noop_error    = []
+std           = []
 # Feature for running extra (compiletime fail) tests on nightly
 unstable      = ["compiletest_rs"]
-noop_error    = []
-backtrace     = ["debugtrace/backtrace"]
 
 # Feature for travis, so that both noop_error and backtrace can be enabled simultaneously
 # without causing parse-errors in the argument parser in travis-cargo.

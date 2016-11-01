@@ -36,12 +36,14 @@ pub trait Buffer: PartialEq<Self> {
     fn len(&self) -> usize;
 
     /// Copies all the tokens in this buffer to a new `Vec`.
+    #[cfg(feature="std")]
     fn to_vec(&self) -> Vec<Self::Token>;
 
     /// Consumes self to create an owned vector of tokens.
     ///
     /// Will allocate if the implementation borrows storage or does not use an owned type
     /// compatible with `Vec` internally.
+    #[cfg(feature="std")]
     fn into_vec(self) -> Vec<Self::Token>;
 
     /// Returns true if this buffer is empty.
@@ -70,10 +72,12 @@ impl<'a, I: Copy + PartialEq> Buffer for &'a [I] {
         (&self[..]).len()
     }
 
+    #[cfg(feature="std")]
     fn to_vec(&self) -> Vec<Self::Token> {
         (&self[..]).to_vec()
     }
 
+    #[cfg(feature="std")]
     fn into_vec(self) -> Vec<Self::Token> {
         (&self[..]).to_vec()
     }
@@ -102,10 +106,12 @@ impl<'a> Buffer for &'a str {
         (&self[..]).is_empty()
     }
 
+    #[cfg(feature="std")]
     fn to_vec(&self) -> Vec<Self::Token> {
         (&self[..]).chars().collect()
     }
 
+    #[cfg(feature="std")]
     fn into_vec(self) -> Vec<Self::Token> {
         (&self[..]).chars().collect()
     }
@@ -810,7 +816,7 @@ pub mod test {
         use primitives::Primitives;
 
         fn buffer_eq_slice<B: Buffer + Clone, F: Fn(u8) -> B::Token>(b: B, s: &[u8], f: F)
-          where B::Token: Debug, {
+          where B::Token: Debug {
             assert_eq!(b.len(), s.len());
             assert_eq!(b.is_empty(), s.is_empty());
             assert_eq!(b.clone().fold(0, |n, c| {
@@ -818,8 +824,18 @@ pub mod test {
 
                 n + 1
             }), s.iter().count());
+            buffer_to_vec(b, s, f);
+        }
+
+        #[cfg(feature="std")]
+        fn buffer_to_vec<B: Buffer + Clone, F: Fn(u8) -> B::Token>(b: B, s: &[u8], f: F)
+          where B::Token: Debug {
             assert_eq!(b.to_vec(), s.iter().cloned().map(f).collect::<Vec<_>>());
         }
+
+        #[cfg(not(feature="std"))]
+        fn buffer_to_vec<B: Buffer + Clone, F: Fn(u8) -> B::Token>(_: B, _: &[u8], _: F)
+          where B::Token: Debug {}
 
         let m = s.mark();
         assert_eq!(s.peek(), Some(f(b'a')));
