@@ -7,6 +7,9 @@ use rustc_version::Channel;
 const SPECIALIZATION_CFG: &'static str = "has_specialization";
 
 fn main() {
+    // Prevent rebuilds of build.rs if other files change
+    println!("cargo:rerun-if-changed=build.rs");
+
     let version = rustc_version::version_meta();
 
     if version.channel == Channel::Nightly {
