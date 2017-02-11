@@ -1154,10 +1154,11 @@ pub mod test {
 
         assert_eq!(p.parse(&b"test"[..]), (&b"test"[..], Ok("foobar".to_owned())));
 
-        let v = vec![ret::<_, ()>("foo").boxed(), err::<(), _>("error")];
+        let v = vec![ret("foo").boxed(), err("error").boxed()];
 
-        assert_eq!(v[0].parse(&b"test2"[..]), (&b"test2"[..], Ok("foo")));
-        assert_eq!(v[1].parse(&b"test2"[..]), (&b"test2"[..], Err("error")));
+        let r: Vec<_> = v.into_iter().map(|p| p.parse(&b"test2"[..])).collect();
+
+        assert_eq!(r, vec![(&b"test2"[..], Ok("foo")), (&b"test2"[..], Err("error"))]);
     }
 
     #[test]
