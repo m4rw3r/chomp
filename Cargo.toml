@@ -22,9 +22,9 @@ include = [
 ]
 
 [dependencies]
-bitflags   = "0.7.0"
+bitflags   = "0.8.1"
 conv       = { version = "0.3.3", default-features = false, features = ["std"] }
-either     = { version = "0.1.7" }
+either     = { version = "1.1.0" }
 debugtrace = { version = "0.1.0" }
 tendril    = { version = "0.2.2", optional = true }
 
