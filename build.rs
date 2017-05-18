@@ -7,10 +7,12 @@ use rustc_version::Channel;
 const SPECIALIZATION_CFG: &'static str = "has_specialization";
 
 fn main() {
+    assert!(rustc_version::version().unwrap().major >= 1);
+
     // Prevent rebuilds of build.rs if other files change
     println!("cargo:rerun-if-changed=build.rs");
 
-    let version = rustc_version::version_meta();
+    let version = rustc_version::version_meta().unwrap();
 
     if version.channel == Channel::Nightly {
         if let Some(ref date) = version.commit_date {
