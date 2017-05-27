@@ -398,12 +398,23 @@ impl<T> U8Input for T
 /// fail a    ≡  err(a)
 /// ```
 ///
-/// It also satisfies the monad laws:
+/// It also satisfies the Monad laws:
 ///
 /// ```ignore
 /// ret(a).bind(f)    =  f(a)
 /// m.then(ret)       =  m
 /// m.bind(f).bind(g) =  m.bind(|x| f(x).bind(g))
+/// ```
+///
+/// as well as Monad Plus laws using `err` and `or` in the Monoid, Left Zero, and Left Catch
+/// laws (equivalent to Haskell's `Control.Applicative.Alternative`):
+///
+/// ```ignore
+/// err(msg).or(a)   = a
+/// a.or(err(msg))   = a
+/// a.or(b).or(c)    = a.or(b.or(c))
+/// err(msg).bind(k) = err(msg)
+/// ret(a).or(b)     = ret(a)
 /// ```
 pub trait Parser<I: Input> {
     /// Output type created by the parser, may refer to data owned by `I`.
@@ -1098,6 +1109,64 @@ pub mod test {
 
         assert_eq!(lhs.parse(&b"test"[..]), (&b"test"[..], Ok(6)));
         assert_eq!(rhs.parse(&b"test"[..]), (&b"test"[..], Ok(6)));
+    }
+
+    #[test]
+    fn monad_plus_monoid1() {
+        let lhs = err("foo").or(ret("a"));
+        let rhs = ret::<_, ()>("a");
+
+        assert_eq!(lhs.parse(&b"test"[..]), (&b"test"[..], Ok("a")));
+        assert_eq!(rhs.parse(&b"test"[..]), (&b"test"[..], Ok("a")));
+    }
+
+    #[test]
+    fn monad_plus_monoid2() {
+        let lhs = ret("a").or(err("foo"));
+        let rhs = ret::<_, ()>("a");
+
+        assert_eq!(lhs.parse(&b"test"[..]), (&b"test"[..], Ok("a")));
+        assert_eq!(rhs.parse(&b"test"[..]), (&b"test"[..], Ok("a")));
+    }
+
+    #[test]
+    fn monad_plus_monoid3() {
+        macro_rules! monoid3test {
+            ($a:expr, $b:expr, $c:expr, $r:expr) => {
+                let lhs = $a.or($b).or($c);
+                let rhs = $a.or($b.or($c));
+
+                assert_eq!(lhs.parse(&b"test"[..]), (&b"test"[..], $r));
+                assert_eq!(rhs.parse(&b"test"[..]), (&b"test"[..], $r));
+            }
+        }
+
+        monoid3test!(err::<(), _>("foo"), err("bar"), err("baz"), Err("baz"));
+        monoid3test!(err("foo"), err("bar"), ret("baz"), Ok("baz"));
+        monoid3test!(err("foo"), ret("bar"), ret("baz"), Ok("bar"));
+        monoid3test!(err("foo"), ret("bar"), err("baz"), Ok("bar"));
+        monoid3test!(ret::<_, ()>("foo"), ret("bar"), ret("baz"), Ok("foo"));
+        monoid3test!(ret("foo"), err("bar"), err("baz"), Ok("foo"));
+        monoid3test!(ret("foo"), err("bar"), ret("baz"), Ok("foo"));
+        monoid3test!(ret("foo"), ret("bar"), err("baz"), Ok("foo"));
+    }
+
+    #[test]
+    fn monad_plus_left_zero() {
+        let lhs = err("foo").bind(|_: ()| ret("test"));
+        let rhs = err::<&str, _>("foo");
+
+        assert_eq!(lhs.parse(&b"test"[..]), (&b"test"[..], Err("foo")));
+        assert_eq!(rhs.parse(&b"test"[..]), (&b"test"[..], Err("foo")));
+    }
+
+    #[test]
+    fn monad_plus_left_catch() {
+        let lhs = ret::<_, ()>("a").or(ret("b"));
+        let rhs = ret::<_, ()>("a");
+
+        assert_eq!(lhs.parse(&b"test"[..]), (&b"test"[..], Ok("a")));
+        assert_eq!(rhs.parse(&b"test"[..]), (&b"test"[..], Ok("a")));
     }
 
     #[test]
