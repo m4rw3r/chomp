@@ -166,9 +166,61 @@ fn to_decimal<T: Copy + ValueFrom<u8, Err=NoError> + Add<Output=T> + Mul<Output=
     iter.fold(T::value_from(0).unwrap_ok(), |a, n| a * T::value_from(10).unwrap_ok() + T::value_from(n - b'0').unwrap_ok())
 }
 
+#[inline]
+fn compare_ci(a: u8, b: u8) -> bool {
+    (match a {
+        b'A'...b'Z' => a | 0x20,
+        x           => x
+    } == match b {
+        b'A'...b'Z' => b | 0x20,
+        x           => x
+    })
+}
+
+/// Matches the given slice against the parser in a case-insensitive manner, returning the matched
+/// slice upon success. Only respects ASCII characters for the case-insensitive comparison.
+///
+/// If the length of the contained data is shorter than the given slice this parser is considered
+/// incomplete.
+///
+/// ```
+/// use chomp::prelude::parse_only;
+/// use chomp::ascii::string_ci;
+///
+/// assert_eq!(parse_only(string_ci(b"abc"), b"abcdef"), Ok(&b"abc"[..]));
+/// assert_eq!(parse_only(string_ci(b"abc"), b"aBCdef"), Ok(&b"aBC"[..]));
+/// ```
+pub fn string_ci<I: Input<Token=u8>>(s: &'static [u8]) -> impl Parser<I, Output=I::Buffer, Error=Error<u8>> {
+    move |mut i: I| {
+        let mut n = 0;
+        let len   = s.len();
+
+        // TODO: There has to be some more efficient way here
+        let b = i.consume_while(|c| {
+            if n >= len || !compare_ci(c, s[n]) {
+                false
+            }
+            else {
+                n += 1;
+
+                true
+            }
+        });
+
+        if n >= len {
+            (i, Ok(b))
+        } else {
+            (i, Err(Error::expected(s[n])))
+        }
+    }
+}
+
+
 #[cfg(test)]
 mod test {
-    use super::to_decimal;
+    use super::{compare_ci, to_decimal, string_ci};
+    use types::Parser;
+    use parsers::Error;
 
     macro_rules! test_to_decimal {
         ( $($n:ty),+ ) => { $(
@@ -185,5 +237,68 @@ mod test {
     #[test]
     fn test_to_decimal_u8() {
         test_to_decimal!(u8, u16, u32, u64, i16, i32, i64);
+    }
+
+    #[test]
+    fn compare_ci_test() {
+        assert!(compare_ci(b'a', b'a'));
+        assert!(compare_ci(b'a', b'A'));
+        assert!(compare_ci(b'b', b'b'));
+        assert!(compare_ci(b'b', b'B'));
+        assert!(compare_ci(b'y', b'y'));
+        assert!(compare_ci(b'y', b'Y'));
+        assert!(compare_ci(b'z', b'z'));
+        assert!(compare_ci(b'z', b'Z'));
+
+        for i in 0..127 {
+            for j in 0..127 {
+                let eq = match i {
+                    b'A'...b'Z' => i | 0x20,
+                    x           => x
+                } == match j {
+                    b'A'...b'Z' => j | 0x20,
+                    x           => x
+                };
+
+                assert_eq!(eq, compare_ci(i, j), "{} {} failed", i, j);
+            }
+        }
+    }
+
+    #[test]
+    fn string_ci_test() {
+        assert_eq!(string_ci(b""     ).parse(&b""[..]),    (&b""[..],    Ok(&b""[..])));
+        assert_eq!(string_ci(b"a"    ).parse(&b""[..]),    (&b""[..],    Err(Error::expected(b'a'))));
+        assert_eq!(string_ci(b"a"    ).parse(&b"a"[..]),   (&b""[..],    Ok(&b"a"[..])));
+        assert_eq!(string_ci(b"a"    ).parse(&b"b"[..]),   (&b"b"[..],   Err(Error::expected(b'a'))));
+        assert_eq!(string_ci(b"a"    ).parse(&b"abc"[..]), (&b"bc"[..],  Ok(&b"a"[..])));
+        assert_eq!(string_ci(b"ab"   ).parse(&b"abc"[..]), (&b"c"[..],   Ok(&b"ab"[..])));
+        assert_eq!(string_ci(b"abc"  ).parse(&b"abc"[..]), (&b""[..],    Ok(&b"abc"[..])));
+        assert_eq!(string_ci(b"abcd" ).parse(&b"abc"[..]), (&b""[..],    Err(Error::expected(b'd'))));
+        assert_eq!(string_ci(b"abcde").parse(&b"abc"[..]), (&b""[..],    Err(Error::expected(b'd'))));
+        assert_eq!(string_ci(b"ac"   ).parse(&b"abc"[..]), (&b"bc"[..],  Err(Error::expected(b'c'))));
+
+        assert_eq!(string_ci(b""     ).parse(&b""[..]),    (&b""[..],    Ok(&b""[..])));
+        assert_eq!(string_ci(b"a"    ).parse(&b""[..]),    (&b""[..],    Err(Error::expected(b'a'))));
+        assert_eq!(string_ci(b"a"    ).parse(&b"A"[..]),   (&b""[..],    Ok(&b"A"[..])));
+        assert_eq!(string_ci(b"a"    ).parse(&b"B"[..]),   (&b"B"[..],   Err(Error::expected(b'a'))));
+        assert_eq!(string_ci(b"a"    ).parse(&b"ABC"[..]), (&b"BC"[..],  Ok(&b"A"[..])));
+        assert_eq!(string_ci(b"ab"   ).parse(&b"ABC"[..]), (&b"C"[..],   Ok(&b"AB"[..])));
+        assert_eq!(string_ci(b"abc"  ).parse(&b"ABC"[..]), (&b""[..],    Ok(&b"ABC"[..])));
+        assert_eq!(string_ci(b"abcd" ).parse(&b"ABC"[..]), (&b""[..],    Err(Error::expected(b'd'))));
+        assert_eq!(string_ci(b"abcde").parse(&b"ABC"[..]), (&b""[..],    Err(Error::expected(b'd'))));
+        assert_eq!(string_ci(b"ac"   ).parse(&b"ABC"[..]), (&b"BC"[..],  Err(Error::expected(b'c'))));
+
+        assert_eq!(string_ci(b"{|}"   ).parse(&b"{|}"[..]),  (&b""[..],     Ok(&b"{|}"[..])));
+        assert_eq!(string_ci(b"{|}"   ).parse(&b"[\\]"[..]), (&b"[\\]"[..], Err(Error::expected(b'{'))));
+        assert_eq!(string_ci(b"[\\]"  ).parse(&b"[\\]"[..]), (&b""[..],     Ok(&b"[\\]"[..])));
+        assert_eq!(string_ci(b"[\\]"  ).parse(&b"{|}"[..]),  (&b"{|}"[..],  Err(Error::expected(b'['))));
+
+        assert_eq!(string_ci("ä".as_bytes()    ).parse("äbc".as_bytes()), (&b"bc"[..],  Ok("ä".as_bytes())));
+        // We need to slice a bit, since the first byte of the two-byte ä and Ä are is the same,
+        // so that one will match
+        assert_eq!(string_ci("ä".as_bytes()    ).parse("ÄBC".as_bytes()), (&"ÄBC".as_bytes()[1..], Err(Error::expected("ä".as_bytes()[1]))));
+
+        assert_eq!(string_ci(b"125"  ).parse(&b"125"[..]), (&b""[..],    Ok(&b"125"[..])));
     }
 }
