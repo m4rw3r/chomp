@@ -13,15 +13,15 @@ use buffer::{
 use buffer::data_source::{IteratorDataSource, ReadDataSource};
 
 bitflags!{
-    flags ParserState: u64 {
+    struct ParserState: u64 {
         /// The parser which was last run on the buffer did not manage to complete with the data
         /// available in the buffer.
-        const INCOMPLETE     = 1,
+        const INCOMPLETE     = 1;
         /// The buffer did not manage to read any more data from the underlying `Read`
         /// implementation.
-        const END_OF_INPUT   = 2,
+        const END_OF_INPUT   = 2;
         /// `parse()` should attempt to read more data whenever the `INCOMPLETE` flag is set.
-        const AUTOMATIC_FILL = 4,
+        const AUTOMATIC_FILL = 4;
     }
 }
 
