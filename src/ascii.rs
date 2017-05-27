@@ -10,7 +10,7 @@ use conv::errors::UnwrapOk;
 
 use types::{Buffer, Input};
 use combinators::{matched_by, option, or};
-use parsers::{SimpleResult, satisfy, skip_while, skip_while1, take_while1, token};
+use parsers::{SimpleResult, Error, satisfy, skip_while, skip_while1, take_while1, token};
 
 /// Lowercase ASCII predicate.
 #[inline]
@@ -331,10 +331,59 @@ pub fn float<I: Input<Token=u8>, F: Float<I::Buffer>>(i: I) -> SimpleResult<I, F
     match_float(i).bind(|i, b| unsafe { F::parse_buffer(i, b) })
 }
 
+#[inline]
+fn compare_ci(a: u8, b: u8) -> bool {
+    (match a {
+        b'A'...b'Z' => a | 0x20,
+        x           => x
+    } == match b {
+        b'A'...b'Z' => b | 0x20,
+        x           => x
+    })
+}
+
+/// Matches the given slice against the parser in a case-insensitive manner, returning the matched
+/// slice upon success. Only respects ASCII characters for the case-insensitive comparison.
+///
+/// If the length of the contained data is shorter than the given slice this parser is considered
+/// incomplete.
+///
+/// ```
+/// use chomp::prelude::parse_only;
+/// use chomp::ascii::string_ci;
+///
+/// assert_eq!(parse_only(|i| string_ci(i, b"abc"), b"abcdef"), Ok(&b"abc"[..]));
+/// assert_eq!(parse_only(|i| string_ci(i, b"abc"), b"aBCdef"), Ok(&b"aBC"[..]));
+/// ```
+pub fn string_ci<I: Input<Token=u8>>(mut i: I, s: &'static [u8]) -> SimpleResult<I, I::Buffer> {
+    use primitives::Primitives;
+
+    let mut n = 0;
+    let len   = s.len();
+
+    // TODO: There has to be some more efficient way here
+    let b = i.consume_while(|c| {
+        if n >= len || !compare_ci(c, s[n]) {
+            false
+        }
+        else {
+            n += 1;
+
+            true
+        }
+    });
+
+    if n >= len {
+        i.ret(b)
+    } else {
+        i.err(Error::expected(s[n]))
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
-    use super::to_decimal;
+    use super::{compare_ci, to_decimal, string_ci};
     use parsers::Error;
     use primitives::IntoInner;
 
@@ -397,5 +446,68 @@ mod test {
         assert_eq!(float(&b"1e-0"[..]).into_inner(), (&b""[..], Ok(1.0)));
         assert_eq!(float(&b"1e-1"[..]).into_inner(), (&b""[..], Ok(0.1)));
         assert_eq!(float(&b"1e-2"[..]).into_inner(), (&b""[..], Ok(0.01)));
+    }
+
+    #[test]
+    fn compare_ci_test() {
+        assert!(compare_ci(b'a', b'a'));
+        assert!(compare_ci(b'a', b'A'));
+        assert!(compare_ci(b'b', b'b'));
+        assert!(compare_ci(b'b', b'B'));
+        assert!(compare_ci(b'y', b'y'));
+        assert!(compare_ci(b'y', b'Y'));
+        assert!(compare_ci(b'z', b'z'));
+        assert!(compare_ci(b'z', b'Z'));
+
+        for i in 0..127 {
+            for j in 0..127 {
+                let eq = match i {
+                    b'A'...b'Z' => i | 0x20,
+                    x           => x
+                } == match j {
+                    b'A'...b'Z' => j | 0x20,
+                    x           => x
+                };
+
+                assert_eq!(eq, compare_ci(i, j), "{} {} failed", i, j);
+            }
+        }
+    }
+
+    #[test]
+    fn string_ci_test() {
+        assert_eq!(string_ci(&b""[..],    b""     ).into_inner(), (&b""[..],    Ok(&b""[..])));
+        assert_eq!(string_ci(&b""[..],    b"a"    ).into_inner(), (&b""[..],    Err(Error::expected(b'a'))));
+        assert_eq!(string_ci(&b"a"[..],   b"a"    ).into_inner(), (&b""[..],    Ok(&b"a"[..])));
+        assert_eq!(string_ci(&b"b"[..],   b"a"    ).into_inner(), (&b"b"[..],   Err(Error::expected(b'a'))));
+        assert_eq!(string_ci(&b"abc"[..], b"a"    ).into_inner(), (&b"bc"[..],  Ok(&b"a"[..])));
+        assert_eq!(string_ci(&b"abc"[..], b"ab"   ).into_inner(), (&b"c"[..],   Ok(&b"ab"[..])));
+        assert_eq!(string_ci(&b"abc"[..], b"abc"  ).into_inner(), (&b""[..],    Ok(&b"abc"[..])));
+        assert_eq!(string_ci(&b"abc"[..], b"abcd" ).into_inner(), (&b""[..],    Err(Error::expected(b'd'))));
+        assert_eq!(string_ci(&b"abc"[..], b"abcde").into_inner(), (&b""[..],    Err(Error::expected(b'd'))));
+        assert_eq!(string_ci(&b"abc"[..], b"ac"   ).into_inner(), (&b"bc"[..],  Err(Error::expected(b'c'))));
+
+        assert_eq!(string_ci(&b""[..],    b""     ).into_inner(), (&b""[..],    Ok(&b""[..])));
+        assert_eq!(string_ci(&b""[..],    b"a"    ).into_inner(), (&b""[..],    Err(Error::expected(b'a'))));
+        assert_eq!(string_ci(&b"A"[..],   b"a"    ).into_inner(), (&b""[..],    Ok(&b"A"[..])));
+        assert_eq!(string_ci(&b"B"[..],   b"a"    ).into_inner(), (&b"B"[..],   Err(Error::expected(b'a'))));
+        assert_eq!(string_ci(&b"ABC"[..], b"a"    ).into_inner(), (&b"BC"[..],  Ok(&b"A"[..])));
+        assert_eq!(string_ci(&b"ABC"[..], b"ab"   ).into_inner(), (&b"C"[..],   Ok(&b"AB"[..])));
+        assert_eq!(string_ci(&b"ABC"[..], b"abc"  ).into_inner(), (&b""[..],    Ok(&b"ABC"[..])));
+        assert_eq!(string_ci(&b"ABC"[..], b"abcd" ).into_inner(), (&b""[..],    Err(Error::expected(b'd'))));
+        assert_eq!(string_ci(&b"ABC"[..], b"abcde").into_inner(), (&b""[..],    Err(Error::expected(b'd'))));
+        assert_eq!(string_ci(&b"ABC"[..], b"ac"   ).into_inner(), (&b"BC"[..],  Err(Error::expected(b'c'))));
+
+        assert_eq!(string_ci(&b"{|}"[..], b"{|}"  ).into_inner(), (&b""[..],     Ok(&b"{|}"[..])));
+        assert_eq!(string_ci(&b"[\\]"[..],b"{|}"  ).into_inner(), (&b"[\\]"[..], Err(Error::expected(b'{'))));
+        assert_eq!(string_ci(&b"[\\]"[..],b"[\\]" ).into_inner(), (&b""[..],     Ok(&b"[\\]"[..])));
+        assert_eq!(string_ci(&b"{|}"[..], b"[\\]" ).into_inner(), (&b"{|}"[..],  Err(Error::expected(b'['))));
+
+        assert_eq!(string_ci("äbc".as_bytes(), "ä".as_bytes()).into_inner(), (&b"bc"[..],  Ok("ä".as_bytes())));
+        // We need to slice a bit, since the first byte of the two-byte ä and Ä are is the same,
+        // so that one will match
+        assert_eq!(string_ci("ÄBC".as_bytes(), "ä".as_bytes()).into_inner(), (&"ÄBC".as_bytes()[1..], Err(Error::expected("ä".as_bytes()[1]))));
+
+        assert_eq!(string_ci(&b"125"[..], b"125").into_inner(), (&b""[..],    Ok(&b"125"[..])));
     }
 }
