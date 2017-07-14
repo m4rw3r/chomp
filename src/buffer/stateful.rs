@@ -56,6 +56,22 @@ impl<R: io::Read, B: Buffer<u8>> Source<ReadDataSource<R>, B> {
     }
 }
 
+impl<RW: io::Read + io::Write> Source<RWDataSource<RW>, FixedSizeBuffer<u8>> {
+    /// Creates a new `Source` from `Read`+`Write` with the default `FixedSizeBuffer` settings.
+    #[inline]
+    pub fn new_rw(rwsource: RW) -> Self {
+        Self::with_buffer(RWDataSource::new(rwsource), FixedSizeBuffer::new())
+    }
+}
+
+impl<RW: io::Read + io::Write, B: Buffer<u8>> Source<RWDataSource<RW>, B> {
+    /// Creates a new `Source` from `Read`+`Write` and buffer instances.
+    #[inline]
+    pub fn from_read_write(source: RW, buffer: B) -> Self {
+        Self::with_buffer(RWDataSource::new(source), buffer)
+    }
+}
+
 impl<I: Iterator, B: Buffer<I::Item>> Source<IteratorDataSource<I>, B>
   where I::Item: Copy + PartialEq {
     /// Creates a new `Source` from `Iterator` and `Buffer` instances.
