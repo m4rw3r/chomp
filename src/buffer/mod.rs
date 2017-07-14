@@ -43,7 +43,7 @@ use types::Buffer as InputBuffer;
 use primitives::Guard;
 
 pub use self::slice::SliceStream;
-pub use self::data_source::DataSource;
+pub use self::data_source::{DataSource, RWDataSource};
 pub use self::stateful::Source;
 
 const DEFAULT_BUFFER_SIZE: usize = 6 * 1024;

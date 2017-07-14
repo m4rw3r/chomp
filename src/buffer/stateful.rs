@@ -6,6 +6,7 @@ use primitives::IntoInner;
 use buffer::{
     Buffer,
     DataSource,
+    RWDataSource,
     FixedSizeBuffer,
     InputBuf,
     Stream,
@@ -194,6 +195,17 @@ impl<S: DataSource<Item=u8>, B: Buffer<u8>> io::BufRead for Source<S, B> {
     #[inline]
     fn consume(&mut self, num: usize) {
         self.buffer.consume(num)
+    }
+}
+
+impl<RW: io::Read + io::Write, B: Buffer<u8>> io::Write for Source<RWDataSource<RW>, B> {
+    #[inline]
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.source.write(buf)
+    }
+    #[inline]
+    fn flush(&mut self) -> io::Result<()> {
+        self.source.flush()
     }
 }
 
