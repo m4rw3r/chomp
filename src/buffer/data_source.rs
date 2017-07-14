@@ -49,6 +49,45 @@ impl<R: io::Read> DataSource for ReadDataSource<R> {
     }
 }
 
+
+/// Implementation of `DataSource` for streams (e.g. network connections) that you can `Read` and
+/// `Write`. It's really helpful to have the ability to write through the `DataSource` and `Source`
+/// objects, because once created, often they take full ownership of your input stream, and when
+/// working with bidirectional connections you still need a way to write to them.
+#[derive(Debug)]
+pub struct RWDataSource<RW: io::Read + io::Write>(RW);
+
+impl<RW: io::Read + io::Write> RWDataSource<RW> {
+    /// Creates a new `RWDataSource` from a stream (e.g. network connection).
+    pub fn new(inner: RW) -> Self {
+        RWDataSource(inner)
+    }
+
+    /// Consumes self to reveal the underlying stream.
+    #[inline]
+    pub fn into_inner(self) -> RW {
+        self.0
+    }
+}
+
+impl<RW: io::Read + io::Write> DataSource for RWDataSource<RW> {
+    type Item = u8;
+
+    #[inline]
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        self.0.read(buffer)
+    }
+}
+
+impl<RW: io::Read + io::Write> io::Write for RWDataSource<RW> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.flush()
+    }
+}
+
 /// Implementation of `DataSource` for `Iterator`.
 // TODO: Tests
 #[derive(Debug)]
