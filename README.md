@@ -15,7 +15,7 @@ Chomp is a fast monadic-style parser combinator library designed to work on stab
 
 For its current capabilities, you will find that Chomp performs consistently as well, if not better, than optimized C parsers, while being vastly more expressive. For an example that builds a performant HTTP parser out of smaller parsers, see [http_parser.rs](examples/http_parser.rs).
 
-##Installation
+## Installation
 
 Add the following line to the dependencies section of your `Cargo.toml`:
 
@@ -24,7 +24,7 @@ Add the following line to the dependencies section of your `Cargo.toml`:
 chomp = "0.3.1"
 ```
 
-##Usage
+## Usage
 
 Parsers are functions from a slice over an input type `Input<I>` to a `ParseResult<I, T, E>`, which may be thought of as either a success resulting in type `T`, an error of type `E`, or a partially completed result which may still consume more input of type `I`.
 
@@ -124,6 +124,6 @@ Unless you explicitly state otherwise, any contribution intentionally submitted 
 the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any
 additional terms or conditions.
 
-##Contact
+## Contact
 
 File an issue [here](https://github.com/m4rw3r/chomp/issues/new) on Github or visit [gitter.im/m4rw3r/chomp](https://gitter.im/m4rw3r/chomp).
