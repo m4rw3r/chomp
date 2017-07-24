@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="rustdoc">
+    <meta name="description" content="API documentation for the Rust `InputPosition` struct in crate `chomp`.">
+    <meta name="keywords" content="rust, rustlang, rust-lang, InputPosition">
+
+    <title>chomp::types::numbering::InputPosition - Rust</title>
+
+    <link rel="stylesheet" type="text/css" href="../../../normalize.css">
+    <link rel="stylesheet" type="text/css" href="../../../rustdoc.css">
+    <link rel="stylesheet" type="text/css" href="../../../main.css">
+    
+
+    
+    
+</head>
+<body class="rustdoc struct">
+    <!--[if lte IE 8]>
+    <div class="warning">
+        This old browser is unsupported and will most likely display funky
+        things.
+    </div>
+    <![endif]-->
+
+    
+
+    <nav class="sidebar">
+        
+        <p class='location'>Struct InputPosition</p><div class="block items"><ul><li><a href="#methods">Methods</a></li><li><a href="#implementations">Trait Implementations</a></li></ul></div><p class='location'><a href='../../index.html'>chomp</a>::<wbr><a href='../index.html'>types</a>::<wbr><a href='index.html'>numbering</a></p><script>window.sidebarCurrent = {name: 'InputPosition', ty: 'struct', relpath: ''};</script><script defer src="sidebar-items.js"></script>
+    </nav>
+
+    <nav class="sub">
+        <form class="search-form js-only">
+            <div class="search-container">
+                <input class="search-input" name="search"
+                       autocomplete="off"
+                       placeholder="Click or press ‘S’ to search, ‘?’ for more options…"
+                       type="search">
+            </div>
+        </form>
+    </nav>
+
+    <section id='main' class="content">
+<h1 class='fqn'><span class='in-band'>Struct <a href='../../index.html'>chomp</a>::<wbr><a href='../index.html'>types</a>::<wbr><a href='index.html'>numbering</a>::<wbr><a class="struct" href=''>InputPosition</a></span><span class='out-of-band'><span id='render-detail'>
+                   <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
+                       [<span class='inner'>&#x2212;</span>]
+                   </a>
+               </span><a class='srclink' href='../../../src/chomp/types/numbering.rs.html#103-106' title='goto source code'>[src]</a></span></h1>
+<pre class='rust struct'>pub struct InputPosition&lt;I:&nbsp;<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Input</a>, N:&nbsp;<a class="trait" href="../../../chomp/types/numbering/trait.Numbering.html" title="trait chomp::types::numbering::Numbering">Numbering</a>&lt;Token = I::<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Token</a>&gt;&gt; { /* fields omitted */ }</pre><div class='docblock'><p>Wrapper around an <code>Input</code> implementation providing numbering support.</p>
+</div><h2 id='methods'>Methods</h2><h3 class='impl'><span class='in-band'><code>impl&lt;I:&nbsp;<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Input</a>, N:&nbsp;<a class="trait" href="../../../chomp/types/numbering/trait.Numbering.html" title="trait chomp::types::numbering::Numbering">Numbering</a>&lt;Token = I::<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Token</a>&gt;&gt; <a class="struct" href="../../../chomp/types/numbering/struct.InputPosition.html" title="struct chomp::types::numbering::InputPosition">InputPosition</a>&lt;I, N&gt;</code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../../../src/chomp/types/numbering.rs.html#108-121' title='goto source code'>[src]</a></span></h3>
+<div class='impl-items'><h4 id='method.new' class="method"><span id='new.v' class='invisible'><code>fn <a href='#method.new' class='fnname'>new</a>(i: I, n: N) -&gt; Self</code></span></h4>
+<div class='docblock'><p>Creates a new input position instance.</p>
+</div><h4 id='method.position' class="method"><span id='position.v' class='invisible'><code>fn <a href='#method.position' class='fnname'>position</a>(&amp;self) -&gt; N</code></span></h4>
+<div class='docblock'><p>Obtains the current position of the numbering.</p>
+</div></div><h2 id='implementations'>Trait Implementations</h2><h3 class='impl'><span class='in-band'><code>impl&lt;I:&nbsp;<a class="trait" href="https://doc.rust-lang.org/nightly/core/fmt/trait.Debug.html" title="trait core::fmt::Debug">Debug</a> + <a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Input</a>, N:&nbsp;<a class="trait" href="https://doc.rust-lang.org/nightly/core/fmt/trait.Debug.html" title="trait core::fmt::Debug">Debug</a> + <a class="trait" href="../../../chomp/types/numbering/trait.Numbering.html" title="trait chomp::types::numbering::Numbering">Numbering</a>&lt;Token = I::<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Token</a>&gt;&gt; <a class="trait" href="https://doc.rust-lang.org/nightly/core/fmt/trait.Debug.html" title="trait core::fmt::Debug">Debug</a> for <a class="struct" href="../../../chomp/types/numbering/struct.InputPosition.html" title="struct chomp::types::numbering::InputPosition">InputPosition</a>&lt;I, N&gt;</code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../../../src/chomp/types/numbering.rs.html#102' title='goto source code'>[src]</a></span></h3>
+<div class='impl-items'><h4 id='method.fmt' class="method"><span id='fmt.v' class='invisible'><code>fn <a href='https://doc.rust-lang.org/nightly/core/fmt/trait.Debug.html#tymethod.fmt' class='fnname'>fmt</a>(&amp;self, __arg_0: &amp;mut <a class="struct" href="https://doc.rust-lang.org/nightly/core/fmt/struct.Formatter.html" title="struct core::fmt::Formatter">Formatter</a>) -&gt; <a class="type" href="https://doc.rust-lang.org/nightly/core/fmt/type.Result.html" title="type core::fmt::Result">Result</a></code></span></h4>
+<div class='docblock'><p>Formats the value using the given formatter.</p>
+</div></div><h3 class='impl'><span class='in-band'><code>impl&lt;I:&nbsp;<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Input</a>, N:&nbsp;<a class="trait" href="../../../chomp/types/numbering/trait.Numbering.html" title="trait chomp::types::numbering::Numbering">Numbering</a>&lt;Token = I::<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Token</a>&gt;&gt; <a class="trait" href="../../../chomp/primitives/trait.IntoInner.html" title="trait chomp::primitives::IntoInner">IntoInner</a> for <a class="struct" href="../../../chomp/types/numbering/struct.InputPosition.html" title="struct chomp::types::numbering::InputPosition">InputPosition</a>&lt;I, N&gt;</code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../../../src/chomp/types/numbering.rs.html#123-129' title='goto source code'>[src]</a></span></h3>
+<div class='impl-items'><h4 id='associatedtype.Inner' class="type"><span id='Inner.t' class='invisible'><code>type <a href='../../../chomp/primitives/trait.IntoInner.html#associatedtype.Inner' class="type">Inner</a> = <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.tuple.html">(</a>I, N<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.tuple.html">)</a></code></span></h4>
+<div class='docblock'><p>The inner type to be revealed.</p>
+</div><h4 id='method.into_inner' class="method"><span id='into_inner.v' class='invisible'><code>fn <a href='../../../chomp/primitives/trait.IntoInner.html#tymethod.into_inner' class='fnname'>into_inner</a>(self) -&gt; Self::<a class="trait" href="../../../chomp/primitives/trait.IntoInner.html" title="trait chomp::primitives::IntoInner">Inner</a></code></span></h4>
+<div class='docblock'><p>Primitive: Consumes self and reveals the inner state. <a href="../../../chomp/primitives/trait.IntoInner.html#tymethod.into_inner">Read more</a></p>
+</div></div><h3 class='impl'><span class='in-band'><code>impl&lt;I:&nbsp;<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Input</a>, N:&nbsp;<a class="trait" href="../../../chomp/types/numbering/trait.Numbering.html" title="trait chomp::types::numbering::Numbering">Numbering</a>&lt;Token = I::<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Token</a>&gt;&gt; <a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Input</a> for <a class="struct" href="../../../chomp/types/numbering/struct.InputPosition.html" title="struct chomp::types::numbering::InputPosition">InputPosition</a>&lt;I, N&gt;</code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../../../src/chomp/types/numbering.rs.html#131-196' title='goto source code'>[src]</a></span></h3>
+<div class='impl-items'><h4 id='associatedtype.Token' class="type"><span id='Token.t' class='invisible'><code>type <a href='../../../chomp/types/trait.Input.html#associatedtype.Token' class="type">Token</a> = I::<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Token</a></code></span></h4>
+<div class='docblock'><p>The token type of the input.</p>
+</div><h4 id='associatedtype.Marker' class="type"><span id='Marker.t' class='invisible'><code>type <a href='../../../chomp/types/trait.Input.html#associatedtype.Marker' class="type">Marker</a> = <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.tuple.html">(</a>N, I::<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Marker</a><a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.tuple.html">)</a></code></span></h4>
+<h4 id='associatedtype.Buffer' class="type"><span id='Buffer.t' class='invisible'><code>type <a href='../../../chomp/types/trait.Input.html#associatedtype.Buffer' class="type">Buffer</a> = I::<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Buffer</a></code></span></h4>
+<div class='docblock'><p>The buffer type yielded by this input when multiple tokens are consumed in sequence. <a href="../../../chomp/types/trait.Input.html#associatedtype.Buffer">Read more</a></p>
+</div><h4 id='method._peek' class="method"><span id='_peek.v' class='invisible'><code>fn <a href='../../../chomp/types/trait.Input.html#tymethod._peek' class='fnname'>_peek</a>(&amp;mut self, g: <a class="struct" href="../../../chomp/primitives/struct.Guard.html" title="struct chomp::primitives::Guard">Guard</a>) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;Self::<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Token</a>&gt;</code></span></h4>
+<h4 id='method._pop' class="method"><span id='_pop.v' class='invisible'><code>fn <a href='../../../chomp/types/trait.Input.html#tymethod._pop' class='fnname'>_pop</a>(&amp;mut self, g: <a class="struct" href="../../../chomp/primitives/struct.Guard.html" title="struct chomp::primitives::Guard">Guard</a>) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;Self::<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Token</a>&gt;</code></span></h4>
+<h4 id='method._consume' class="method"><span id='_consume.v' class='invisible'><code>fn <a href='../../../chomp/types/trait.Input.html#tymethod._consume' class='fnname'>_consume</a>(&amp;mut self, g: <a class="struct" href="../../../chomp/primitives/struct.Guard.html" title="struct chomp::primitives::Guard">Guard</a>, n: <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.usize.html">usize</a>) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;Self::<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Buffer</a>&gt;</code></span></h4>
+<h4 id='method._consume_while' class="method"><span id='_consume_while.v' class='invisible'><code>fn <a href='../../../chomp/types/trait.Input.html#tymethod._consume_while' class='fnname'>_consume_while</a>&lt;F&gt;(&amp;mut self, g: <a class="struct" href="../../../chomp/primitives/struct.Guard.html" title="struct chomp::primitives::Guard">Guard</a>, f: F) -&gt; Self::<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Buffer</a> <span class="where fmt-newline">where<br>&nbsp;&nbsp;&nbsp;&nbsp;F: <a class="trait" href="https://doc.rust-lang.org/nightly/core/ops/trait.FnMut.html" title="trait core::ops::FnMut">FnMut</a>(Self::<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Token</a>) -&gt; <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a>,&nbsp;</span></code></span></h4>
+<h4 id='method._consume_from' class="method"><span id='_consume_from.v' class='invisible'><code>fn <a href='../../../chomp/types/trait.Input.html#tymethod._consume_from' class='fnname'>_consume_from</a>(&amp;mut self, g: <a class="struct" href="../../../chomp/primitives/struct.Guard.html" title="struct chomp::primitives::Guard">Guard</a>, m: Self::<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Marker</a>) -&gt; Self::<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Buffer</a></code></span></h4>
+<h4 id='method._consume_remaining' class="method"><span id='_consume_remaining.v' class='invisible'><code>fn <a href='../../../chomp/types/trait.Input.html#tymethod._consume_remaining' class='fnname'>_consume_remaining</a>(&amp;mut self, g: <a class="struct" href="../../../chomp/primitives/struct.Guard.html" title="struct chomp::primitives::Guard">Guard</a>) -&gt; Self::<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Buffer</a></code></span></h4>
+<h4 id='method._mark' class="method"><span id='_mark.v' class='invisible'><code>fn <a href='../../../chomp/types/trait.Input.html#tymethod._mark' class='fnname'>_mark</a>(&amp;self, g: <a class="struct" href="../../../chomp/primitives/struct.Guard.html" title="struct chomp::primitives::Guard">Guard</a>) -&gt; Self::<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Marker</a></code></span></h4>
+<h4 id='method._restore' class="method"><span id='_restore.v' class='invisible'><code>fn <a href='../../../chomp/types/trait.Input.html#tymethod._restore' class='fnname'>_restore</a>(self, g: <a class="struct" href="../../../chomp/primitives/struct.Guard.html" title="struct chomp::primitives::Guard">Guard</a>, m: Self::<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Marker</a>) -&gt; Self</code></span></h4>
+<h4 id='method.ret' class="method"><span id='ret.v' class='invisible'><code>fn <a href='../../../chomp/types/trait.Input.html#method.ret' class='fnname'>ret</a>&lt;T, E&gt;(self, t: T) -&gt; <a class="struct" href="../../../chomp/types/struct.ParseResult.html" title="struct chomp::types::ParseResult">ParseResult</a>&lt;Self, T, E&gt;</code></span></h4>
+<div class='docblock'><p>Returns <code>t</code> as a success value in the parsing context. <a href="../../../chomp/types/trait.Input.html#method.ret">Read more</a></p>
+</div><h4 id='method.err' class="method"><span id='err.v' class='invisible'><code>fn <a href='../../../chomp/types/trait.Input.html#method.err' class='fnname'>err</a>&lt;T, E&gt;(self, e: E) -&gt; <a class="struct" href="../../../chomp/types/struct.ParseResult.html" title="struct chomp::types::ParseResult">ParseResult</a>&lt;Self, T, E&gt;</code></span></h4>
+<div class='docblock'><p>Returns <code>e</code> as an error value in the parsing context. <a href="../../../chomp/types/trait.Input.html#method.err">Read more</a></p>
+</div><h4 id='method.from_result' class="method"><span id='from_result.v' class='invisible'><code>fn <a href='../../../chomp/types/trait.Input.html#method.from_result' class='fnname'>from_result</a>&lt;T, E&gt;(self, r: <a class="enum" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;T, E&gt;) -&gt; <a class="struct" href="../../../chomp/types/struct.ParseResult.html" title="struct chomp::types::ParseResult">ParseResult</a>&lt;Self, T, E&gt;</code></span></h4>
+<div class='docblock'><p>Converts a <code>Result</code> into a <code>ParseResult</code>, preserving parser state. <a href="../../../chomp/types/trait.Input.html#method.from_result">Read more</a></p>
+</div></div></section>
+    <section id='search' class="content hidden"></section>
+
+    <section class="footer"></section>
+
+    <aside id="help" class="hidden">
+        <div>
+            <h1 class="hidden">Help</h1>
+
+            <div class="shortcuts">
+                <h2>Keyboard Shortcuts</h2>
+
+                <dl>
+                    <dt>?</dt>
+                    <dd>Show this help dialog</dd>
+                    <dt>S</dt>
+                    <dd>Focus the search field</dd>
+                    <dt>&larrb;</dt>
+                    <dd>Move up in search results</dd>
+                    <dt>&rarrb;</dt>
+                    <dd>Move down in search results</dd>
+                    <dt>&#9166;</dt>
+                    <dd>Go to active search result</dd>
+                    <dt>+</dt>
+                    <dd>Collapse/expand all sections</dd>
+                </dl>
+            </div>
+
+            <div class="infos">
+                <h2>Search Tricks</h2>
+
+                <p>
+                    Prefix searches with a type followed by a colon (e.g.
+                    <code>fn:</code>) to restrict the search to a given type.
+                </p>
+
+                <p>
+                    Accepted types are: <code>fn</code>, <code>mod</code>,
+                    <code>struct</code>, <code>enum</code>,
+                    <code>trait</code>, <code>type</code>, <code>macro</code>,
+                    and <code>const</code>.
+                </p>
+
+                <p>
+                    Search functions by type signature (e.g.
+                    <code>vec -> usize</code> or <code>* -> vec</code>)
+                </p>
+            </div>
+        </div>
+    </aside>
+
+    
+
+    <script>
+        window.rootPath = "../../../";
+        window.currentCrate = "chomp";
+    </script>
+    <script src="../../../main.js"></script>
+    <script defer src="../../../search-index.js"></script>
+</body>
+</html>

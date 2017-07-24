@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="rustdoc">
+    <meta name="description" content="API documentation for the Rust `parse_only` fn in crate `chomp`.">
+    <meta name="keywords" content="rust, rustlang, rust-lang, parse_only">
+
+    <title>chomp::parse_only - Rust</title>
+
+    <link rel="stylesheet" type="text/css" href="../normalize.css">
+    <link rel="stylesheet" type="text/css" href="../rustdoc.css">
+    <link rel="stylesheet" type="text/css" href="../main.css">
+    
+
+    
+    
+</head>
+<body class="rustdoc fn">
+    <!--[if lte IE 8]>
+    <div class="warning">
+        This old browser is unsupported and will most likely display funky
+        things.
+    </div>
+    <![endif]-->
+
+    
+
+    <nav class="sidebar">
+        
+        <p class='location'><a href='index.html'>chomp</a></p><script>window.sidebarCurrent = {name: 'parse_only', ty: 'fn', relpath: ''};</script><script defer src="sidebar-items.js"></script>
+    </nav>
+
+    <nav class="sub">
+        <form class="search-form js-only">
+            <div class="search-container">
+                <input class="search-input" name="search"
+                       autocomplete="off"
+                       placeholder="Click or press ‘S’ to search, ‘?’ for more options…"
+                       type="search">
+            </div>
+        </form>
+    </nav>
+
+    <section id='main' class="content">
+<h1 class='fqn'><span class='in-band'>Function <a href='index.html'>chomp</a>::<wbr><a class="fn" href=''>parse_only</a></span><span class='out-of-band'><span id='render-detail'>
+                   <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
+                       [<span class='inner'>&#x2212;</span>]
+                   </a>
+               </span><a class='srclink' href='../src/chomp/parse.rs.html#49-56' title='goto source code'>[src]</a></span></h1>
+<pre class='rust fn'>pub fn parse_only&lt;'a, I, T, E, F&gt;(<br>&nbsp;&nbsp;&nbsp;&nbsp;parser: F, <br>&nbsp;&nbsp;&nbsp;&nbsp;input: <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.slice.html">&amp;'a [</a>I<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.slice.html">]</a><br>) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;T, <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.tuple.html">(</a><a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.slice.html">&amp;'a [</a>I<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.slice.html">]</a>, E<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.tuple.html">)</a>&gt; <span class="where fmt-newline">where<br>&nbsp;&nbsp;&nbsp;&nbsp;I: <a class="trait" href="https://doc.rust-lang.org/nightly/core/marker/trait.Copy.html" title="trait core::marker::Copy">Copy</a> + <a class="trait" href="https://doc.rust-lang.org/nightly/core/cmp/trait.PartialEq.html" title="trait core::cmp::PartialEq">PartialEq</a>,<br>&nbsp;&nbsp;&nbsp;&nbsp;F: <a class="trait" href="https://doc.rust-lang.org/nightly/core/ops/trait.FnOnce.html" title="trait core::ops::FnOnce">FnOnce</a>(<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.slice.html">&amp;'a [</a>I<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.slice.html">]</a>) -&gt; <a class="struct" href="../chomp/types/struct.ParseResult.html" title="struct chomp::types::ParseResult">ParseResult</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.slice.html">&amp;'a [</a>I<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.slice.html">]</a>, T, E&gt;,&nbsp;</span></pre><div class='docblock'><p>Runs the given parser on the supplied finite input.</p>
+
+<pre class="rust rust-example-rendered">
+<span class="kw">use</span> <span class="ident">chomp</span>::<span class="ident">prelude</span>::{<span class="ident">parse_only</span>, <span class="ident">Error</span>};
+<span class="kw">use</span> <span class="ident">chomp</span>::<span class="ident">ascii</span>::<span class="ident">decimal</span>;
+
+<span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">parse_only</span>(<span class="ident">decimal</span>, <span class="string">b&quot;123foobar&quot;</span>), <span class="prelude-val">Ok</span>(<span class="number">123u32</span>));
+
+<span class="comment">// Annotation because `decimal` is generic over number types</span>
+<span class="kw">let</span> <span class="ident">r</span>: <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">u32</span>, _<span class="op">&gt;</span> <span class="op">=</span> <span class="ident">parse_only</span>(<span class="ident">decimal</span>, <span class="string">b&quot;foobar&quot;</span>);
+<span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">r</span>, <span class="prelude-val">Err</span>((<span class="kw-2">&amp;</span><span class="string">b&quot;foobar&quot;</span>[..], <span class="ident">Error</span>::<span class="ident">new</span>())));</pre>
+
+<p>This will not force the parser to consume all available input, any remainder will be
+discarded. To force a parser to consume all its input, use <code>eof</code> at the end like this:</p>
+
+<pre class="rust rust-example-rendered">
+<span class="kw">use</span> <span class="ident">chomp</span>::<span class="ident">prelude</span>::{<span class="ident">U8Input</span>, <span class="ident">Error</span>, <span class="ident">SimpleResult</span>, <span class="ident">parse_only</span>, <span class="ident">string</span>, <span class="ident">eof</span>};
+
+<span class="kw">fn</span> <span class="ident">my_parser</span><span class="op">&lt;</span><span class="ident">I</span>: <span class="ident">U8Input</span><span class="op">&gt;</span>(<span class="ident">i</span>: <span class="ident">I</span>) <span class="op">-&gt;</span> <span class="ident">SimpleResult</span><span class="op">&lt;</span><span class="ident">I</span>, <span class="ident">I</span>::<span class="ident">Buffer</span><span class="op">&gt;</span> {
+    <span class="macro">parse</span><span class="macro">!</span>{<span class="ident">i</span>;
+        <span class="kw">let</span> <span class="ident">r</span> <span class="op">=</span> <span class="ident">string</span>(<span class="string">b&quot;pattern&quot;</span>);
+                <span class="ident">eof</span>();
+
+        <span class="ident">ret</span> <span class="ident">r</span>
+    }
+}
+
+<span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">parse_only</span>(<span class="ident">my_parser</span>, <span class="string">b&quot;pattern&quot;</span>), <span class="prelude-val">Ok</span>(<span class="kw-2">&amp;</span><span class="string">b&quot;pattern&quot;</span>[..]));
+<span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">parse_only</span>(<span class="ident">my_parser</span>, <span class="string">b&quot;pattern and more&quot;</span>),
+           <span class="prelude-val">Err</span>((<span class="kw-2">&amp;</span><span class="string">b&quot; and more&quot;</span>[..], <span class="ident">Error</span>::<span class="ident">new</span>())));</pre>
+</div></section>
+    <section id='search' class="content hidden"></section>
+
+    <section class="footer"></section>
+
+    <aside id="help" class="hidden">
+        <div>
+            <h1 class="hidden">Help</h1>
+
+            <div class="shortcuts">
+                <h2>Keyboard Shortcuts</h2>
+
+                <dl>
+                    <dt>?</dt>
+                    <dd>Show this help dialog</dd>
+                    <dt>S</dt>
+                    <dd>Focus the search field</dd>
+                    <dt>&larrb;</dt>
+                    <dd>Move up in search results</dd>
+                    <dt>&rarrb;</dt>
+                    <dd>Move down in search results</dd>
+                    <dt>&#9166;</dt>
+                    <dd>Go to active search result</dd>
+                    <dt>+</dt>
+                    <dd>Collapse/expand all sections</dd>
+                </dl>
+            </div>
+
+            <div class="infos">
+                <h2>Search Tricks</h2>
+
+                <p>
+                    Prefix searches with a type followed by a colon (e.g.
+                    <code>fn:</code>) to restrict the search to a given type.
+                </p>
+
+                <p>
+                    Accepted types are: <code>fn</code>, <code>mod</code>,
+                    <code>struct</code>, <code>enum</code>,
+                    <code>trait</code>, <code>type</code>, <code>macro</code>,
+                    and <code>const</code>.
+                </p>
+
+                <p>
+                    Search functions by type signature (e.g.
+                    <code>vec -> usize</code> or <code>* -> vec</code>)
+                </p>
+            </div>
+        </div>
+    </aside>
+
+    
+
+    <script>
+        window.rootPath = "../";
+        window.currentCrate = "chomp";
+    </script>
+    <script src="../main.js"></script>
+    <script defer src="../search-index.js"></script>
+</body>
+</html>

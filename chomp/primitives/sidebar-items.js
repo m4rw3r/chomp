@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["Guard","This is a zero-sized type used by the `Primitives` trait implementation to guarantee that access to primitive methods on `Input` only happens when the `Primitives` trait has been imported."]],"trait":[["IntoInner","Consumes self and reveals the inner state."],["Primitives","Trait enabling primitive actions on an `Input` type."]]});

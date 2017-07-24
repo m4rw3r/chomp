@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="rustdoc">
+    <meta name="description" content="API documentation for the Rust `BoundedRange` trait in crate `chomp`.">
+    <meta name="keywords" content="rust, rustlang, rust-lang, BoundedRange">
+
+    <title>chomp::combinators::bounded::BoundedRange - Rust</title>
+
+    <link rel="stylesheet" type="text/css" href="../../../normalize.css">
+    <link rel="stylesheet" type="text/css" href="../../../rustdoc.css">
+    <link rel="stylesheet" type="text/css" href="../../../main.css">
+    
+
+    
+    
+</head>
+<body class="rustdoc trait">
+    <!--[if lte IE 8]>
+    <div class="warning">
+        This old browser is unsupported and will most likely display funky
+        things.
+    </div>
+    <![endif]-->
+
+    
+
+    <nav class="sidebar">
+        
+        <p class='location'>Trait BoundedRange</p><div class="block items"><ul><li><a href="#required-methods">Required Methods</a></li><li><a href="#implementors">Implementors</a></li></ul></div><p class='location'><a href='../../index.html'>chomp</a>::<wbr><a href='../index.html'>combinators</a>::<wbr><a href='index.html'>bounded</a></p><script>window.sidebarCurrent = {name: 'BoundedRange', ty: 'trait', relpath: ''};</script><script defer src="sidebar-items.js"></script>
+    </nav>
+
+    <nav class="sub">
+        <form class="search-form js-only">
+            <div class="search-container">
+                <input class="search-input" name="search"
+                       autocomplete="off"
+                       placeholder="Click or press ‘S’ to search, ‘?’ for more options…"
+                       type="search">
+            </div>
+        </form>
+    </nav>
+
+    <section id='main' class="content">
+<h1 class='fqn'><span class='in-band'>Trait <a href='../../index.html'>chomp</a>::<wbr><a href='../index.html'>combinators</a>::<wbr><a href='index.html'>bounded</a>::<wbr><a class="trait" href=''>BoundedRange</a></span><span class='out-of-band'><span id='render-detail'>
+                   <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
+                       [<span class='inner'>&#x2212;</span>]
+                   </a>
+               </span><a class='srclink' href='../../../src/chomp/combinators/bounded.rs.html#33-98' title='goto source code'>[src]</a></span></h1>
+<pre class='rust trait'>pub trait BoundedRange {
+    fn <a href='#tymethod.parse_many' class='fnname'>parse_many</a>&lt;I:&nbsp;<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Input</a>, T, E, F, U&gt;(<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;self, <br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;_: I, <br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;_: F<br>&nbsp;&nbsp;&nbsp;&nbsp;) -&gt; <a class="struct" href="../../../chomp/types/struct.ParseResult.html" title="struct chomp::types::ParseResult">ParseResult</a>&lt;I, T, E&gt;<br>&nbsp;&nbsp;&nbsp; <span class="where">where<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;F: <a class="trait" href="https://doc.rust-lang.org/nightly/core/ops/trait.FnMut.html" title="trait core::ops::FnMut">FnMut</a>(I) -&gt; <a class="struct" href="../../../chomp/types/struct.ParseResult.html" title="struct chomp::types::ParseResult">ParseResult</a>&lt;I, U, E&gt;,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;T: <a class="trait" href="https://doc.rust-lang.org/nightly/core/iter/traits/trait.FromIterator.html" title="trait core::iter::traits::FromIterator">FromIterator</a>&lt;U&gt;</span>;
+    fn <a href='#tymethod.skip_many' class='fnname'>skip_many</a>&lt;I:&nbsp;<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Input</a>, T, E, F&gt;(self, _: I, _: F) -&gt; <a class="struct" href="../../../chomp/types/struct.ParseResult.html" title="struct chomp::types::ParseResult">ParseResult</a>&lt;I, <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.tuple.html">()</a>, E&gt;<br>&nbsp;&nbsp;&nbsp; <span class="where">where<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;F: <a class="trait" href="https://doc.rust-lang.org/nightly/core/ops/trait.FnMut.html" title="trait core::ops::FnMut">FnMut</a>(I) -&gt; <a class="struct" href="../../../chomp/types/struct.ParseResult.html" title="struct chomp::types::ParseResult">ParseResult</a>&lt;I, T, E&gt;</span>;
+    fn <a href='#tymethod.many_till' class='fnname'>many_till</a>&lt;I:&nbsp;<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Input</a>, T, E, R, F, U, N, V&gt;(<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;self, <br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;_: I, <br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;_: R, <br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;_: F<br>&nbsp;&nbsp;&nbsp;&nbsp;) -&gt; <a class="struct" href="../../../chomp/types/struct.ParseResult.html" title="struct chomp::types::ParseResult">ParseResult</a>&lt;I, T, E&gt;<br>&nbsp;&nbsp;&nbsp; <span class="where">where<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;T: <a class="trait" href="https://doc.rust-lang.org/nightly/core/iter/traits/trait.FromIterator.html" title="trait core::iter::traits::FromIterator">FromIterator</a>&lt;U&gt;,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;E: <a class="trait" href="https://doc.rust-lang.org/nightly/core/convert/trait.From.html" title="trait core::convert::From">From</a>&lt;N&gt;,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;R: <a class="trait" href="https://doc.rust-lang.org/nightly/core/ops/trait.FnMut.html" title="trait core::ops::FnMut">FnMut</a>(I) -&gt; <a class="struct" href="../../../chomp/types/struct.ParseResult.html" title="struct chomp::types::ParseResult">ParseResult</a>&lt;I, U, E&gt;,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;F: <a class="trait" href="https://doc.rust-lang.org/nightly/core/ops/trait.FnMut.html" title="trait core::ops::FnMut">FnMut</a>(I) -&gt; <a class="struct" href="../../../chomp/types/struct.ParseResult.html" title="struct chomp::types::ParseResult">ParseResult</a>&lt;I, V, N&gt;</span>;
+}</pre><div class='docblock'><p>Trait for applying a parser multiple times based on a range.</p>
+</div>
+            <h2 id='required-methods'>Required Methods</h2>
+            <div class='methods'>
+        <h3 id='tymethod.parse_many' class='method'><span id='parse_many.v' class='invisible'><code>fn <a href='#tymethod.parse_many' class='fnname'>parse_many</a>&lt;I:&nbsp;<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Input</a>, T, E, F, U&gt;(self, _: I, _: F) -&gt; <a class="struct" href="../../../chomp/types/struct.ParseResult.html" title="struct chomp::types::ParseResult">ParseResult</a>&lt;I, T, E&gt; <span class="where fmt-newline">where<br>&nbsp;&nbsp;&nbsp;&nbsp;F: <a class="trait" href="https://doc.rust-lang.org/nightly/core/ops/trait.FnMut.html" title="trait core::ops::FnMut">FnMut</a>(I) -&gt; <a class="struct" href="../../../chomp/types/struct.ParseResult.html" title="struct chomp::types::ParseResult">ParseResult</a>&lt;I, U, E&gt;,<br>&nbsp;&nbsp;&nbsp;&nbsp;T: <a class="trait" href="https://doc.rust-lang.org/nightly/core/iter/traits/trait.FromIterator.html" title="trait core::iter::traits::FromIterator">FromIterator</a>&lt;U&gt;,&nbsp;</span></code></span></h3><div class='docblock'><p>Applies the parser <code>F</code> multiple times until it fails or the maximum value of the range has
+been reached, collecting the successful values into a <code>T: FromIterator</code>.</p>
+
+<p>Propagates errors if the minimum number of iterations has not been met</p>
+
+<h1 id='panics' class='section-header'><a href='#panics'>Panics</a></h1>
+<p>Will panic if the end of the range is smaller than the start of the range.</p>
+
+<h1 id='notes' class='section-header'><a href='#notes'>Notes</a></h1>
+<ul>
+<li>Will allocate depending on the <code>FromIterator</code> implementation.</li>
+<li>Must never yield more items than the upper bound of the range.</li>
+<li>Use <code>combinators::bounded::many</code> instead of calling this trait method directly.</li>
+<li>If the last parser succeeds on the last input item then this parser is still considered
+incomplete if the input flag END_OF_INPUT is not set as there might be more data to fill.</li>
+</ul>
+</div><h3 id='tymethod.skip_many' class='method'><span id='skip_many.v' class='invisible'><code>fn <a href='#tymethod.skip_many' class='fnname'>skip_many</a>&lt;I:&nbsp;<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Input</a>, T, E, F&gt;(self, _: I, _: F) -&gt; <a class="struct" href="../../../chomp/types/struct.ParseResult.html" title="struct chomp::types::ParseResult">ParseResult</a>&lt;I, <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.tuple.html">()</a>, E&gt; <span class="where fmt-newline">where<br>&nbsp;&nbsp;&nbsp;&nbsp;F: <a class="trait" href="https://doc.rust-lang.org/nightly/core/ops/trait.FnMut.html" title="trait core::ops::FnMut">FnMut</a>(I) -&gt; <a class="struct" href="../../../chomp/types/struct.ParseResult.html" title="struct chomp::types::ParseResult">ParseResult</a>&lt;I, T, E&gt;,&nbsp;</span></code></span></h3><div class='docblock'><p>Applies the parser <code>F</code> multiple times until it fails or the maximum value of the range has
+been reached, throwing away any produced value.</p>
+
+<p>Propagates errors if the minimum number of iterations has not been met</p>
+
+<h1 id='panics-1' class='section-header'><a href='#panics-1'>Panics</a></h1>
+<p>Will panic if the end of the range is smaller than the start of the range.</p>
+
+<h1 id='notes-1' class='section-header'><a href='#notes-1'>Notes</a></h1>
+<ul>
+<li>Must never yield more items than the upper bound of the range.</li>
+<li>Use <code>combinators::bounded::many</code> instead of calling this trait method directly.</li>
+<li>If the last parser succeeds on the last input item then this parser is still considered
+incomplete if the input flag END_OF_INPUT is not set as there might be more data to fill.</li>
+</ul>
+</div><h3 id='tymethod.many_till' class='method'><span id='many_till.v' class='invisible'><code>fn <a href='#tymethod.many_till' class='fnname'>many_till</a>&lt;I:&nbsp;<a class="trait" href="../../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Input</a>, T, E, R, F, U, N, V&gt;(<br>&nbsp;&nbsp;&nbsp;&nbsp;self, <br>&nbsp;&nbsp;&nbsp;&nbsp;_: I, <br>&nbsp;&nbsp;&nbsp;&nbsp;_: R, <br>&nbsp;&nbsp;&nbsp;&nbsp;_: F<br>) -&gt; <a class="struct" href="../../../chomp/types/struct.ParseResult.html" title="struct chomp::types::ParseResult">ParseResult</a>&lt;I, T, E&gt; <span class="where fmt-newline">where<br>&nbsp;&nbsp;&nbsp;&nbsp;T: <a class="trait" href="https://doc.rust-lang.org/nightly/core/iter/traits/trait.FromIterator.html" title="trait core::iter::traits::FromIterator">FromIterator</a>&lt;U&gt;,<br>&nbsp;&nbsp;&nbsp;&nbsp;E: <a class="trait" href="https://doc.rust-lang.org/nightly/core/convert/trait.From.html" title="trait core::convert::From">From</a>&lt;N&gt;,<br>&nbsp;&nbsp;&nbsp;&nbsp;R: <a class="trait" href="https://doc.rust-lang.org/nightly/core/ops/trait.FnMut.html" title="trait core::ops::FnMut">FnMut</a>(I) -&gt; <a class="struct" href="../../../chomp/types/struct.ParseResult.html" title="struct chomp::types::ParseResult">ParseResult</a>&lt;I, U, E&gt;,<br>&nbsp;&nbsp;&nbsp;&nbsp;F: <a class="trait" href="https://doc.rust-lang.org/nightly/core/ops/trait.FnMut.html" title="trait core::ops::FnMut">FnMut</a>(I) -&gt; <a class="struct" href="../../../chomp/types/struct.ParseResult.html" title="struct chomp::types::ParseResult">ParseResult</a>&lt;I, V, N&gt;,&nbsp;</span></code></span></h3><div class='docblock'><p>Applies the parser <code>P</code> multiple times until the parser <code>F</code> succeeds and returns a value
+populated by the values yielded by <code>P</code>. Consumes the matched part of <code>F</code>. If <code>F</code> does not
+succeed within the given range <code>R</code> this combinator will propagate any failure from <code>P</code>.</p>
+
+<h1 id='panics-2' class='section-header'><a href='#panics-2'>Panics</a></h1>
+<p>Will panic if the end of the range is smaller than the start of the range.</p>
+
+<h1 id='notes-2' class='section-header'><a href='#notes-2'>Notes</a></h1>
+<ul>
+<li>Will allocate depending on the <code>FromIterator</code> implementation.</li>
+<li>Use <code>combinators::bounded::many_till</code> instead of calling this trait method directly.</li>
+<li>Must never yield more items than the upper bound of the range.</li>
+<li>If the last parser succeeds on the last input item then this combinator is still considered
+incomplete unless the parser <code>F</code> matches or the lower bound has not been met.</li>
+</ul>
+</div></div>
+        <h2 id='implementors'>Implementors</h2>
+        <ul class='item-list' id='implementors-list'>
+    <li><code>impl BoundedRange for <a class="struct" href="https://doc.rust-lang.org/nightly/core/ops/struct.Range.html" title="struct core::ops::Range">Range</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.usize.html">usize</a>&gt;</code></li>
+<li><code>impl BoundedRange for <a class="struct" href="https://doc.rust-lang.org/nightly/core/ops/struct.RangeFrom.html" title="struct core::ops::RangeFrom">RangeFrom</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.usize.html">usize</a>&gt;</code></li>
+<li><code>impl BoundedRange for <a class="struct" href="https://doc.rust-lang.org/nightly/core/ops/struct.RangeFull.html" title="struct core::ops::RangeFull">RangeFull</a></code></li>
+<li><code>impl BoundedRange for <a class="struct" href="https://doc.rust-lang.org/nightly/core/ops/struct.RangeTo.html" title="struct core::ops::RangeTo">RangeTo</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.usize.html">usize</a>&gt;</code></li>
+<li><code>impl BoundedRange for <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.usize.html">usize</a></code></li>
+</ul><script type="text/javascript" async
+                         src="../../../implementors/chomp/combinators/bounded/trait.BoundedRange.js">
+                 </script></section>
+    <section id='search' class="content hidden"></section>
+
+    <section class="footer"></section>
+
+    <aside id="help" class="hidden">
+        <div>
+            <h1 class="hidden">Help</h1>
+
+            <div class="shortcuts">
+                <h2>Keyboard Shortcuts</h2>
+
+                <dl>
+                    <dt>?</dt>
+                    <dd>Show this help dialog</dd>
+                    <dt>S</dt>
+                    <dd>Focus the search field</dd>
+                    <dt>&larrb;</dt>
+                    <dd>Move up in search results</dd>
+                    <dt>&rarrb;</dt>
+                    <dd>Move down in search results</dd>
+                    <dt>&#9166;</dt>
+                    <dd>Go to active search result</dd>
+                    <dt>+</dt>
+                    <dd>Collapse/expand all sections</dd>
+                </dl>
+            </div>
+
+            <div class="infos">
+                <h2>Search Tricks</h2>
+
+                <p>
+                    Prefix searches with a type followed by a colon (e.g.
+                    <code>fn:</code>) to restrict the search to a given type.
+                </p>
+
+                <p>
+                    Accepted types are: <code>fn</code>, <code>mod</code>,
+                    <code>struct</code>, <code>enum</code>,
+                    <code>trait</code>, <code>type</code>, <code>macro</code>,
+                    and <code>const</code>.
+                </p>
+
+                <p>
+                    Search functions by type signature (e.g.
+                    <code>vec -> usize</code> or <code>* -> vec</code>)
+                </p>
+            </div>
+        </div>
+    </aside>
+
+    
+
+    <script>
+        window.rootPath = "../../../";
+        window.currentCrate = "chomp";
+    </script>
+    <script src="../../../main.js"></script>
+    <script defer src="../../../search-index.js"></script>
+</body>
+</html>

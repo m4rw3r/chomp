@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["Trace","Wrapper type containing a value and the backtrace to the address where it was wrapped."]],"type":[["Result","Type-alias to make it easier to slot in tracing of errors."]]});

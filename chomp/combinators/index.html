@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="rustdoc">
+    <meta name="description" content="API documentation for the Rust `combinators` mod in crate `chomp`.">
+    <meta name="keywords" content="rust, rustlang, rust-lang, combinators">
+
+    <title>chomp::combinators - Rust</title>
+
+    <link rel="stylesheet" type="text/css" href="../../normalize.css">
+    <link rel="stylesheet" type="text/css" href="../../rustdoc.css">
+    <link rel="stylesheet" type="text/css" href="../../main.css">
+    
+
+    
+    
+</head>
+<body class="rustdoc mod">
+    <!--[if lte IE 8]>
+    <div class="warning">
+        This old browser is unsupported and will most likely display funky
+        things.
+    </div>
+    <![endif]-->
+
+    
+
+    <nav class="sidebar">
+        
+        <p class='location'>Module combinators</p><div class="block items"><ul><li><a href="#modules">Modules</a></li><li><a href="#functions">Functions</a></li></ul></div><p class='location'><a href='../index.html'>chomp</a></p><script>window.sidebarCurrent = {name: 'combinators', ty: 'mod', relpath: '../'};</script><script defer src="../sidebar-items.js"></script>
+    </nav>
+
+    <nav class="sub">
+        <form class="search-form js-only">
+            <div class="search-container">
+                <input class="search-input" name="search"
+                       autocomplete="off"
+                       placeholder="Click or press ‘S’ to search, ‘?’ for more options…"
+                       type="search">
+            </div>
+        </form>
+    </nav>
+
+    <section id='main' class="content">
+<h1 class='fqn'><span class='in-band'>Module <a href='../index.html'>chomp</a>::<wbr><a class="mod" href=''>combinators</a></span><span class='out-of-band'><span id='render-detail'>
+                   <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
+                       [<span class='inner'>&#x2212;</span>]
+                   </a>
+               </span><a class='srclink' href='../../src/chomp/combinators/mod.rs.html#1-637' title='goto source code'>[src]</a></span></h1>
+<div class='docblock'><p>Basic combinators.</p>
+</div><h2 id='modules' class='section-header'><a href="#modules">Modules</a></h2>
+<table>
+                       <tr class=' module-item'>
+                           <td><a class="mod" href="bounded/index.html"
+                                  title='mod chomp::combinators::bounded'>bounded</a></td>
+                           <td class='docblock-short'>
+                                <p>Bounded versions of combinators.</p>
+                           </td>
+                       </tr></table><h2 id='functions' class='section-header'><a href="#functions">Functions</a></h2>
+<table>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.choice.html"
+                                  title='fn chomp::combinators::choice'>choice</a></td>
+                           <td class='docblock-short'>
+                                <p>Attempts each parser yielded by an iterator in order, returning the result of the first
+successful parser. This combinator requires boxing of all the parsers returned from the
+iterator.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.count.html"
+                                  title='fn chomp::combinators::count'>count</a></td>
+                           <td class='docblock-short'>
+                                <p>Applies the parser <code>p</code> exactly <code>num</code> times collecting all items into <code>T: FromIterator</code>.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.either.html"
+                                  title='fn chomp::combinators::either'>either</a></td>
+                           <td class='docblock-short'>
+                                <p>Attempts the left parser first and then the right parser if the first parser fails. Result is
+returned as an <code>Either&lt;T, U&gt;</code> depending on which parser succeeded.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.look_ahead.html"
+                                  title='fn chomp::combinators::look_ahead'>look_ahead</a></td>
+                           <td class='docblock-short'>
+                                <p>Applies the parser <code>F</code> without consuming any input.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.many.html"
+                                  title='fn chomp::combinators::many'>many</a></td>
+                           <td class='docblock-short'>
+                                <p>Parses many instances of <code>f</code> until it does no longer match, collecting all matches into the
+type <code>T: FromIterator</code>.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.many1.html"
+                                  title='fn chomp::combinators::many1'>many1</a></td>
+                           <td class='docblock-short'>
+                                <p>Parses at least one instance of <code>f</code> and continues until it does no longer match, collecting
+all matches into the type <code>T: FromIterator</code>.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.many_till.html"
+                                  title='fn chomp::combinators::many_till'>many_till</a></td>
+                           <td class='docblock-short'>
+                                <p>Applies the parser <code>R</code> multiple times until the parser <code>F</code> succeeds and returns a
+<code>T: FromIterator</code> populated by the values yielded by <code>R</code>. Consumes the matched part of <code>F</code>.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.matched_by.html"
+                                  title='fn chomp::combinators::matched_by'>matched_by</a></td>
+                           <td class='docblock-short'>
+                                <p>Returns the result of the given parser as well as the slice which matched it.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.option.html"
+                                  title='fn chomp::combinators::option'>option</a></td>
+                           <td class='docblock-short'>
+                                <p>Tries the parser <code>f</code>, on success it yields the parsed value, on failure <code>default</code> will be
+yielded instead.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.or.html"
+                                  title='fn chomp::combinators::or'>or</a></td>
+                           <td class='docblock-short'>
+                                <p>Tries to match the parser <code>f</code>, if <code>f</code> fails it tries <code>g</code>. Returns the success value of
+the first match, otherwise the error of the last one if both fail.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.sep_by.html"
+                                  title='fn chomp::combinators::sep_by'>sep_by</a></td>
+                           <td class='docblock-short'>
+                                <p>Applies the parser <code>R</code> zero or more times, separated by the parser <code>F</code>. All matches from <code>R</code>
+will be collected into the type <code>T: FromIterator</code>.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.sep_by1.html"
+                                  title='fn chomp::combinators::sep_by1'>sep_by1</a></td>
+                           <td class='docblock-short'>
+                                <p>Applies the parser <code>R</code> one or more times, separated by the parser <code>F</code>. All matches from <code>R</code>
+will be collected into the type <code>T: FromIterator</code>.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.skip_many.html"
+                                  title='fn chomp::combinators::skip_many'>skip_many</a></td>
+                           <td class='docblock-short'>
+                                <p>Runs the given parser until it fails, discarding matched input.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.skip_many1.html"
+                                  title='fn chomp::combinators::skip_many1'>skip_many1</a></td>
+                           <td class='docblock-short'>
+                                <p>Runs the given parser until it fails, discarding matched input, expects at least one match.</p>
+                           </td>
+                       </tr></table></section>
+    <section id='search' class="content hidden"></section>
+
+    <section class="footer"></section>
+
+    <aside id="help" class="hidden">
+        <div>
+            <h1 class="hidden">Help</h1>
+
+            <div class="shortcuts">
+                <h2>Keyboard Shortcuts</h2>
+
+                <dl>
+                    <dt>?</dt>
+                    <dd>Show this help dialog</dd>
+                    <dt>S</dt>
+                    <dd>Focus the search field</dd>
+                    <dt>&larrb;</dt>
+                    <dd>Move up in search results</dd>
+                    <dt>&rarrb;</dt>
+                    <dd>Move down in search results</dd>
+                    <dt>&#9166;</dt>
+                    <dd>Go to active search result</dd>
+                    <dt>+</dt>
+                    <dd>Collapse/expand all sections</dd>
+                </dl>
+            </div>
+
+            <div class="infos">
+                <h2>Search Tricks</h2>
+
+                <p>
+                    Prefix searches with a type followed by a colon (e.g.
+                    <code>fn:</code>) to restrict the search to a given type.
+                </p>
+
+                <p>
+                    Accepted types are: <code>fn</code>, <code>mod</code>,
+                    <code>struct</code>, <code>enum</code>,
+                    <code>trait</code>, <code>type</code>, <code>macro</code>,
+                    and <code>const</code>.
+                </p>
+
+                <p>
+                    Search functions by type signature (e.g.
+                    <code>vec -> usize</code> or <code>* -> vec</code>)
+                </p>
+            </div>
+        </div>
+    </aside>
+
+    
+
+    <script>
+        window.rootPath = "../../";
+        window.currentCrate = "chomp";
+    </script>
+    <script src="../../main.js"></script>
+    <script defer src="../../search-index.js"></script>
+</body>
+</html>

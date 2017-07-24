@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="rustdoc">
+    <meta name="description" content="API documentation for the Rust `Input` trait in crate `chomp`.">
+    <meta name="keywords" content="rust, rustlang, rust-lang, Input">
+
+    <title>chomp::types::Input - Rust</title>
+
+    <link rel="stylesheet" type="text/css" href="../../normalize.css">
+    <link rel="stylesheet" type="text/css" href="../../rustdoc.css">
+    <link rel="stylesheet" type="text/css" href="../../main.css">
+    
+
+    
+    
+</head>
+<body class="rustdoc trait">
+    <!--[if lte IE 8]>
+    <div class="warning">
+        This old browser is unsupported and will most likely display funky
+        things.
+    </div>
+    <![endif]-->
+
+    
+
+    <nav class="sidebar">
+        
+        <p class='location'>Trait Input</p><div class="block items"><ul><li><a href="#associated-types">Associated Types</a></li><li><a href="#provided-methods">Provided Methods</a></li><li><a href="#implementors">Implementors</a></li></ul></div><p class='location'><a href='../index.html'>chomp</a>::<wbr><a href='index.html'>types</a></p><script>window.sidebarCurrent = {name: 'Input', ty: 'trait', relpath: ''};</script><script defer src="sidebar-items.js"></script>
+    </nav>
+
+    <nav class="sub">
+        <form class="search-form js-only">
+            <div class="search-container">
+                <input class="search-input" name="search"
+                       autocomplete="off"
+                       placeholder="Click or press ‘S’ to search, ‘?’ for more options…"
+                       type="search">
+            </div>
+        </form>
+    </nav>
+
+    <section id='main' class="content">
+<h1 class='fqn'><span class='in-band'>Trait <a href='../index.html'>chomp</a>::<wbr><a href='index.html'>types</a>::<wbr><a class="trait" href=''>Input</a></span><span class='out-of-band'><span id='render-detail'>
+                   <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
+                       [<span class='inner'>&#x2212;</span>]
+                   </a>
+               </span><a class='srclink' href='../../src/chomp/types/mod.rs.html#132-265' title='goto source code'>[src]</a></span></h1>
+<pre class='rust trait'>pub trait Input: <a class="trait" href="https://doc.rust-lang.org/nightly/core/marker/trait.Sized.html" title="trait core::marker::Sized">Sized</a> {
+    type <a href='#associatedtype.Token' class="type">Token</a>: <a class="trait" href="https://doc.rust-lang.org/nightly/core/marker/trait.Copy.html" title="trait core::marker::Copy">Copy</a> + <a class="trait" href="https://doc.rust-lang.org/nightly/core/cmp/trait.PartialEq.html" title="trait core::cmp::PartialEq">PartialEq</a>;
+    type <a href='#associatedtype.Buffer' class="type">Buffer</a>: <a class="trait" href="../../chomp/types/trait.Buffer.html" title="trait chomp::types::Buffer">Buffer</a>&lt;Token = Self::<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Token</a>&gt;;
+    fn <a href='#method.ret' class='fnname'>ret</a>&lt;T, E&gt;(self, t: T) -&gt; <a class="struct" href="../../chomp/types/struct.ParseResult.html" title="struct chomp::types::ParseResult">ParseResult</a>&lt;Self, T, E&gt; { ... }
+    fn <a href='#method.err' class='fnname'>err</a>&lt;T, E&gt;(self, e: E) -&gt; <a class="struct" href="../../chomp/types/struct.ParseResult.html" title="struct chomp::types::ParseResult">ParseResult</a>&lt;Self, T, E&gt; { ... }
+    fn <a href='#method.from_result' class='fnname'>from_result</a>&lt;T, E&gt;(self, r: <a class="enum" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;T, E&gt;) -&gt; <a class="struct" href="../../chomp/types/struct.ParseResult.html" title="struct chomp::types::ParseResult">ParseResult</a>&lt;Self, T, E&gt; { ... }
+}</pre><div class='docblock'><p>Linear type containing the parser state, this type is threaded though <code>bind</code> and is also the
+initial type passed to a parser.</p>
+
+<p>Coupled with the <code>ParseResult</code> type it forms the parser monad:</p>
+
+<pre class="rust rust-example-rendered">
+<span class="ident">Fn</span><span class="kw-2">*</span><span class="op">&lt;</span><span class="ident">I</span>: <span class="ident">Input</span><span class="op">&gt;</span>(<span class="ident">I</span>, ...) <span class="op">-&gt;</span> <span class="ident">ParseResult</span><span class="op">&lt;</span><span class="ident">I</span>, <span class="ident">T</span>, <span class="ident">E</span><span class="op">&gt;</span>;</pre>
+
+<p>where <code>Fn*</code> is the appropriate closure/function trait, <code>I</code> the input type (can be something
+like <code>[u8]</code>), <code>...</code> additional parameters to the parser, <code>T</code> the carried success type and <code>E</code>
+the potential error type.</p>
+</div>
+            <h2 id='associated-types'>Associated Types</h2>
+            <div class='methods'>
+        <h3 id='associatedtype.Token' class='method'><span id='Token.t' class='invisible'><code>type <a href='#associatedtype.Token' class="type">Token</a>: <a class="trait" href="https://doc.rust-lang.org/nightly/core/marker/trait.Copy.html" title="trait core::marker::Copy">Copy</a> + <a class="trait" href="https://doc.rust-lang.org/nightly/core/cmp/trait.PartialEq.html" title="trait core::cmp::PartialEq">PartialEq</a></code></span></h3><div class='docblock'><p>The token type of the input.</p>
+</div><h3 id='associatedtype.Buffer' class='method'><span id='Buffer.t' class='invisible'><code>type <a href='#associatedtype.Buffer' class="type">Buffer</a>: <a class="trait" href="../../chomp/types/trait.Buffer.html" title="trait chomp::types::Buffer">Buffer</a>&lt;Token = Self::<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Token</a>&gt;</code></span></h3><div class='docblock'><p>The buffer type yielded by this input when multiple tokens are consumed in sequence.</p>
+
+<p>Can eg. provide zero-copy parsing if the input type is built to support it.</p>
+</div></div>
+            <h2 id='provided-methods'>Provided Methods</h2>
+            <div class='methods'>
+        <h3 id='method.ret' class='method'><span id='ret.v' class='invisible'><code>fn <a href='#method.ret' class='fnname'>ret</a>&lt;T, E&gt;(self, t: T) -&gt; <a class="struct" href="../../chomp/types/struct.ParseResult.html" title="struct chomp::types::ParseResult">ParseResult</a>&lt;Self, T, E&gt;</code></span></h3><div class='docblock'><p>Returns <code>t</code> as a success value in the parsing context.</p>
+
+<p>Equivalent to Haskell&#39;s <code>return</code> function in the <code>Monad</code> typeclass.</p>
+
+<h1 id='example' class='section-header'><a href='#example'>Example</a></h1>
+<pre class="rust rust-example-rendered">
+<span class="kw">use</span> <span class="ident">chomp</span>::<span class="ident">prelude</span>::{<span class="ident">Input</span>, <span class="ident">parse_only</span>};
+
+<span class="kw">let</span> <span class="ident">r</span> <span class="op">=</span> <span class="ident">parse_only</span>(<span class="op">|</span><span class="ident">i</span><span class="op">|</span>
+    <span class="comment">// Annotate the error type</span>
+    <span class="ident">i</span>.<span class="ident">ret</span>::<span class="op">&lt;</span>_, ()<span class="op">&gt;</span>(<span class="string">&quot;Wohoo, success!&quot;</span>),
+    <span class="string">b&quot;some input&quot;</span>);
+
+<span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">r</span>, <span class="prelude-val">Ok</span>(<span class="string">&quot;Wohoo, success!&quot;</span>));</pre>
+</div><h3 id='method.err' class='method'><span id='err.v' class='invisible'><code>fn <a href='#method.err' class='fnname'>err</a>&lt;T, E&gt;(self, e: E) -&gt; <a class="struct" href="../../chomp/types/struct.ParseResult.html" title="struct chomp::types::ParseResult">ParseResult</a>&lt;Self, T, E&gt;</code></span></h3><div class='docblock'><p>Returns <code>e</code> as an error value in the parsing context.</p>
+
+<p>A more general version of Haskell&#39;s <code>fail</code> function in the <code>Monad</code> typeclass.</p>
+
+<h1 id='example-1' class='section-header'><a href='#example-1'>Example</a></h1>
+<pre class="rust rust-example-rendered">
+<span class="kw">use</span> <span class="ident">chomp</span>::<span class="ident">prelude</span>::{<span class="ident">Input</span>, <span class="ident">parse_only</span>};
+
+<span class="kw">let</span> <span class="ident">r</span> <span class="op">=</span> <span class="ident">parse_only</span>(<span class="op">|</span><span class="ident">i</span><span class="op">|</span>
+    <span class="comment">// Annotate the value type</span>
+    <span class="ident">i</span>.<span class="ident">err</span>::<span class="op">&lt;</span>(), _<span class="op">&gt;</span>(<span class="string">&quot;Something went wrong&quot;</span>),
+    <span class="string">b&quot;some input&quot;</span>);
+
+<span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">r</span>, <span class="prelude-val">Err</span>((<span class="kw-2">&amp;</span><span class="string">b&quot;some input&quot;</span>[..], <span class="string">&quot;Something went wrong&quot;</span>)));</pre>
+</div><h3 id='method.from_result' class='method'><span id='from_result.v' class='invisible'><code>fn <a href='#method.from_result' class='fnname'>from_result</a>&lt;T, E&gt;(self, r: <a class="enum" href="https://doc.rust-lang.org/nightly/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;T, E&gt;) -&gt; <a class="struct" href="../../chomp/types/struct.ParseResult.html" title="struct chomp::types::ParseResult">ParseResult</a>&lt;Self, T, E&gt;</code></span></h3><div class='docblock'><p>Converts a <code>Result</code> into a <code>ParseResult</code>, preserving parser state.</p>
+
+<p>To convert an <code>Option</code> into a <code>ParseResult</code> it is recommended to use
+<a href="https://doc.rust-lang.org/std/option/enum.Option.html#method.ok_or"><code>Option::ok_or</code></a>
+or <a href="https://doc.rust-lang.org/std/option/enum.Option.html#method.ok_or_else"><code>Option::ok_or_else</code></a>
+in combination with this method.</p>
+
+<h1 id='examples' class='section-header'><a href='#examples'>Examples</a></h1>
+<pre class="rust rust-example-rendered">
+<span class="kw">use</span> <span class="ident">chomp</span>::<span class="ident">prelude</span>::{<span class="ident">Input</span>, <span class="ident">parse_only</span>};
+
+<span class="kw">let</span> <span class="ident">r</span> <span class="op">=</span> <span class="ident">parse_only</span>(<span class="op">|</span><span class="ident">i</span><span class="op">|</span> <span class="ident">i</span>.<span class="ident">from_result</span>::<span class="op">&lt;</span>_, ()<span class="op">&gt;</span>(<span class="prelude-val">Ok</span>(<span class="string">&quot;foo&quot;</span>)), <span class="string">b&quot;test&quot;</span>);
+
+<span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">r</span>, <span class="prelude-val">Ok</span>(<span class="string">&quot;foo&quot;</span>));
+
+<span class="kw">let</span> <span class="ident">r</span> <span class="op">=</span> <span class="ident">parse_only</span>(<span class="op">|</span><span class="ident">i</span><span class="op">|</span> <span class="ident">i</span>.<span class="ident">from_result</span>::<span class="op">&lt;</span>(), _<span class="op">&gt;</span>(<span class="prelude-val">Err</span>(<span class="string">&quot;error message&quot;</span>)), <span class="string">b&quot;test&quot;</span>);
+
+<span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">r</span>, <span class="prelude-val">Err</span>((<span class="kw-2">&amp;</span><span class="string">b&quot;test&quot;</span>[..], <span class="string">&quot;error message&quot;</span>)));</pre>
+</div></div>
+        <h2 id='implementors'>Implementors</h2>
+        <ul class='item-list' id='implementors-list'>
+    <li><code>impl&lt;'a, I:&nbsp;<a class="trait" href="https://doc.rust-lang.org/nightly/core/marker/trait.Copy.html" title="trait core::marker::Copy">Copy</a> + <a class="trait" href="https://doc.rust-lang.org/nightly/core/cmp/trait.PartialEq.html" title="trait core::cmp::PartialEq">PartialEq</a>&gt; Input for <a class="struct" href="../../chomp/buffer/struct.InputBuf.html" title="struct chomp::buffer::InputBuf">InputBuf</a>&lt;'a, I&gt;</code></li>
+<li><code>impl&lt;I:&nbsp;<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Input</a>, N:&nbsp;<a class="trait" href="../../chomp/types/numbering/trait.Numbering.html" title="trait chomp::types::numbering::Numbering">Numbering</a>&lt;Token = I::<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Token</a>&gt;&gt; Input for <a class="struct" href="../../chomp/types/numbering/struct.InputPosition.html" title="struct chomp::types::numbering::InputPosition">InputPosition</a>&lt;I, N&gt;</code></li>
+<li><code>impl&lt;'a, I:&nbsp;<a class="trait" href="https://doc.rust-lang.org/nightly/core/marker/trait.Copy.html" title="trait core::marker::Copy">Copy</a> + <a class="trait" href="https://doc.rust-lang.org/nightly/core/cmp/trait.PartialEq.html" title="trait core::cmp::PartialEq">PartialEq</a>&gt; Input for <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.slice.html">&amp;'a [</a>I<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.slice.html">]</a></code></li>
+<li><code>impl&lt;'a&gt; Input for &amp;'a <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.str.html">str</a></code></li>
+</ul><script type="text/javascript" async
+                         src="../../implementors/chomp/types/trait.Input.js">
+                 </script></section>
+    <section id='search' class="content hidden"></section>
+
+    <section class="footer"></section>
+
+    <aside id="help" class="hidden">
+        <div>
+            <h1 class="hidden">Help</h1>
+
+            <div class="shortcuts">
+                <h2>Keyboard Shortcuts</h2>
+
+                <dl>
+                    <dt>?</dt>
+                    <dd>Show this help dialog</dd>
+                    <dt>S</dt>
+                    <dd>Focus the search field</dd>
+                    <dt>&larrb;</dt>
+                    <dd>Move up in search results</dd>
+                    <dt>&rarrb;</dt>
+                    <dd>Move down in search results</dd>
+                    <dt>&#9166;</dt>
+                    <dd>Go to active search result</dd>
+                    <dt>+</dt>
+                    <dd>Collapse/expand all sections</dd>
+                </dl>
+            </div>
+
+            <div class="infos">
+                <h2>Search Tricks</h2>
+
+                <p>
+                    Prefix searches with a type followed by a colon (e.g.
+                    <code>fn:</code>) to restrict the search to a given type.
+                </p>
+
+                <p>
+                    Accepted types are: <code>fn</code>, <code>mod</code>,
+                    <code>struct</code>, <code>enum</code>,
+                    <code>trait</code>, <code>type</code>, <code>macro</code>,
+                    and <code>const</code>.
+                </p>
+
+                <p>
+                    Search functions by type signature (e.g.
+                    <code>vec -> usize</code> or <code>* -> vec</code>)
+                </p>
+            </div>
+        </div>
+    </aside>
+
+    
+
+    <script>
+        window.rootPath = "../../";
+        window.currentCrate = "chomp";
+    </script>
+    <script src="../../main.js"></script>
+    <script defer src="../../search-index.js"></script>
+</body>
+</html>

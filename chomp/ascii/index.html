@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="rustdoc">
+    <meta name="description" content="API documentation for the Rust `ascii` mod in crate `chomp`.">
+    <meta name="keywords" content="rust, rustlang, rust-lang, ascii">
+
+    <title>chomp::ascii - Rust</title>
+
+    <link rel="stylesheet" type="text/css" href="../../normalize.css">
+    <link rel="stylesheet" type="text/css" href="../../rustdoc.css">
+    <link rel="stylesheet" type="text/css" href="../../main.css">
+    
+
+    
+    
+</head>
+<body class="rustdoc mod">
+    <!--[if lte IE 8]>
+    <div class="warning">
+        This old browser is unsupported and will most likely display funky
+        things.
+    </div>
+    <![endif]-->
+
+    
+
+    <nav class="sidebar">
+        
+        <p class='location'>Module ascii</p><div class="block items"><ul><li><a href="#traits">Traits</a></li><li><a href="#functions">Functions</a></li></ul></div><p class='location'><a href='../index.html'>chomp</a></p><script>window.sidebarCurrent = {name: 'ascii', ty: 'mod', relpath: '../'};</script><script defer src="../sidebar-items.js"></script>
+    </nav>
+
+    <nav class="sub">
+        <form class="search-form js-only">
+            <div class="search-container">
+                <input class="search-input" name="search"
+                       autocomplete="off"
+                       placeholder="Click or press ‘S’ to search, ‘?’ for more options…"
+                       type="search">
+            </div>
+        </form>
+    </nav>
+
+    <section id='main' class="content">
+<h1 class='fqn'><span class='in-band'>Module <a href='../index.html'>chomp</a>::<wbr><a class="mod" href=''>ascii</a></span><span class='out-of-band'><span id='render-detail'>
+                   <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
+                       [<span class='inner'>&#x2212;</span>]
+                   </a>
+               </span><a class='srclink' href='../../src/chomp/ascii.rs.html#1-512' title='goto source code'>[src]</a></span></h1>
+<div class='docblock'><p>Utilities and parsers for dealing with ASCII data in <code>u8</code> format.</p>
+</div><h2 id='traits' class='section-header'><a href="#traits">Traits</a></h2>
+<table>
+                       <tr class=' module-item'>
+                           <td><a class="trait" href="trait.Float.html"
+                                  title='trait chomp::ascii::Float'>Float</a></td>
+                           <td class='docblock-short'>
+                                <p>Trait enabling the conversion from a matched <code>Buffer</code> to a float of the correct type.</p>
+                           </td>
+                       </tr></table><h2 id='functions' class='section-header'><a href="#functions">Functions</a></h2>
+<table>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.decimal.html"
+                                  title='fn chomp::ascii::decimal'>decimal</a></td>
+                           <td class='docblock-short'>
+                                <p>Parses a series of digits and converts them to an integer.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.digit.html"
+                                  title='fn chomp::ascii::digit'>digit</a></td>
+                           <td class='docblock-short'>
+                                <p>Parses a single digit.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.float.html"
+                                  title='fn chomp::ascii::float'>float</a></td>
+                           <td class='docblock-short'>
+                                <p>Parses a float into a <code>f64</code> or <code>f32</code>, will error with an <code>Error::unexpected</code> if the float
+does not map to a proper float.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.is_alpha.html"
+                                  title='fn chomp::ascii::is_alpha'>is_alpha</a></td>
+                           <td class='docblock-short'>
+                                <p>ASCII alphabetic predicate.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.is_alphanumeric.html"
+                                  title='fn chomp::ascii::is_alphanumeric'>is_alphanumeric</a></td>
+                           <td class='docblock-short'>
+                                <p>ASCII alphanumeric predicate.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.is_digit.html"
+                                  title='fn chomp::ascii::is_digit'>is_digit</a></td>
+                           <td class='docblock-short'>
+                                <p>ASCII digit predicate.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.is_end_of_line.html"
+                                  title='fn chomp::ascii::is_end_of_line'>is_end_of_line</a></td>
+                           <td class='docblock-short'>
+                                <p>A predicate matching eithr a newline (&#39;\n&#39;) or a carriage return (&#39;\r&#39;).</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.is_horizontal_space.html"
+                                  title='fn chomp::ascii::is_horizontal_space'>is_horizontal_space</a></td>
+                           <td class='docblock-short'>
+                                <p>A predicate which matches either space (&#39; &#39;) or horizontal tab (&#39;\t&#39;).</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.is_lowercase.html"
+                                  title='fn chomp::ascii::is_lowercase'>is_lowercase</a></td>
+                           <td class='docblock-short'>
+                                <p>Lowercase ASCII predicate.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.is_uppercase.html"
+                                  title='fn chomp::ascii::is_uppercase'>is_uppercase</a></td>
+                           <td class='docblock-short'>
+                                <p>Uppercase ASCII character predicate.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.is_whitespace.html"
+                                  title='fn chomp::ascii::is_whitespace'>is_whitespace</a></td>
+                           <td class='docblock-short'>
+                                <p>ASCII whitespace predicate.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.match_float.html"
+                                  title='fn chomp::ascii::match_float'>match_float</a></td>
+                           <td class='docblock-short'>
+                                <p>Matches a floating point number in base-10 with an optional exponent, returning a buffer.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.signed.html"
+                                  title='fn chomp::ascii::signed'>signed</a></td>
+                           <td class='docblock-short'>
+                                <p>Parses a number with an optional leading &#39;+&#39; or &#39;-&#39;.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.skip_whitespace.html"
+                                  title='fn chomp::ascii::skip_whitespace'>skip_whitespace</a></td>
+                           <td class='docblock-short'>
+                                <p>Skips over whitespace.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.string_ci.html"
+                                  title='fn chomp::ascii::string_ci'>string_ci</a></td>
+                           <td class='docblock-short'>
+                                <p>Matches the given slice against the parser in a case-insensitive manner, returning the matched
+slice upon success. Only respects ASCII characters for the case-insensitive comparison.</p>
+                           </td>
+                       </tr></table></section>
+    <section id='search' class="content hidden"></section>
+
+    <section class="footer"></section>
+
+    <aside id="help" class="hidden">
+        <div>
+            <h1 class="hidden">Help</h1>
+
+            <div class="shortcuts">
+                <h2>Keyboard Shortcuts</h2>
+
+                <dl>
+                    <dt>?</dt>
+                    <dd>Show this help dialog</dd>
+                    <dt>S</dt>
+                    <dd>Focus the search field</dd>
+                    <dt>&larrb;</dt>
+                    <dd>Move up in search results</dd>
+                    <dt>&rarrb;</dt>
+                    <dd>Move down in search results</dd>
+                    <dt>&#9166;</dt>
+                    <dd>Go to active search result</dd>
+                    <dt>+</dt>
+                    <dd>Collapse/expand all sections</dd>
+                </dl>
+            </div>
+
+            <div class="infos">
+                <h2>Search Tricks</h2>
+
+                <p>
+                    Prefix searches with a type followed by a colon (e.g.
+                    <code>fn:</code>) to restrict the search to a given type.
+                </p>
+
+                <p>
+                    Accepted types are: <code>fn</code>, <code>mod</code>,
+                    <code>struct</code>, <code>enum</code>,
+                    <code>trait</code>, <code>type</code>, <code>macro</code>,
+                    and <code>const</code>.
+                </p>
+
+                <p>
+                    Search functions by type signature (e.g.
+                    <code>vec -> usize</code> or <code>* -> vec</code>)
+                </p>
+            </div>
+        </div>
+    </aside>
+
+    
+
+    <script>
+        window.rootPath = "../../";
+        window.currentCrate = "chomp";
+    </script>
+    <script src="../../main.js"></script>
+    <script defer src="../../search-index.js"></script>
+</body>
+</html>

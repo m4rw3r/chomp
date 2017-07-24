@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="rustdoc">
+    <meta name="description" content="API documentation for the Rust `numbering` mod in crate `chomp`.">
+    <meta name="keywords" content="rust, rustlang, rust-lang, numbering">
+
+    <title>chomp::types::numbering - Rust</title>
+
+    <link rel="stylesheet" type="text/css" href="../../../normalize.css">
+    <link rel="stylesheet" type="text/css" href="../../../rustdoc.css">
+    <link rel="stylesheet" type="text/css" href="../../../main.css">
+    
+
+    
+    
+</head>
+<body class="rustdoc mod">
+    <!--[if lte IE 8]>
+    <div class="warning">
+        This old browser is unsupported and will most likely display funky
+        things.
+    </div>
+    <![endif]-->
+
+    
+
+    <nav class="sidebar">
+        
+        <p class='location'>Module numbering</p><div class="block items"><ul><li><a href="#structs">Structs</a></li><li><a href="#traits">Traits</a></li></ul></div><p class='location'><a href='../../index.html'>chomp</a>::<wbr><a href='../index.html'>types</a></p><script>window.sidebarCurrent = {name: 'numbering', ty: 'mod', relpath: '../'};</script><script defer src="../sidebar-items.js"></script>
+    </nav>
+
+    <nav class="sub">
+        <form class="search-form js-only">
+            <div class="search-container">
+                <input class="search-input" name="search"
+                       autocomplete="off"
+                       placeholder="Click or press ‘S’ to search, ‘?’ for more options…"
+                       type="search">
+            </div>
+        </form>
+    </nav>
+
+    <section id='main' class="content">
+<h1 class='fqn'><span class='in-band'>Module <a href='../../index.html'>chomp</a>::<wbr><a href='../index.html'>types</a>::<wbr><a class="mod" href=''>numbering</a></span><span class='out-of-band'><span id='render-detail'>
+                   <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
+                       [<span class='inner'>&#x2212;</span>]
+                   </a>
+               </span><a class='srclink' href='../../../src/chomp/types/numbering.rs.html#1-233' title='goto source code'>[src]</a></span></h1>
+<div class='docblock'><p>Module containing tools for working with position aware parsers.</p>
+
+<pre class="rust rust-example-rendered">
+<span class="kw">use</span> <span class="ident">chomp</span>::<span class="ident">types</span>::{<span class="ident">Input</span>, <span class="ident">ParseResult</span>};
+<span class="kw">use</span> <span class="ident">chomp</span>::<span class="ident">types</span>::<span class="ident">numbering</span>::{<span class="ident">InputPosition</span>, <span class="ident">LineNumber</span>, <span class="ident">Numbering</span>};
+<span class="kw">use</span> <span class="ident">chomp</span>::<span class="ident">combinators</span>::<span class="ident">many</span>;
+<span class="kw">use</span> <span class="ident">chomp</span>::<span class="ident">parsers</span>::{<span class="ident">Error</span>, <span class="ident">any</span>, <span class="ident">take_while1</span>, <span class="ident">string</span>};
+<span class="kw">use</span> <span class="ident">chomp</span>::<span class="ident">run_parser</span>;
+
+<span class="comment">// Let&#39;s count some lines</span>
+<span class="kw">let</span> <span class="ident">i</span> <span class="op">=</span> <span class="ident">InputPosition</span>::<span class="ident">new</span>(<span class="kw-2">&amp;</span><span class="string">b&quot;test a\ntest b\n\ntest c\n&quot;</span>[..], <span class="ident">LineNumber</span>::<span class="ident">new</span>());
+
+<span class="comment">// We could use a concrete type P too if we want to restrict to a</span>
+<span class="comment">// certain position-aware implementation</span>
+<span class="kw">fn</span> <span class="ident">parser</span><span class="op">&lt;</span><span class="ident">I</span>: <span class="ident">Input</span><span class="op">&lt;</span><span class="ident">Token</span><span class="op">=</span><span class="ident">u8</span><span class="op">&gt;</span>, <span class="ident">P</span>: <span class="ident">Numbering</span><span class="op">&lt;</span><span class="ident">Token</span><span class="op">=</span><span class="ident">u8</span><span class="op">&gt;&gt;</span>(<span class="ident">i</span>: <span class="ident">InputPosition</span><span class="op">&lt;</span><span class="ident">I</span>, <span class="ident">P</span><span class="op">&gt;</span>)
+  <span class="op">-&gt;</span> <span class="ident">ParseResult</span><span class="op">&lt;</span><span class="ident">InputPosition</span><span class="op">&lt;</span><span class="ident">I</span>, <span class="ident">P</span><span class="op">&gt;</span>, (<span class="ident">char</span>, <span class="ident">P</span>), <span class="ident">Error</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;&gt;</span> {
+    <span class="macro">parse</span><span class="macro">!</span>{<span class="ident">i</span>;
+                     <span class="ident">string</span>(<span class="string">b&quot;test&quot;</span>);
+                     <span class="ident">take_while1</span>(<span class="op">|</span><span class="ident">c</span><span class="op">|</span> <span class="ident">c</span> <span class="op">==</span> <span class="string">b&#39; &#39;</span> <span class="op">||</span> <span class="ident">c</span> <span class="op">==</span> <span class="string">b&#39;\t&#39;</span>);
+        <span class="kw">let</span> <span class="ident">t_name</span> <span class="op">=</span> <span class="ident">any</span>();
+        <span class="ident">i</span> <span class="op">-&gt;</span> {
+            <span class="comment">// Obtain current parser position</span>
+            <span class="kw">let</span> <span class="ident">p</span> <span class="op">=</span> <span class="ident">i</span>.<span class="ident">position</span>();
+
+            <span class="ident">i</span>.<span class="ident">ret</span>((<span class="ident">t_name</span> <span class="kw">as</span> <span class="ident">char</span>, <span class="ident">p</span>))
+            <span class="comment">// We skip the take while below, because we want to determine the line right</span>
+            <span class="comment">// after reading the t_name</span>
+        } <span class="op">&lt;</span><span class="op">*</span> <span class="ident">take_while1</span>(<span class="op">|</span><span class="ident">c</span><span class="op">|</span> <span class="ident">c</span> <span class="op">==</span> <span class="string">b&#39;\n&#39;</span>);
+    }
+}
+
+<span class="kw">let</span> <span class="ident">r</span> <span class="op">=</span> <span class="ident">run_parser</span>(<span class="ident">i</span>, <span class="op">|</span><span class="ident">i</span><span class="op">|</span> <span class="ident">many</span>(<span class="ident">i</span>, <span class="ident">parser</span>)).<span class="number">1</span>;
+
+<span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">r</span>, <span class="prelude-val">Ok</span>(<span class="macro">vec</span><span class="macro">!</span>[(<span class="string">&#39;a&#39;</span>, <span class="ident">LineNumber</span>(<span class="number">0</span>)),
+                      (<span class="string">&#39;b&#39;</span>, <span class="ident">LineNumber</span>(<span class="number">1</span>)),
+                      <span class="comment">// Note the two linebreaks in a row</span>
+                      (<span class="string">&#39;c&#39;</span>, <span class="ident">LineNumber</span>(<span class="number">3</span>))]));</pre>
+</div><h2 id='structs' class='section-header'><a href="#structs">Structs</a></h2>
+<table>
+                       <tr class=' module-item'>
+                           <td><a class="struct" href="struct.InputPosition.html"
+                                  title='struct chomp::types::numbering::InputPosition'>InputPosition</a></td>
+                           <td class='docblock-short'>
+                                <p>Wrapper around an <code>Input</code> implementation providing numbering support.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="struct" href="struct.LineNumber.html"
+                                  title='struct chomp::types::numbering::LineNumber'>LineNumber</a></td>
+                           <td class='docblock-short'>
+                                <p>Struct counting the number of newlines (<code>b&#39;\n&#39;</code>).</p>
+                           </td>
+                       </tr></table><h2 id='traits' class='section-header'><a href="#traits">Traits</a></h2>
+<table>
+                       <tr class=' module-item'>
+                           <td><a class="trait" href="trait.Numbering.html"
+                                  title='trait chomp::types::numbering::Numbering'>Numbering</a></td>
+                           <td class='docblock-short'>
+                                <p>Trait for managing some kind of numbering over the parsed data.</p>
+                           </td>
+                       </tr></table></section>
+    <section id='search' class="content hidden"></section>
+
+    <section class="footer"></section>
+
+    <aside id="help" class="hidden">
+        <div>
+            <h1 class="hidden">Help</h1>
+
+            <div class="shortcuts">
+                <h2>Keyboard Shortcuts</h2>
+
+                <dl>
+                    <dt>?</dt>
+                    <dd>Show this help dialog</dd>
+                    <dt>S</dt>
+                    <dd>Focus the search field</dd>
+                    <dt>&larrb;</dt>
+                    <dd>Move up in search results</dd>
+                    <dt>&rarrb;</dt>
+                    <dd>Move down in search results</dd>
+                    <dt>&#9166;</dt>
+                    <dd>Go to active search result</dd>
+                    <dt>+</dt>
+                    <dd>Collapse/expand all sections</dd>
+                </dl>
+            </div>
+
+            <div class="infos">
+                <h2>Search Tricks</h2>
+
+                <p>
+                    Prefix searches with a type followed by a colon (e.g.
+                    <code>fn:</code>) to restrict the search to a given type.
+                </p>
+
+                <p>
+                    Accepted types are: <code>fn</code>, <code>mod</code>,
+                    <code>struct</code>, <code>enum</code>,
+                    <code>trait</code>, <code>type</code>, <code>macro</code>,
+                    and <code>const</code>.
+                </p>
+
+                <p>
+                    Search functions by type signature (e.g.
+                    <code>vec -> usize</code> or <code>* -> vec</code>)
+                </p>
+            </div>
+        </div>
+    </aside>
+
+    
+
+    <script>
+        window.rootPath = "../../../";
+        window.currentCrate = "chomp";
+    </script>
+    <script src="../../../main.js"></script>
+    <script defer src="../../../search-index.js"></script>
+</body>
+</html>

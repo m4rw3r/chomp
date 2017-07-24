@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="rustdoc">
+    <meta name="description" content="API documentation for the Rust `bounded` mod in crate `chomp`.">
+    <meta name="keywords" content="rust, rustlang, rust-lang, bounded">
+
+    <title>chomp::combinators::bounded - Rust</title>
+
+    <link rel="stylesheet" type="text/css" href="../../../normalize.css">
+    <link rel="stylesheet" type="text/css" href="../../../rustdoc.css">
+    <link rel="stylesheet" type="text/css" href="../../../main.css">
+    
+
+    
+    
+</head>
+<body class="rustdoc mod">
+    <!--[if lte IE 8]>
+    <div class="warning">
+        This old browser is unsupported and will most likely display funky
+        things.
+    </div>
+    <![endif]-->
+
+    
+
+    <nav class="sidebar">
+        
+        <p class='location'>Module bounded</p><div class="block items"><ul><li><a href="#traits">Traits</a></li><li><a href="#functions">Functions</a></li></ul></div><p class='location'><a href='../../index.html'>chomp</a>::<wbr><a href='../index.html'>combinators</a></p><script>window.sidebarCurrent = {name: 'bounded', ty: 'mod', relpath: '../'};</script><script defer src="../sidebar-items.js"></script>
+    </nav>
+
+    <nav class="sub">
+        <form class="search-form js-only">
+            <div class="search-container">
+                <input class="search-input" name="search"
+                       autocomplete="off"
+                       placeholder="Click or press ‘S’ to search, ‘?’ for more options…"
+                       type="search">
+            </div>
+        </form>
+    </nav>
+
+    <section id='main' class="content">
+<h1 class='fqn'><span class='in-band'>Module <a href='../../index.html'>chomp</a>::<wbr><a href='../index.html'>combinators</a>::<wbr><a class="mod" href=''>bounded</a></span><span class='out-of-band'><span id='render-detail'>
+                   <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
+                       [<span class='inner'>&#x2212;</span>]
+                   </a>
+               </span><a class='srclink' href='../../../src/chomp/combinators/bounded.rs.html#1-1110' title='goto source code'>[src]</a></span></h1>
+<div class='docblock'><p>Bounded versions of combinators.</p>
+
+<p>This module provides bounded versions of <code>many</code>, <code>many_till</code> and <code>skip_many</code>.</p>
+
+<p>The core range types are used to describe a half-open range of successive applications of a
+parser. <code>usize</code> is used to specify an exact number of iterations:</p>
+
+<pre class="rust rust-example-rendered">
+<span class="kw">use</span> <span class="ident">chomp</span>::<span class="ident">combinators</span>::<span class="ident">bounded</span>::<span class="ident">many</span>;
+<span class="kw">use</span> <span class="ident">chomp</span>::<span class="ident">parse_only</span>;
+<span class="kw">use</span> <span class="ident">chomp</span>::<span class="ident">parsers</span>::<span class="ident">any</span>;
+
+<span class="comment">// Read any character 2 or 3 times</span>
+<span class="kw">let</span> <span class="ident">r</span>: <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span>_<span class="op">&gt;</span>, _<span class="op">&gt;</span> <span class="op">=</span> <span class="ident">parse_only</span>(<span class="op">|</span><span class="ident">i</span><span class="op">|</span> <span class="ident">many</span>(<span class="ident">i</span>, <span class="number">2</span>..<span class="number">4</span>, <span class="ident">any</span>), <span class="string">b&quot;abcd&quot;</span>);
+
+<span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">r</span>, <span class="prelude-val">Ok</span>(<span class="macro">vec</span><span class="macro">!</span>[<span class="string">b&#39;a&#39;</span>, <span class="string">b&#39;b&#39;</span>, <span class="string">b&#39;c&#39;</span>]));</pre>
+</div><h2 id='traits' class='section-header'><a href="#traits">Traits</a></h2>
+<table>
+                       <tr class=' module-item'>
+                           <td><a class="trait" href="trait.BoundedRange.html"
+                                  title='trait chomp::combinators::bounded::BoundedRange'>BoundedRange</a></td>
+                           <td class='docblock-short'>
+                                <p>Trait for applying a parser multiple times based on a range.</p>
+                           </td>
+                       </tr></table><h2 id='functions' class='section-header'><a href="#functions">Functions</a></h2>
+<table>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.many.html"
+                                  title='fn chomp::combinators::bounded::many'>many</a></td>
+                           <td class='docblock-short'>
+                                <p>Applies the parser <code>F</code> multiple times until it fails or the maximum value of the range has
+been reached, collecting the successful values into a <code>T: FromIterator</code>.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.many_till.html"
+                                  title='fn chomp::combinators::bounded::many_till'>many_till</a></td>
+                           <td class='docblock-short'>
+                                <p>Applies the parser <code>P</code> multiple times until the parser <code>F</code> succeeds and returns a value
+populated by the values yielded by <code>P</code>. Consumes the matched part of <code>F</code>. If <code>F</code> does not
+succeed within the given range <code>R</code> this combinator will propagate any failure from <code>P</code>.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.sep_by.html"
+                                  title='fn chomp::combinators::bounded::sep_by'>sep_by</a></td>
+                           <td class='docblock-short'>
+                                <p>Applies the parser <code>p</code> multiple times, separated by the parser <code>sep</code> and returns a value
+populated with the values yielded by <code>p</code>. If the number of items yielded by <code>p</code> does not fall
+into the range <code>r</code> and the separator or parser registers error or incomplete failure is
+propagated.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.skip_many.html"
+                                  title='fn chomp::combinators::bounded::skip_many'>skip_many</a></td>
+                           <td class='docblock-short'>
+                                <p>Applies the parser <code>F</code> multiple times until it fails or the maximum value of the range has
+been reached, throwing away any produced value.</p>
+                           </td>
+                       </tr></table></section>
+    <section id='search' class="content hidden"></section>
+
+    <section class="footer"></section>
+
+    <aside id="help" class="hidden">
+        <div>
+            <h1 class="hidden">Help</h1>
+
+            <div class="shortcuts">
+                <h2>Keyboard Shortcuts</h2>
+
+                <dl>
+                    <dt>?</dt>
+                    <dd>Show this help dialog</dd>
+                    <dt>S</dt>
+                    <dd>Focus the search field</dd>
+                    <dt>&larrb;</dt>
+                    <dd>Move up in search results</dd>
+                    <dt>&rarrb;</dt>
+                    <dd>Move down in search results</dd>
+                    <dt>&#9166;</dt>
+                    <dd>Go to active search result</dd>
+                    <dt>+</dt>
+                    <dd>Collapse/expand all sections</dd>
+                </dl>
+            </div>
+
+            <div class="infos">
+                <h2>Search Tricks</h2>
+
+                <p>
+                    Prefix searches with a type followed by a colon (e.g.
+                    <code>fn:</code>) to restrict the search to a given type.
+                </p>
+
+                <p>
+                    Accepted types are: <code>fn</code>, <code>mod</code>,
+                    <code>struct</code>, <code>enum</code>,
+                    <code>trait</code>, <code>type</code>, <code>macro</code>,
+                    and <code>const</code>.
+                </p>
+
+                <p>
+                    Search functions by type signature (e.g.
+                    <code>vec -> usize</code> or <code>* -> vec</code>)
+                </p>
+            </div>
+        </div>
+    </aside>
+
+    
+
+    <script>
+        window.rootPath = "../../../";
+        window.currentCrate = "chomp";
+    </script>
+    <script src="../../../main.js"></script>
+    <script defer src="../../../search-index.js"></script>
+</body>
+</html>

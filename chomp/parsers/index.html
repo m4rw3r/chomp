@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="rustdoc">
+    <meta name="description" content="API documentation for the Rust `parsers` mod in crate `chomp`.">
+    <meta name="keywords" content="rust, rustlang, rust-lang, parsers">
+
+    <title>chomp::parsers - Rust</title>
+
+    <link rel="stylesheet" type="text/css" href="../../normalize.css">
+    <link rel="stylesheet" type="text/css" href="../../rustdoc.css">
+    <link rel="stylesheet" type="text/css" href="../../main.css">
+    
+
+    
+    
+</head>
+<body class="rustdoc mod">
+    <!--[if lte IE 8]>
+    <div class="warning">
+        This old browser is unsupported and will most likely display funky
+        things.
+    </div>
+    <![endif]-->
+
+    
+
+    <nav class="sidebar">
+        
+        <p class='location'>Module parsers</p><div class="block items"><ul><li><a href="#structs">Structs</a></li><li><a href="#functions">Functions</a></li><li><a href="#types">Type Definitions</a></li></ul></div><p class='location'><a href='../index.html'>chomp</a></p><script>window.sidebarCurrent = {name: 'parsers', ty: 'mod', relpath: '../'};</script><script defer src="../sidebar-items.js"></script>
+    </nav>
+
+    <nav class="sub">
+        <form class="search-form js-only">
+            <div class="search-container">
+                <input class="search-input" name="search"
+                       autocomplete="off"
+                       placeholder="Click or press ‘S’ to search, ‘?’ for more options…"
+                       type="search">
+            </div>
+        </form>
+    </nav>
+
+    <section id='main' class="content">
+<h1 class='fqn'><span class='in-band'>Module <a href='../index.html'>chomp</a>::<wbr><a class="mod" href=''>parsers</a></span><span class='out-of-band'><span id='render-detail'>
+                   <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
+                       [<span class='inner'>&#x2212;</span>]
+                   </a>
+               </span><a class='srclink' href='../../src/chomp/parsers.rs.html#1-742' title='goto source code'>[src]</a></span></h1>
+<div class='docblock'><p>Basic parsers.</p>
+</div><h2 id='structs' class='section-header'><a href="#structs">Structs</a></h2>
+<table>
+                       <tr class=' module-item'>
+                           <td><a class="struct" href="struct.Error.html"
+                                  title='struct chomp::parsers::Error'>Error</a></td>
+                           <td class='docblock-short'>
+                                <p>Common error for the basic Chomp parsers.</p>
+                           </td>
+                       </tr></table><h2 id='functions' class='section-header'><a href="#functions">Functions</a></h2>
+<table>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.any.html"
+                                  title='fn chomp::parsers::any'>any</a></td>
+                           <td class='docblock-short'>
+                                <p>Matches any item, returning it if present.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.eof.html"
+                                  title='fn chomp::parsers::eof'>eof</a></td>
+                           <td class='docblock-short'>
+                                <p>Matches the end of the input.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.not_token.html"
+                                  title='fn chomp::parsers::not_token'>not_token</a></td>
+                           <td class='docblock-short'>
+                                <p>Matches a single token as long as it is not equal to <code>t</code>, returning the match on success.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.peek.html"
+                                  title='fn chomp::parsers::peek'>peek</a></td>
+                           <td class='docblock-short'>
+                                <p>Matches any item but does not consume it, on success it gives <code>Some</code> but if no input remains
+<code>None</code> is produced.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.peek_next.html"
+                                  title='fn chomp::parsers::peek_next'>peek_next</a></td>
+                           <td class='docblock-short'>
+                                <p>Matches any item but does not consume it.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.run_scanner.html"
+                                  title='fn chomp::parsers::run_scanner'>run_scanner</a></td>
+                           <td class='docblock-short'>
+                                <p>Like <code>scan</code> but generalized to return the final state of the scanner.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.satisfy.html"
+                                  title='fn chomp::parsers::satisfy'>satisfy</a></td>
+                           <td class='docblock-short'>
+                                <p>Matches an item using <code>f</code>, the item is returned if <code>f</code> yields true, otherwise this parser
+fails.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.satisfy_with.html"
+                                  title='fn chomp::parsers::satisfy_with'>satisfy_with</a></td>
+                           <td class='docblock-short'>
+                                <p>Reads a single token, applies the transformation <code>F</code> and then succeeds with the transformed
+valeue if the predicate <code>P</code> yields true on this transformed value.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.scan.html"
+                                  title='fn chomp::parsers::scan'>scan</a></td>
+                           <td class='docblock-short'>
+                                <p>The predicate consumes and transforms a state argument, this parser will match everything until
+the predicate returns <code>None</code>.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.skip_while.html"
+                                  title='fn chomp::parsers::skip_while'>skip_while</a></td>
+                           <td class='docblock-short'>
+                                <p>Skips over tokens in the input until <code>f</code> returns false.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.skip_while1.html"
+                                  title='fn chomp::parsers::skip_while1'>skip_while1</a></td>
+                           <td class='docblock-short'>
+                                <p>Skips over tokens in the input until <code>f</code> returns false, skips at least one token and fails if
+<code>f</code> does not succeed on it.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.string.html"
+                                  title='fn chomp::parsers::string'>string</a></td>
+                           <td class='docblock-short'>
+                                <p>Matches the given slice against the parser, returning the matched slice upon success.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.take.html"
+                                  title='fn chomp::parsers::take'>take</a></td>
+                           <td class='docblock-short'>
+                                <p>Matches <code>num</code> items no matter what they are, returning a slice of the matched items.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.take_remainder.html"
+                                  title='fn chomp::parsers::take_remainder'>take_remainder</a></td>
+                           <td class='docblock-short'>
+                                <p>Matches the remainder of the buffer and returns it, always succeeds.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.take_till.html"
+                                  title='fn chomp::parsers::take_till'>take_till</a></td>
+                           <td class='docblock-short'>
+                                <p>Matches all items until <code>f</code> returns true, all items to that point will be returned as a slice
+upon success.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.take_while.html"
+                                  title='fn chomp::parsers::take_while'>take_while</a></td>
+                           <td class='docblock-short'>
+                                <p>Matches all items while <code>f</code> returns false, returns a slice of all the matched items.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.take_while1.html"
+                                  title='fn chomp::parsers::take_while1'>take_while1</a></td>
+                           <td class='docblock-short'>
+                                <p>Matches all items while <code>f</code> returns true, if at least one item matched this parser succeeds
+and returns a slice of all the matched items.</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class="fn" href="fn.token.html"
+                                  title='fn chomp::parsers::token'>token</a></td>
+                           <td class='docblock-short'>
+                                <p>Matches a single token, returning the match on success.</p>
+                           </td>
+                       </tr></table><h2 id='types' class='section-header'><a href="#types">Type Definitions</a></h2>
+<table>
+                       <tr class=' module-item'>
+                           <td><a class="type" href="type.SimpleResult.html"
+                                  title='type chomp::parsers::SimpleResult'>SimpleResult</a></td>
+                           <td class='docblock-short'>
+                                <p>Result returned from the basic parsers.</p>
+                           </td>
+                       </tr></table></section>
+    <section id='search' class="content hidden"></section>
+
+    <section class="footer"></section>
+
+    <aside id="help" class="hidden">
+        <div>
+            <h1 class="hidden">Help</h1>
+
+            <div class="shortcuts">
+                <h2>Keyboard Shortcuts</h2>
+
+                <dl>
+                    <dt>?</dt>
+                    <dd>Show this help dialog</dd>
+                    <dt>S</dt>
+                    <dd>Focus the search field</dd>
+                    <dt>&larrb;</dt>
+                    <dd>Move up in search results</dd>
+                    <dt>&rarrb;</dt>
+                    <dd>Move down in search results</dd>
+                    <dt>&#9166;</dt>
+                    <dd>Go to active search result</dd>
+                    <dt>+</dt>
+                    <dd>Collapse/expand all sections</dd>
+                </dl>
+            </div>
+
+            <div class="infos">
+                <h2>Search Tricks</h2>
+
+                <p>
+                    Prefix searches with a type followed by a colon (e.g.
+                    <code>fn:</code>) to restrict the search to a given type.
+                </p>
+
+                <p>
+                    Accepted types are: <code>fn</code>, <code>mod</code>,
+                    <code>struct</code>, <code>enum</code>,
+                    <code>trait</code>, <code>type</code>, <code>macro</code>,
+                    and <code>const</code>.
+                </p>
+
+                <p>
+                    Search functions by type signature (e.g.
+                    <code>vec -> usize</code> or <code>* -> vec</code>)
+                </p>
+            </div>
+        </div>
+    </aside>
+
+    
+
+    <script>
+        window.rootPath = "../../";
+        window.currentCrate = "chomp";
+    </script>
+    <script src="../../main.js"></script>
+    <script defer src="../../search-index.js"></script>
+</body>
+</html>

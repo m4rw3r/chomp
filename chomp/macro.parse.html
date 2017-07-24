@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="rustdoc">
+    <meta name="description" content="API documentation for the Rust `parse` macro in crate `chomp`.">
+    <meta name="keywords" content="rust, rustlang, rust-lang, parse">
+
+    <title>chomp::parse - Rust</title>
+
+    <link rel="stylesheet" type="text/css" href="../normalize.css">
+    <link rel="stylesheet" type="text/css" href="../rustdoc.css">
+    <link rel="stylesheet" type="text/css" href="../main.css">
+    
+
+    
+    
+</head>
+<body class="rustdoc macro">
+    <!--[if lte IE 8]>
+    <div class="warning">
+        This old browser is unsupported and will most likely display funky
+        things.
+    </div>
+    <![endif]-->
+
+    
+
+    <nav class="sidebar">
+        
+        <p class='location'><a href='index.html'>chomp</a></p><script>window.sidebarCurrent = {name: 'parse', ty: 'macro', relpath: ''};</script><script defer src="sidebar-items.js"></script>
+    </nav>
+
+    <nav class="sub">
+        <form class="search-form js-only">
+            <div class="search-container">
+                <input class="search-input" name="search"
+                       autocomplete="off"
+                       placeholder="Click or press ‘S’ to search, ‘?’ for more options…"
+                       type="search">
+            </div>
+        </form>
+    </nav>
+
+    <section id='main' class="content">
+<h1 class='fqn'><span class='in-band'>Macro <a href='index.html'>chomp</a>::<wbr><a class="macro" href=''>parse</a></span><span class='out-of-band'><span id='render-detail'>
+                   <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
+                       [<span class='inner'>&#x2212;</span>]
+                   </a>
+               </span><a class='srclink' href='../src/chomp/macros.rs.html#441-443' title='goto source code'>[src]</a></span></h1>
+<pre class="rust macro">
+<span class="macro">macro_rules</span><span class="macro">!</span> <span class="ident">parse</span> {
+    ( $(<span class="macro-nonterminal">$</span><span class="macro-nonterminal">t</span>:<span class="ident">tt</span>)<span class="op">*</span> ) <span class="op">=&gt;</span> { ... };
+}</pre>
+<div class='docblock'><p>Macro emulating <code>do</code>-notation for the parser monad, automatically threading the linear type.</p>
+
+<pre class="rust rust-example-rendered">
+<span class="macro">parse</span><span class="macro">!</span>{<span class="ident">input</span>;
+                <span class="ident">parser</span>(<span class="string">&quot;parameter&quot;</span>);
+    <span class="kw">let</span> <span class="ident">value</span> <span class="op">=</span> <span class="ident">other_parser</span>();
+
+    <span class="ident">ret</span> <span class="ident">do_something</span>(<span class="ident">value</span>)
+}
+<span class="comment">// is equivalent to:</span>
+<span class="ident">parser</span>(<span class="ident">input</span>, <span class="string">&quot;parameter&quot;</span>).<span class="ident">bind</span>(<span class="op">|</span><span class="ident">i</span>, _<span class="op">|</span>
+    <span class="ident">other_parser</span>(<span class="ident">i</span>).<span class="ident">bind</span>(<span class="op">|</span><span class="ident">i</span>, <span class="ident">value</span><span class="op">|</span>
+        <span class="ident">i</span>.<span class="ident">ret</span>(<span class="ident">do_something</span>(<span class="ident">value</span>))))</pre>
+
+<h1 id='examples' class='section-header'><a href='#examples'>Examples</a></h1>
+<p>Parsing into a struct using the basic provided parsers:</p>
+
+<pre class="rust rust-example-rendered">
+<span class="kw">use</span> <span class="ident">chomp</span>::<span class="ident">prelude</span>::{<span class="ident">Buffer</span>, <span class="ident">Error</span>, <span class="ident">Input</span>, <span class="ident">ParseResult</span>, <span class="ident">parse_only</span>, <span class="ident">take_while1</span>, <span class="ident">token</span>};
+
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Eq</span>, <span class="ident">PartialEq</span>)]</span>
+<span class="kw">struct</span> <span class="ident">Name</span><span class="op">&lt;</span><span class="ident">B</span>: <span class="ident">Buffer</span><span class="op">&gt;</span> {
+    <span class="ident">first</span>: <span class="ident">B</span>,
+    <span class="ident">last</span>:  <span class="ident">B</span>,
+}
+
+<span class="kw">fn</span> <span class="ident">parser</span><span class="op">&lt;</span><span class="ident">I</span>: <span class="ident">Input</span><span class="op">&lt;</span><span class="ident">Token</span><span class="op">=</span><span class="ident">u8</span><span class="op">&gt;&gt;</span>(<span class="ident">i</span>: <span class="ident">I</span>) <span class="op">-&gt;</span> <span class="ident">ParseResult</span><span class="op">&lt;</span><span class="ident">I</span>, <span class="ident">Name</span><span class="op">&lt;</span><span class="ident">I</span>::<span class="ident">Buffer</span><span class="op">&gt;</span>, <span class="ident">Error</span><span class="op">&lt;</span><span class="ident">I</span>::<span class="ident">Token</span><span class="op">&gt;&gt;</span> {
+    <span class="macro">parse</span><span class="macro">!</span>{<span class="ident">i</span>;
+        <span class="kw">let</span> <span class="ident">first</span> <span class="op">=</span> <span class="ident">take_while1</span>(<span class="op">|</span><span class="ident">c</span><span class="op">|</span> <span class="ident">c</span> <span class="op">!=</span> <span class="string">b&#39; &#39;</span>);
+                    <span class="ident">token</span>(<span class="string">b&#39; &#39;</span>);
+        <span class="kw">let</span> <span class="ident">last</span>  <span class="op">=</span> <span class="ident">take_while1</span>(<span class="op">|</span><span class="ident">c</span><span class="op">|</span> <span class="ident">c</span> <span class="op">!=</span> <span class="string">b&#39;\n&#39;</span>);
+
+        <span class="ident">ret</span> @ _, <span class="ident">Error</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>: <span class="ident">Name</span>{
+            <span class="ident">first</span>: <span class="ident">first</span>,
+            <span class="ident">last</span>:  <span class="ident">last</span>,
+        }
+    }
+}
+
+<span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">parse_only</span>(<span class="ident">parser</span>, <span class="string">&quot;Martin Wernstål\n&quot;</span>.<span class="ident">as_bytes</span>()), <span class="prelude-val">Ok</span>(<span class="ident">Name</span>{
+    <span class="ident">first</span>: <span class="kw-2">&amp;</span><span class="string">b&quot;Martin&quot;</span>[..],
+    <span class="ident">last</span>: <span class="string">&quot;Wernstål&quot;</span>.<span class="ident">as_bytes</span>()
+}));</pre>
+
+<p>Parsing an IP-address with a string-prefix and terminated with semicolon using the <code>&lt;*</code> (skip)
+operator to make it more succint:</p>
+
+<pre class="rust rust-example-rendered">
+<span class="kw">use</span> <span class="ident">chomp</span>::<span class="ident">prelude</span>::{<span class="ident">U8Input</span>, <span class="ident">SimpleResult</span>, <span class="ident">parse_only</span>, <span class="ident">string</span>, <span class="ident">token</span>};
+<span class="kw">use</span> <span class="ident">chomp</span>::<span class="ident">ascii</span>::<span class="ident">decimal</span>;
+
+<span class="kw">fn</span> <span class="ident">parse_ip</span><span class="op">&lt;</span><span class="ident">I</span>: <span class="ident">U8Input</span><span class="op">&gt;</span>(<span class="ident">i</span>: <span class="ident">I</span>) <span class="op">-&gt;</span> <span class="ident">SimpleResult</span><span class="op">&lt;</span><span class="ident">I</span>, (<span class="ident">u8</span>, <span class="ident">u8</span>, <span class="ident">u8</span>, <span class="ident">u8</span>)<span class="op">&gt;</span> {
+    <span class="macro">parse</span><span class="macro">!</span>{<span class="ident">i</span>;
+                <span class="ident">string</span>(<span class="string">b&quot;ip:&quot;</span>);
+        <span class="kw">let</span> <span class="ident">a</span> <span class="op">=</span> <span class="ident">decimal</span>() <span class="op">&lt;</span><span class="op">*</span> <span class="ident">token</span>(<span class="string">b&#39;.&#39;</span>);
+        <span class="kw">let</span> <span class="ident">b</span> <span class="op">=</span> <span class="ident">decimal</span>() <span class="op">&lt;</span><span class="op">*</span> <span class="ident">token</span>(<span class="string">b&#39;.&#39;</span>);
+        <span class="kw">let</span> <span class="ident">c</span> <span class="op">=</span> <span class="ident">decimal</span>() <span class="op">&lt;</span><span class="op">*</span> <span class="ident">token</span>(<span class="string">b&#39;.&#39;</span>);
+        <span class="kw">let</span> <span class="ident">d</span> <span class="op">=</span> <span class="ident">decimal</span>();
+                <span class="ident">token</span>(<span class="string">b&#39;;&#39;</span>);
+        <span class="ident">ret</span> (<span class="ident">a</span>, <span class="ident">b</span>, <span class="ident">c</span>, <span class="ident">d</span>)
+    }
+}
+
+<span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">parse_only</span>(<span class="ident">parse_ip</span>, <span class="string">b&quot;ip:192.168.0.1;&quot;</span>), <span class="prelude-val">Ok</span>((<span class="number">192</span>, <span class="number">168</span>, <span class="number">0</span>, <span class="number">1</span>)));</pre>
+
+<p>Parsing a log-level using the <code>&lt;|&gt;</code> alternation (or) operator:</p>
+
+<pre class="rust rust-example-rendered">
+<span class="kw">use</span> <span class="ident">chomp</span>::<span class="ident">prelude</span>::{<span class="ident">parse_only</span>, <span class="ident">string</span>};
+
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Eq</span>, <span class="ident">PartialEq</span>)]</span>
+<span class="kw">enum</span> <span class="ident">Log</span> {
+    <span class="ident">Error</span>,
+    <span class="ident">Warning</span>,
+    <span class="ident">Info</span>,
+    <span class="ident">Debug</span>,
+};
+
+<span class="kw">let</span> <span class="ident">level</span>        <span class="op">=</span> <span class="op">|</span><span class="ident">i</span>, <span class="ident">b</span>, <span class="ident">r</span><span class="op">|</span> <span class="ident">string</span>(<span class="ident">i</span>, <span class="ident">b</span>).<span class="ident">map</span>(<span class="op">|</span>_<span class="op">|</span> <span class="ident">r</span>);
+<span class="kw">let</span> <span class="ident">log_severity</span> <span class="op">=</span> <span class="macro">parser</span><span class="macro">!</span>{
+    <span class="ident">level</span>(<span class="string">b&quot;ERROR&quot;</span>, <span class="ident">Log</span>::<span class="ident">Error</span>)   <span class="op">&lt;</span><span class="op">|</span><span class="op">&gt;</span>
+    <span class="ident">level</span>(<span class="string">b&quot;WARN&quot;</span>,  <span class="ident">Log</span>::<span class="ident">Warning</span>) <span class="op">&lt;</span><span class="op">|</span><span class="op">&gt;</span>
+    <span class="ident">level</span>(<span class="string">b&quot;INFO&quot;</span>,  <span class="ident">Log</span>::<span class="ident">Info</span>)    <span class="op">&lt;</span><span class="op">|</span><span class="op">&gt;</span>
+    <span class="ident">level</span>(<span class="string">b&quot;DEBUG&quot;</span>, <span class="ident">Log</span>::<span class="ident">Debug</span>)
+};
+
+<span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">parse_only</span>(<span class="ident">log_severity</span>, <span class="string">b&quot;INFO&quot;</span>), <span class="prelude-val">Ok</span>(<span class="ident">Log</span>::<span class="ident">Info</span>));</pre>
+
+<h1 id='grammar' class='section-header'><a href='#grammar'>Grammar</a></h1>
+<p>EBNF using <code>$ty</code>, <code>$expr</code>, <code>$ident</code> and <code>$pat</code> for the equivalent Rust macro patterns.</p>
+
+<pre><code class="language-text">Block     ::= Statement* Expr
+Statement ::= Bind &#39;;&#39;
+            | Expr &#39;;&#39;
+Bind      ::= &#39;let&#39; Var &#39;=&#39; Expr
+Var       ::= $pat
+            | $ident &#39;:&#39; $ty
+
+/* Expr is split this way to allow for operator precedence */
+Expr      ::= ExprAlt
+            | ExprAlt   &quot;&gt;&gt;&quot; Expr
+ExprAlt   ::= ExprSkip
+            | ExprSkip &quot;&lt;|&gt;&quot; ExprAlt
+ExprSkip  ::= Term
+            | Term     &quot;&lt;*&quot; ExprSkip
+
+Term      ::= Ret
+            | Err
+            | &#39;(&#39; Expr &#39;)&#39;
+            | Inline
+            | Named
+
+Ret       ::= &quot;ret&quot; Typed
+            | &quot;ret&quot; $expr
+Err       ::= &quot;err&quot; Typed
+            | &quot;err&quot; $expr
+Typed     ::= &#39;@&#39; $ty &#39;,&#39; $ty &#39;:&#39; $expr
+Inline    ::= $ident &quot;-&gt;&quot; $expr
+Named     ::= $ident &#39;(&#39; ($expr &#39;,&#39;)* (&#39;,&#39;)* &#39;)&#39;
+</code></pre>
+
+<h2 id='statement' class='section-header'><a href='#statement'>Statement</a></h2>
+<p>A statement is a line ending in a semicolon. This must be followed by either another statement
+or by an expression which ends the block.</p>
+
+<pre class="rust rust-example-rendered">
+<span class="macro">parse</span><span class="macro">!</span>{<span class="ident">i</span>;
+    <span class="ident">token</span>(<span class="string">b&#39;:&#39;</span>);
+    <span class="kw">let</span> <span class="ident">n</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="ident">decimal</span>();
+    <span class="ident">ret</span> <span class="ident">n</span> <span class="op">*</span> <span class="number">2</span>
+}</pre>
+
+<h3 id='bind' class='section-header'><a href='#bind'>Bind</a></h3>
+<p>A bind statement uses a <code>let</code>-binding to bind a value of a parser-expression within the parsing
+context. The expression to the right of the equal-sign will be evaluated and if the parser is
+still in a success state the value will be bound to the pattern following <code>let</code>.</p>
+
+<p>The patter can either just be an identifier but it can also be any irrefutable match-pattern,
+types can also be declared with <code>identifier: type</code> when necessary (eg. declare integer type
+used with the <code>decimal</code> parser).</p>
+
+<h3 id='action' class='section-header'><a href='#action'>Action</a></h3>
+<p>An action is any parser-expression, ended with a semicolon. This will be executed and its
+result will be discarded before proceeding to the next statement or the ending expression.
+Any error will exit early and will be propagated.</p>
+
+<h2 id='expression' class='section-header'><a href='#expression'>Expression</a></h2>
+<p>A parser expression can either be the only part of a <code>parse!</code> macro (eg. for alternating as
+seen above) or it can be a part of a bind or action statement or it is the final result of a
+parse-block.</p>
+
+<h3 id='named' class='section-header'><a href='#named'>Named</a></h3>
+<p>A named action is like a function call, but will be expanded to include the parsing context
+(<code>Input</code>) as the first parameter. The syntax is currently limited to a rust identifier followed
+by a parameter list within parentheses. The parentheses are mandatory.</p>
+
+<pre class="rust rust-example-rendered">
+<span class="kw">fn</span> <span class="ident">do_it</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">I</span>: <span class="ident">U8Input</span><span class="op">&gt;</span>(<span class="ident">i</span>: <span class="ident">I</span>, <span class="ident">s</span>: <span class="kw-2">&amp;</span><span class="lifetime">&#39;a</span> <span class="ident">str</span>) <span class="op">-&gt;</span> <span class="ident">SimpleResult</span><span class="op">&lt;</span><span class="ident">I</span>, <span class="kw-2">&amp;</span><span class="lifetime">&#39;a</span> <span class="ident">str</span><span class="op">&gt;</span> { <span class="ident">i</span>.<span class="ident">ret</span>(<span class="ident">s</span>) }
+
+<span class="macro">parse</span><span class="macro">!</span>{<span class="ident">i</span>;
+    <span class="ident">do_it</span>(<span class="string">&quot;second parameter&quot;</span>)
+}</pre>
+
+<h3 id='ret-and-err' class='section-header'><a href='#ret-and-err'>Ret and Err</a></h3>
+<p>Many times you want to move a value into the parser monad, eg. to return a result or report an
+error. The <code>ret</code> and <code>err</code> keywords provide this functionality inside of <code>parse!</code>-expressions.</p>
+
+<pre class="rust rust-example-rendered">
+<span class="kw">let</span> <span class="ident">r</span>: <span class="prelude-ty">Result</span><span class="op">&lt;</span>_, (_, ())<span class="op">&gt;</span> <span class="op">=</span> <span class="ident">parse_only</span>(
+    <span class="macro">parser</span><span class="macro">!</span>{ <span class="ident">ret</span> <span class="string">&quot;some success data&quot;</span> },
+    <span class="string">b&quot;input data&quot;</span>
+);
+
+<span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">r</span>, <span class="prelude-val">Ok</span>(<span class="string">&quot;some success data&quot;</span>));</pre>
+
+<p>In the example above the <code>Result&lt;_, (_, ())&gt;</code> type-annotation is required since <code>ret</code>
+leaves the error type <code>E</code> free which means that the <code>parser!</code> expression above cannot infer the
+error type without the annotation. <code>ret</code> and <code>end</code> both provide a mechanism to supply this
+information inline:</p>
+
+<pre class="rust rust-example-rendered">
+<span class="kw">let</span> <span class="ident">r</span> <span class="op">=</span> <span class="ident">parse_only</span>(<span class="macro">parser</span><span class="macro">!</span>{ <span class="ident">err</span> @ <span class="ident">u32</span>, _: <span class="string">&quot;some error data&quot;</span> }, <span class="string">b&quot;input data&quot;</span>);
+
+<span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">r</span>, <span class="prelude-val">Err</span>((<span class="kw-2">&amp;</span><span class="string">b&quot;input data&quot;</span>[..], <span class="string">&quot;some error data&quot;</span>)));</pre>
+
+<p>Note that we only declare the success type (<code>u32</code> above) and leave out the type of the error
+(by using <code>_</code>) since that can be uniquely inferred.</p>
+
+<h3 id='inline' class='section-header'><a href='#inline'>Inline</a></h3>
+<p>An inline expression is essentially a closure where the parser state (<code>Input</code> type) is exposed.
+This is useful for doing eg. inline <code>match</code> statements or to delegate to another parser which
+requires some plain Rust logic:</p>
+
+<pre class="rust rust-example-rendered">
+<span class="kw">fn</span> <span class="ident">other_parser</span><span class="op">&lt;</span><span class="ident">I</span>: <span class="ident">Input</span><span class="op">&gt;</span>(<span class="ident">i</span>: <span class="ident">I</span>) <span class="op">-&gt;</span> <span class="ident">ParseResult</span><span class="op">&lt;</span><span class="ident">I</span>, <span class="kw-2">&amp;</span><span class="lifetime">&#39;static</span> <span class="ident">str</span>, <span class="kw-2">&amp;</span><span class="lifetime">&#39;static</span> <span class="ident">str</span><span class="op">&gt;</span> {
+    <span class="ident">i</span>.<span class="ident">ret</span>(<span class="string">&quot;Success!&quot;</span>)
+}
+
+<span class="kw">let</span> <span class="ident">condition</span> <span class="op">=</span> <span class="bool-val">true</span>;
+
+<span class="kw">let</span> <span class="ident">p</span> <span class="op">=</span> <span class="macro">parser</span><span class="macro">!</span>{
+    <span class="ident">state</span> <span class="op">-&gt;</span> <span class="kw">match</span> <span class="ident">condition</span> {
+        <span class="bool-val">true</span>  <span class="op">=&gt;</span> <span class="ident">other_parser</span>(<span class="ident">state</span>),
+        <span class="bool-val">false</span> <span class="op">=&gt;</span> <span class="ident">Input</span>::<span class="ident">err</span>(<span class="ident">state</span>, <span class="string">&quot;failure&quot;</span>),
+    }
+};
+
+<span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">parse_only</span>(<span class="ident">p</span>, <span class="string">b&quot;&quot;</span>), <span class="prelude-val">Ok</span>(<span class="string">&quot;Success!&quot;</span>));</pre>
+
+<h3 id='operators' class='section-header'><a href='#operators'>Operators</a></h3>
+<p>Expressions also supports using operators in between sub-expressions to make common actions
+more succint. These are infix operators with right associativity (ie. they are placed
+between expression terms and are grouped towards the right). The result of the expression as a
+whole will be deiced by the operator.</p>
+
+<p>Ordered after operator precedence:</p>
+
+<ol>
+<li><p><code>&lt;*</code>, skip</p>
+
+<p>Evaluates the parser to the left first and on success evaluates the parser on the right,
+skipping its result.</p>
+
+<pre class="rust rust-example-rendered">
+<span class="kw">let</span> <span class="ident">p</span> <span class="op">=</span> <span class="macro">parser</span><span class="macro">!</span>{ <span class="ident">decimal</span>() <span class="op">&lt;</span><span class="op">*</span> <span class="ident">token</span>(<span class="string">b&#39;;&#39;</span>) };
+
+<span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">parse_only</span>(<span class="ident">p</span>, <span class="string">b&quot;123;&quot;</span>), <span class="prelude-val">Ok</span>(<span class="number">123u32</span>));</pre></li>
+<li><p><code>&lt;|&gt;</code>, or</p>
+
+<p>Attempts to evaluate the parser on the left and if that fails it will backtrack and retry
+with the parser on the right. Is equivalent to stacking <code>or</code> combinators.</p>
+
+<pre class="rust rust-example-rendered">
+<span class="kw">let</span> <span class="ident">p</span> <span class="op">=</span> <span class="macro">parser</span><span class="macro">!</span>{ <span class="ident">token</span>(<span class="string">b&#39;a&#39;</span>) <span class="op">&lt;</span><span class="op">|</span><span class="op">&gt;</span> <span class="ident">token</span>(<span class="string">b&#39;b&#39;</span>) };
+
+<span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">parse_only</span>(<span class="ident">p</span>, <span class="string">b&quot;b&quot;</span>), <span class="prelude-val">Ok</span>(<span class="string">b&#39;b&#39;</span>));</pre></li>
+<li><p><code>&gt;&gt;</code>, then</p>
+
+<p>Evaluates the parser to the left, then throws away any value and evaluates the parser on
+the right.</p>
+
+<pre class="rust rust-example-rendered">
+<span class="kw">let</span> <span class="ident">p</span> <span class="op">=</span> <span class="macro">parser</span><span class="macro">!</span>{ <span class="ident">token</span>(<span class="string">b&#39;a&#39;</span>) <span class="op">&gt;&gt;</span> <span class="ident">token</span>(<span class="string">b&#39;;&#39;</span>) };
+
+<span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">parse_only</span>(<span class="ident">p</span>, <span class="string">b&quot;a;&quot;</span>), <span class="prelude-val">Ok</span>(<span class="string">b&#39;;&#39;</span>));</pre></li>
+</ol>
+
+<p>These operators correspond to the equivalent operators found in Haskell&#39;s <code>Alternative</code>,
+<code>Applicative</code> and <code>Monad</code> typeclasses, with the exception of being right-associative (the
+operators are left-associative in Haskell).</p>
+
+<p>An Inline expression needs to be wrapped in parenthesis to parse (<code>$expr</code> pattern in macros
+require <code>;</code> or <code>,</code> to be terminated at the same nesting level):</p>
+
+<pre class="rust rust-example-rendered">
+<span class="kw">let</span> <span class="ident">p</span> <span class="op">=</span> <span class="macro">parser</span><span class="macro">!</span>{ (<span class="ident">i</span> <span class="op">-&gt;</span> <span class="ident">Input</span>::<span class="ident">err</span>(<span class="ident">i</span>, <span class="string">&quot;foo&quot;</span>)) <span class="op">&lt;</span><span class="op">|</span><span class="op">&gt;</span> (<span class="ident">i</span> <span class="op">-&gt;</span> <span class="ident">Input</span>::<span class="ident">ret</span>(<span class="ident">i</span>, <span class="string">&quot;bar&quot;</span>)) };
+
+<span class="macro">assert_eq</span><span class="macro">!</span>(<span class="ident">parse_only</span>(<span class="ident">p</span>, <span class="string">b&quot;a;&quot;</span>), <span class="prelude-val">Ok</span>(<span class="string">&quot;bar&quot;</span>));</pre>
+
+<h1 id='debugging' class='section-header'><a href='#debugging'>Debugging</a></h1>
+<p>Errors in Rust macros can be hard to decipher at times, especially when using very complex
+macros which incrementally parse their input. This section is provided to give some hints and
+solutions for common problems. If this still does not solve the problem, feel free to ask
+questions on GitHub or via email or open an issue.</p>
+
+<h2 id='macro-recursion-limit' class='section-header'><a href='#macro-recursion-limit'>Macro recursion limit</a></h2>
+<p>The <code>parse!</code> macro is expanding by recursively invoking itself, parsing a bit of the input each
+iteration. This sometimes reaches the recursion-limit for macros in Rust:</p>
+
+<pre><code class="language-text">src/macros.rs:439:99: 439:148 error: recursion limit reached while expanding the macro `__parse_internal`
+src/macros.rs:439     ( @EXPR_SKIP($input:expr; $($lhs:tt)*) $t1:tt $t2:tt )                                   =&gt; { __parse_internal!{@TERM($input) $($lhs)* $t1 $t2} };
+</code></pre>
+
+<p>The default recursion limit is <code>64</code>, this can be raised by using a crate-annotation in the
+crate where the recursion limit is an issue:</p>
+
+<pre class="rust rust-example-rendered">
+<span class="attribute">#<span class="op">!</span>[<span class="ident">recursion_limit</span><span class="op">=</span><span class="string">&quot;100&quot;</span>]</span></pre>
+
+<h1 id='debugging-macro-expansion' class='section-header'><a href='#debugging-macro-expansion'>Debugging macro expansion</a></h1>
+<p>If you are using the nightly version of rust you can use the feature <code>trace_macros</code> to see how
+the macro is expanded:</p>
+
+<pre class="rust rust-example-rendered">
+<span class="attribute">#<span class="op">!</span>[<span class="ident">feature</span>(<span class="ident">trace_macros</span>)]</span>
+
+<span class="macro">trace_macros</span><span class="macro">!</span>(<span class="bool-val">true</span>);
+<span class="kw">let</span> <span class="ident">p</span> <span class="op">=</span> <span class="macro">parser</span><span class="macro">!</span>{ <span class="ident">decimal</span>() <span class="op">&lt;</span><span class="op">*</span> <span class="ident">token</span>(<span class="string">b&#39;;&#39;</span>) };
+<span class="macro">trace_macros</span><span class="macro">!</span>(<span class="bool-val">false</span>);</pre>
+
+<p>This will result in a printout similar to this:</p>
+
+<pre><code class="language-text">parser! { decimal (  ) &lt; * token ( b&#39;;&#39; ) }
+parse! { i ; decimal (  ) &lt; * token ( b&#39;;&#39; ) }
+__parse_internal! { i ; decimal (  ) &lt; * token ( b&#39;;&#39; ) }
+__parse_internal! { @ STATEMENT ( ( i ; _ ) ) decimal (  ) &lt; * token ( b&#39;;&#39; ) }
+__parse_internal! { @ BIND ( ( i ; _ ) decimal (  ) &lt; * token ( b&#39;;&#39; ) ) }
+__parse_internal! { @ EXPR ( i ; ) decimal (  ) &lt; * token ( b&#39;;&#39; ) }
+__parse_internal! { @ EXPR_ALT ( i ; ) decimal (  ) &lt; * token ( b&#39;;&#39; ) }
+__parse_internal! { @ EXPR_SKIP ( i ; ) decimal (  ) &lt; * token ( b&#39;;&#39; ) }
+__parse_internal! { @ TERM ( i ) decimal (  ) }
+__parse_internal! { @ EXPR_SKIP ( i ; ) token ( b&#39;;&#39; ) }
+__parse_internal! { @ TERM ( i ) token ( b&#39;;&#39; ) }
+</code></pre>
+
+<p>Output like the above can make it clearer where it is actually failing, and can sometimes
+highlight the exact problem (with the help of looking at the grammar found above).</p>
+
+<h2 id='function-error-pointing-to-macro-code' class='section-header'><a href='#function-error-pointing-to-macro-code'>Function error pointing to macro code</a></h2>
+<p>Sometimes non-syntax errors will occur in macro code, <code>rustc</code> currently (on stable) has issues
+with actually displaying the actual code which causes the problem. Instead the macro-part will
+be highlighted as the cause of the issue:</p>
+
+<pre><code class="language-text">src/macros.rs:431:71: 431:97 error: this function takes 1 parameter but 2 parameters were supplied [E0061]
+src/macros.rs:431     ( @TERM($input:expr) $func:ident ( $($param:expr),* $(,)*) ) =&gt; { $func($input, $($param),*) };
+                                                                                        ^~~~~~~~~~~~~~~~~~~~~~~~~~
+src/macros.rs:489:99: 489:148 note: in this expansion of __parse_internal! (defined in src/macros.rs)
+...
+</code></pre>
+
+<p>Usually this is related to a Named expression which is used to invoke a function, but the
+function-parameters do not match the expected. Check all the named invocations in the
+macro-invocation and keep in mind that the first parameter will be an <code>Input&lt;I&gt;</code> which is added
+automatically. If that still does not help, try using nighly and the <code>trace_macro</code> feature to
+see what is expanded.</p>
+
+<h2 id='error-expected-ident-found-foo' class='section-header'><a href='#error-expected-ident-found-foo'><code>error: expected ident, found foo</code></a></h2>
+<p>This error (with <code>foo</code> being a user-defined symbol)  can be caused by having a Bind statement
+as the last statement in a <code>parse!</code> block.  The last part of a <code>parse!</code> block must be an
+expression.</p>
+
+<pre><code class="language-text">src/macros.rs:551:111: 551:116 error: expected ident, found foo
+src/macros.rs:551     ( $input:expr ; let $name:pat = $($tail:tt)+ )
+    =&gt; { __parse_internal!{@STATEMENT(($input; $name)) $($tail)+} };
+                                               ^~~~~
+</code></pre>
+</div></section>
+    <section id='search' class="content hidden"></section>
+
+    <section class="footer"></section>
+
+    <aside id="help" class="hidden">
+        <div>
+            <h1 class="hidden">Help</h1>
+
+            <div class="shortcuts">
+                <h2>Keyboard Shortcuts</h2>
+
+                <dl>
+                    <dt>?</dt>
+                    <dd>Show this help dialog</dd>
+                    <dt>S</dt>
+                    <dd>Focus the search field</dd>
+                    <dt>&larrb;</dt>
+                    <dd>Move up in search results</dd>
+                    <dt>&rarrb;</dt>
+                    <dd>Move down in search results</dd>
+                    <dt>&#9166;</dt>
+                    <dd>Go to active search result</dd>
+                    <dt>+</dt>
+                    <dd>Collapse/expand all sections</dd>
+                </dl>
+            </div>
+
+            <div class="infos">
+                <h2>Search Tricks</h2>
+
+                <p>
+                    Prefix searches with a type followed by a colon (e.g.
+                    <code>fn:</code>) to restrict the search to a given type.
+                </p>
+
+                <p>
+                    Accepted types are: <code>fn</code>, <code>mod</code>,
+                    <code>struct</code>, <code>enum</code>,
+                    <code>trait</code>, <code>type</code>, <code>macro</code>,
+                    and <code>const</code>.
+                </p>
+
+                <p>
+                    Search functions by type signature (e.g.
+                    <code>vec -> usize</code> or <code>* -> vec</code>)
+                </p>
+            </div>
+        </div>
+    </aside>
+
+    
+
+    <script>
+        window.rootPath = "../";
+        window.currentCrate = "chomp";
+    </script>
+    <script src="../main.js"></script>
+    <script defer src="../search-index.js"></script>
+</body>
+</html>

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="rustdoc">
+    <meta name="description" content="API documentation for the Rust `Primitives` trait in crate `chomp`.">
+    <meta name="keywords" content="rust, rustlang, rust-lang, Primitives">
+
+    <title>chomp::primitives::Primitives - Rust</title>
+
+    <link rel="stylesheet" type="text/css" href="../../normalize.css">
+    <link rel="stylesheet" type="text/css" href="../../rustdoc.css">
+    <link rel="stylesheet" type="text/css" href="../../main.css">
+    
+
+    
+    
+</head>
+<body class="rustdoc trait">
+    <!--[if lte IE 8]>
+    <div class="warning">
+        This old browser is unsupported and will most likely display funky
+        things.
+    </div>
+    <![endif]-->
+
+    
+
+    <nav class="sidebar">
+        
+        <p class='location'>Trait Primitives</p><div class="block items"><ul><li><a href="#provided-methods">Provided Methods</a></li><li><a href="#implementors">Implementors</a></li></ul></div><p class='location'><a href='../index.html'>chomp</a>::<wbr><a href='index.html'>primitives</a></p><script>window.sidebarCurrent = {name: 'Primitives', ty: 'trait', relpath: ''};</script><script defer src="sidebar-items.js"></script>
+    </nav>
+
+    <nav class="sub">
+        <form class="search-form js-only">
+            <div class="search-container">
+                <input class="search-input" name="search"
+                       autocomplete="off"
+                       placeholder="Click or press ‘S’ to search, ‘?’ for more options…"
+                       type="search">
+            </div>
+        </form>
+    </nav>
+
+    <section id='main' class="content">
+<h1 class='fqn'><span class='in-band'>Trait <a href='../index.html'>chomp</a>::<wbr><a href='index.html'>primitives</a>::<wbr><a class="trait" href=''>Primitives</a></span><span class='out-of-band'><span id='render-detail'>
+                   <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
+                       [<span class='inner'>&#x2212;</span>]
+                   </a>
+               </span><a class='srclink' href='../../src/chomp/primitives.rs.html#39-124' title='goto source code'>[src]</a></span></h1>
+<pre class='rust trait'>pub trait Primitives: <a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Input</a> {
+    fn <a href='#method.peek' class='fnname'>peek</a>(&amp;mut self) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;Self::<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Token</a>&gt; { ... }
+    fn <a href='#method.pop' class='fnname'>pop</a>(&amp;mut self) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;Self::<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Token</a>&gt; { ... }
+    fn <a href='#method.consume' class='fnname'>consume</a>(&amp;mut self, n: <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.usize.html">usize</a>) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;Self::<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Buffer</a>&gt; { ... }
+    fn <a href='#method.consume_while' class='fnname'>consume_while</a>&lt;F&gt;(&amp;mut self, f: F) -&gt; Self::<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Buffer</a><br>&nbsp;&nbsp;&nbsp; <span class="where">where<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;F: <a class="trait" href="https://doc.rust-lang.org/nightly/core/ops/trait.FnMut.html" title="trait core::ops::FnMut">FnMut</a>(Self::<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Token</a>) -&gt; <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a></span>,
+    { ... }
+    fn <a href='#method.consume_from' class='fnname'>consume_from</a>(&amp;mut self, m: Self::<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Marker</a>) -&gt; Self::<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Buffer</a> { ... }
+    fn <a href='#method.consume_remaining' class='fnname'>consume_remaining</a>(&amp;mut self) -&gt; Self::<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Buffer</a> { ... }
+    fn <a href='#method.skip_while' class='fnname'>skip_while</a>&lt;F&gt;(&amp;mut self, f: F)<br>&nbsp;&nbsp;&nbsp; <span class="where">where<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;F: <a class="trait" href="https://doc.rust-lang.org/nightly/core/ops/trait.FnMut.html" title="trait core::ops::FnMut">FnMut</a>(Self::<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Token</a>) -&gt; <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a></span>,
+    { ... }
+    fn <a href='#method.mark' class='fnname'>mark</a>(&amp;self) -&gt; Self::<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Marker</a> { ... }
+    fn <a href='#method.restore' class='fnname'>restore</a>(self, m: Self::<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Marker</a>) -&gt; Self { ... }
+}</pre><div class='docblock'><p>Trait enabling primitive actions on an <code>Input</code> type.</p>
+
+<p>This trait is automatically implemented for all types implementing <code>Input</code> and acts as a
+gatekeeper to the state-modifying methods of <code>Input</code>.</p>
+</div>
+            <h2 id='provided-methods'>Provided Methods</h2>
+            <div class='methods'>
+        <h3 id='method.peek' class='method'><span id='peek.v' class='invisible'><code>fn <a href='#method.peek' class='fnname'>peek</a>(&amp;mut self) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;Self::<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Token</a>&gt;</code></span></h3><div class='docblock'><p>Peeks at the next token in the input without consuming it. <code>None</code> if no more input is
+available.</p>
+
+<p>Note: Is allowed to refill automatically or any other appropriate action if the input does
+not contain any more data.</p>
+</div><h3 id='method.pop' class='method'><span id='pop.v' class='invisible'><code>fn <a href='#method.pop' class='fnname'>pop</a>(&amp;mut self) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;Self::<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Token</a>&gt;</code></span></h3><div class='docblock'><p>Pops a token off the start of the input. <code>None</code> if no more input is available.</p>
+
+<p>Note: Is allowed to refill automatically or any other appropriate action if the input does
+not contain any more data.</p>
+</div><h3 id='method.consume' class='method'><span id='consume.v' class='invisible'><code>fn <a href='#method.consume' class='fnname'>consume</a>(&amp;mut self, n: <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.usize.html">usize</a>) -&gt; <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;Self::<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Buffer</a>&gt;</code></span></h3><div class='docblock'><p>Attempt to consume <code>n</code> tokens, if it fails do not advance the position but return <code>None</code>.</p>
+
+<p>Note: Is allowed to refill automatically or any other appropriate action if the input does
+not contain any more data.</p>
+</div><h3 id='method.consume_while' class='method'><span id='consume_while.v' class='invisible'><code>fn <a href='#method.consume_while' class='fnname'>consume_while</a>&lt;F&gt;(&amp;mut self, f: F) -&gt; Self::<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Buffer</a> <span class="where fmt-newline">where<br>&nbsp;&nbsp;&nbsp;&nbsp;F: <a class="trait" href="https://doc.rust-lang.org/nightly/core/ops/trait.FnMut.html" title="trait core::ops::FnMut">FnMut</a>(Self::<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Token</a>) -&gt; <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a>,&nbsp;</span></code></span></h3><div class='docblock'><p>Runs the closure <code>F</code> on the tokens <em>in order</em> until it returns false, all tokens up to that
+token will be returned as a buffer and discarded from the current input. MUST never run the
+closure more than once on the exact same token.</p>
+
+<p>If the end of the input is reached, the whole input is returned.</p>
+
+<p>Note: Is allowed to refill automatically or any other appropriate action if the input does
+not contain any more data.</p>
+</div><h3 id='method.consume_from' class='method'><span id='consume_from.v' class='invisible'><code>fn <a href='#method.consume_from' class='fnname'>consume_from</a>(&amp;mut self, m: Self::<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Marker</a>) -&gt; Self::<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Buffer</a></code></span></h3><div class='docblock'><p>Returns the buffer from the marker to the current position, discarding the
+backtracking position carried by the marker.</p>
+</div><h3 id='method.consume_remaining' class='method'><span id='consume_remaining.v' class='invisible'><code>fn <a href='#method.consume_remaining' class='fnname'>consume_remaining</a>(&amp;mut self) -&gt; Self::<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Buffer</a></code></span></h3><div class='docblock'><p>Returns the remainder of the input in a buffer.</p>
+
+<p>Note: Will refill the intenal buffer until no more data is available if the underlying
+implementation supports it.</p>
+</div><h3 id='method.skip_while' class='method'><span id='skip_while.v' class='invisible'><code>fn <a href='#method.skip_while' class='fnname'>skip_while</a>&lt;F&gt;(&amp;mut self, f: F) <span class="where fmt-newline">where<br>&nbsp;&nbsp;&nbsp;&nbsp;F: <a class="trait" href="https://doc.rust-lang.org/nightly/core/ops/trait.FnMut.html" title="trait core::ops::FnMut">FnMut</a>(Self::<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Token</a>) -&gt; <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a>,&nbsp;</span></code></span></h3><div class='docblock'><p>Runs the closure <code>F</code> on the tokens <em>in order</em> until it returns false, all tokens up to that
+token will be discarded from the current input.</p>
+
+<p>MUST never run the closure more than once on the exact same token.</p>
+
+<p>If the end of the input is reached, the whole input is discarded.</p>
+
+<p>Note: Default implementation uses <code>consume_while</code> and makes the assumption that it will
+optimize away the resulting <code>Self::Buffer</code>.</p>
+</div><h3 id='method.mark' class='method'><span id='mark.v' class='invisible'><code>fn <a href='#method.mark' class='fnname'>mark</a>(&amp;self) -&gt; Self::<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Marker</a></code></span></h3><div class='docblock'><p>Marks the current position to be able to backtrack to it using <code>restore</code>.</p>
+</div><h3 id='method.restore' class='method'><span id='restore.v' class='invisible'><code>fn <a href='#method.restore' class='fnname'>restore</a>(self, m: Self::<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Marker</a>) -&gt; Self</code></span></h3><div class='docblock'><p>Resumes from a previously marked state.</p>
+</div></div>
+        <h2 id='implementors'>Implementors</h2>
+        <ul class='item-list' id='implementors-list'>
+    <li><code>impl&lt;I:&nbsp;<a class="trait" href="../../chomp/types/trait.Input.html" title="trait chomp::types::Input">Input</a>&gt; Primitives for I</code></li>
+</ul><script type="text/javascript" async
+                         src="../../implementors/chomp/primitives/trait.Primitives.js">
+                 </script></section>
+    <section id='search' class="content hidden"></section>
+
+    <section class="footer"></section>
+
+    <aside id="help" class="hidden">
+        <div>
+            <h1 class="hidden">Help</h1>
+
+            <div class="shortcuts">
+                <h2>Keyboard Shortcuts</h2>
+
+                <dl>
+                    <dt>?</dt>
+                    <dd>Show this help dialog</dd>
+                    <dt>S</dt>
+                    <dd>Focus the search field</dd>
+                    <dt>&larrb;</dt>
+                    <dd>Move up in search results</dd>
+                    <dt>&rarrb;</dt>
+                    <dd>Move down in search results</dd>
+                    <dt>&#9166;</dt>
+                    <dd>Go to active search result</dd>
+                    <dt>+</dt>
+                    <dd>Collapse/expand all sections</dd>
+                </dl>
+            </div>
+
+            <div class="infos">
+                <h2>Search Tricks</h2>
+
+                <p>
+                    Prefix searches with a type followed by a colon (e.g.
+                    <code>fn:</code>) to restrict the search to a given type.
+                </p>
+
+                <p>
+                    Accepted types are: <code>fn</code>, <code>mod</code>,
+                    <code>struct</code>, <code>enum</code>,
+                    <code>trait</code>, <code>type</code>, <code>macro</code>,
+                    and <code>const</code>.
+                </p>
+
+                <p>
+                    Search functions by type signature (e.g.
+                    <code>vec -> usize</code> or <code>* -> vec</code>)
+                </p>
+            </div>
+        </div>
+    </aside>
+
+    
+
+    <script>
+        window.rootPath = "../../";
+        window.currentCrate = "chomp";
+    </script>
+    <script src="../../main.js"></script>
+    <script defer src="../../search-index.js"></script>
+</body>
+</html>
