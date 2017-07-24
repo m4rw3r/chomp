@@ -26,13 +26,39 @@ use std::ops::{RangeFrom, RangeFull, RangeTo, Range};
 
 use types::{Input, Parser, ThenParser};
 
-/// Trait for applying a parser multiple times based on a range.
-pub trait Many<I: Input, F, T, E> {
-    /// The parser type returned by `many`.
-    type ManyParser: Parser<I, Output=T, Error=E>;
+/// Trait describing a parser constructor which can construct multiple instances of the same
+/// parser.
+pub trait ParserConstructor<I: Input> {
+    /// The parser type created by the constructor instance.
+    type Parser: Parser<I>;
 
-    /// Applies the parser `F` multiple times until it fails or the maximum value of the range has
-    /// been reached, collecting the successful values into a `T: FromIterator`.
+    /// Creates a new parser instance.
+    #[inline]
+    fn new_parser(&mut self) -> Self::Parser;
+}
+
+impl<I, P, F> ParserConstructor<I> for F
+  where I: Input,
+        F: FnMut() -> P,
+        P: Parser<I> {
+    type Parser = P;
+
+    #[inline(always)]
+    fn new_parser(&mut self) -> Self::Parser {
+        self()
+    }
+}
+
+/// Trait for applying a parser multiple times based on a range.
+pub trait Many<I, F, T>
+  where I: Input,
+        F: ParserConstructor<I>,
+        T: FromIterator<<F::Parser as Parser<I>>::Output> {
+    /// The parser type returned by `many`.
+    type ManyParser: Parser<I, Output=T, Error=<<F as ParserConstructor<I>>::Parser as Parser<I>>::Error>;
+
+    /// Applies the parser constructed by `F` multiple times until it fails or the maximum value of
+    /// the range has been reached, collecting the successful values into a `T: FromIterator`.
     ///
     /// Propagates errors if the minimum number of iterations has not been met
     ///
@@ -52,12 +78,14 @@ pub trait Many<I: Input, F, T, E> {
 }
 
 /// Trait for applying a parser multiple times based on a range, ignoring any output.
-pub trait SkipMany<I: Input, F, E> {
+pub trait SkipMany<I, F>
+  where I: Input,
+        F: ParserConstructor<I> {
     /// The parser type returned by `skip_many`.
-    type SkipManyParser: Parser<I, Output=(), Error=E>;
+    type SkipManyParser: Parser<I, Output=(), Error=<<F as ParserConstructor<I>>::Parser as Parser<I>>::Error>;
 
-    /// Applies the parser `F` multiple times until it fails or the maximum value of the range has
-    /// been reached, throwing away any produced value.
+    /// Applies the parser constructed by `F` multiple times until it fails or the maximum value of
+    /// the range has been reached, throwing away any produced value.
     ///
     /// Propagates errors if the minimum number of iterations has not been met
     ///
@@ -76,13 +104,17 @@ pub trait SkipMany<I: Input, F, E> {
 }
 
 /// Trait for applying a parser multiple times based on a range until another parser succeeds.
-pub trait ManyTill<I: Input, F, G, T, E> {
+pub trait ManyTill<I, F, G, T>
+  where I: Input,
+        F: ParserConstructor<I>,
+        T: FromIterator<<F::Parser as Parser<I>>::Output> {
     /// The parser type returned by `many_till`.
-    type ManyTillParser: Parser<I, Output=T, Error=E>;
+    type ManyTillParser: Parser<I, Output=T, Error=<<F as ParserConstructor<I>>::Parser as Parser<I>>::Error>;
 
-    /// Applies the parser `F` multiple times until the parser `G` succeeds, collecting the values
-    /// from `F` into a `T: FromIterator` Consumes the matched part of `G`. If `F` does not
-    /// succeed within the given range `R` this combinator will propagate any failure from `G`.
+    /// Applies the parser constructed by `F` multiple times until the parser `G` succeeds,
+    /// collecting the values from `F` into a `T: FromIterator` Consumes the matched part of `G`.
+    /// If `F` does not succeed within the given range `R` this combinator will propagate any
+    /// failure from `G`.
     ///
     /// # Panics
     ///
@@ -134,12 +166,11 @@ many_iter!{
     }
 }
 
-impl<I, F, T, P> Many<I, F, T, P::Error> for Range<usize>
+impl<I, F, T> Many<I, F, T> for Range<usize>
   where I: Input,
-        F: FnMut() -> P,
-        T: FromIterator<P::Output>,
-        P: Parser<I> {
-    type ManyParser = ManyRangeParser<I, F, P, T>;
+        F: ParserConstructor<I>,
+        T: FromIterator<<F::Parser as Parser<I>>::Output> {
+    type ManyParser = ManyRangeParser<I, F, T>;
 
     #[inline]
     fn many(self, f: F) -> Self::ManyParser {
@@ -152,7 +183,6 @@ impl<I, F, T, P> Many<I, F, T, P::Error> for Range<usize>
             data:        (self.start, max(self.start, self.end.saturating_sub(1))),
             _i:          PhantomData,
             _t:          PhantomData,
-            _p:          PhantomData,
         }
     }
 }
@@ -166,15 +196,14 @@ pub struct SkipManyRangeParser<I, F> {
     _i:  PhantomData<I>
 }
 
-impl<I, F, P> Parser<I> for SkipManyRangeParser<I, F>
+impl<I, F> Parser<I> for SkipManyRangeParser<I, F>
   where I: Input,
-        F: FnMut() -> P,
-        P: Parser<I> {
+        F: ParserConstructor<I> {
     type Output = ();
-    type Error  = P::Error;
+    type Error  = <F::Parser as Parser<I>>::Error;
 
     #[inline]
-    fn parse(mut self, mut i: I) -> (I, Result<(), P::Error>) {
+    fn parse(mut self, mut i: I) -> (I, Result<(), <F::Parser as Parser<I>>::Error>) {
         loop {
             if self.max == 0 {
                 break;
@@ -182,7 +211,7 @@ impl<I, F, P> Parser<I> for SkipManyRangeParser<I, F>
 
             let m = i.mark();
 
-            match (self.f)().parse(i) {
+            match (self.f).new_parser().parse(i) {
                 (b, Ok(_))    => {
                     self.min  = self.min.saturating_sub(1);
                     // Can't overflow unless we do not quit when max == 0
@@ -205,10 +234,9 @@ impl<I, F, P> Parser<I> for SkipManyRangeParser<I, F>
     }
 }
 
-impl<I, F, P> SkipMany<I, F, P::Error> for Range<usize>
+impl<I, F> SkipMany<I, F> for Range<usize>
   where I: Input,
-        F: FnMut() -> P,
-        P: Parser<I> {
+        F: ParserConstructor<I> {
     type SkipManyParser = SkipManyRangeParser<I, F>;
 
     #[inline]
@@ -244,7 +272,7 @@ many_till_iter! {
                     let i = self.buf.take().expect("Iter.buf was None");
                     let m = i.mark();
 
-                    match (self.data.1, (self.end)().parse(i)) {
+                    match (self.data.1, (self.end).new_parser().parse(i)) {
                         // We can always end
                         (_, (b, Ok(_)))  => {
                             self.buf   = Some(b);
@@ -283,15 +311,14 @@ many_till_iter! {
     }
 }
 
-impl<I: Input, F, G, P, Q, T> ManyTill<I, F, G, T, P::Error> for Range<usize>
+impl<I: Input, F, G, T> ManyTill<I, F, G, T> for Range<usize>
   where I: Input,
-        F: FnMut() -> P,
-        G: FnMut() -> Q,
-        P: Parser<I>,
-        Q: Parser<I, Error=P::Error>,
-        T: FromIterator<P::Output> {
+        F: ParserConstructor<I>,
+        G: ParserConstructor<I>,
+        G::Parser: Parser<I, Error=<F::Parser as Parser<I>>::Error>,
+        T: FromIterator<<F::Parser as Parser<I>>::Output> {
     /// The parser type returned by `many_till`.
-    type ManyTillParser = ManyTillRangeParser<I, F, G, P, Q, T>;
+    type ManyTillParser = ManyTillRangeParser<I, F, G, T>;
 
     #[inline]
     fn many_till(self, f: F, g: G) -> Self::ManyTillParser {
@@ -304,8 +331,6 @@ impl<I: Input, F, G, P, Q, T> ManyTill<I, F, G, T, P::Error> for Range<usize>
             // Range is closed on left side, open on right, ie. [start, end), but start <= end
             data:   (self.start, max(self.start, self.end.saturating_sub(1))),
             _i:     PhantomData,
-            _p:     PhantomData,
-            _q:     PhantomData,
             _t:     PhantomData,
         }
     }
@@ -337,12 +362,11 @@ many_iter!{
     }
 }
 
-impl<I, F, T, P> Many<I, F, T, P::Error> for RangeFrom<usize>
+impl<I, F, T> Many<I, F, T> for RangeFrom<usize>
   where I: Input,
-        F: FnMut() -> P,
-        T: FromIterator<P::Output>,
-        P: Parser<I> {
-    type ManyParser = ManyRangeFromParser<I, F, P, T>;
+        F: ParserConstructor<I>,
+        T: FromIterator<<F::Parser as Parser<I>>::Output> {
+    type ManyParser = ManyRangeFromParser<I, F, T>;
 
     #[inline]
     fn many(self, f: F) -> Self::ManyParser {
@@ -352,7 +376,6 @@ impl<I, F, T, P> Many<I, F, T, P::Error> for RangeFrom<usize>
             data:        self.start,
             _i:          PhantomData,
             _t:          PhantomData,
-            _p:          PhantomData,
         }
     }
 }
@@ -365,19 +388,18 @@ pub struct SkipManyRangeFromParser<I, F> {
     _i:  PhantomData<I>
 }
 
-impl<I, F, P> Parser<I> for SkipManyRangeFromParser<I, F>
+impl<I, F> Parser<I> for SkipManyRangeFromParser<I, F>
   where I: Input,
-        F: FnMut() -> P,
-        P: Parser<I> {
+        F: ParserConstructor<I> {
     type Output = ();
-    type Error  = P::Error;
+    type Error  = <F::Parser as Parser<I>>::Error;
 
     #[inline]
-    fn parse(mut self, mut i: I) -> (I, Result<(), P::Error>) {
+    fn parse(mut self, mut i: I) -> (I, Result<(), <F::Parser as Parser<I>>::Error>) {
         loop {
             let m = i.mark();
 
-            match (self.f)().parse(i) {
+            match (self.f).new_parser().parse(i) {
                 (b, Ok(_))    => {
                     self.min  = self.min.saturating_sub(1);
 
@@ -398,10 +420,9 @@ impl<I, F, P> Parser<I> for SkipManyRangeFromParser<I, F>
     }
 }
 
-impl<I, F, P> SkipMany<I, F, P::Error> for RangeFrom<usize>
+impl<I, F> SkipMany<I, F> for RangeFrom<usize>
   where I: Input,
-        F: FnMut() -> P,
-        P: Parser<I> {
+        F: ParserConstructor<I> {
     type SkipManyParser = SkipManyRangeFromParser<I, F>;
 
     #[inline]
@@ -448,15 +469,14 @@ many_till_iter! {
     }
 }
 
-impl<I: Input, F, G, P, Q, T> ManyTill<I, F, G, T, P::Error> for RangeFrom<usize>
+impl<I: Input, F, G, T> ManyTill<I, F, G, T> for RangeFrom<usize>
   where I: Input,
-        F: FnMut() -> P,
-        G: FnMut() -> Q,
-        P: Parser<I>,
-        Q: Parser<I, Error=P::Error>,
-        T: FromIterator<P::Output> {
+        F: ParserConstructor<I>,
+        G: ParserConstructor<I>,
+        G::Parser: Parser<I, Error=<F::Parser as Parser<I>>::Error>,
+        T: FromIterator<<F::Parser as Parser<I>>::Output> {
     /// The parser type returned by `many_till`.
-    type ManyTillParser = ManyTillRangeFromParser<I, F, G, P, Q, T>;
+    type ManyTillParser = ManyTillRangeFromParser<I, F, G, T>;
 
     #[inline]
     fn many_till(self, f: F, g: G) -> Self::ManyTillParser {
@@ -466,8 +486,6 @@ impl<I: Input, F, G, P, Q, T> ManyTill<I, F, G, T, P::Error> for RangeFrom<usize
             // Range is closed on left side, unbounded on right
             data:   self.start,
             _i:     PhantomData,
-            _p:     PhantomData,
-            _q:     PhantomData,
             _t:     PhantomData,
         }
     }
@@ -493,12 +511,11 @@ many_iter!{
     }
 }
 
-impl<I, F, T, P> Many<I, F, T, P::Error> for RangeFull
+impl<I, F, T> Many<I, F, T> for RangeFull
   where I: Input,
-        F: FnMut() -> P,
-        T: FromIterator<P::Output>,
-        P: Parser<I> {
-    type ManyParser = ManyRangeFullParser<I, F, P, T>;
+        F: ParserConstructor<I>,
+        T: FromIterator<<F::Parser as Parser<I>>::Output> {
+    type ManyParser = ManyRangeFullParser<I, F, T>;
 
     #[inline]
     fn many(self, f: F) -> Self::ManyParser {
@@ -507,7 +524,6 @@ impl<I, F, T, P> Many<I, F, T, P::Error> for RangeFull
             data:        (),
             _i:          PhantomData,
             _t:          PhantomData,
-            _p:          PhantomData,
         }
     }
 }
@@ -519,19 +535,18 @@ pub struct SkipManyRangeFullParser<I, F> {
     _i:  PhantomData<I>
 }
 
-impl<I, F, P> Parser<I> for SkipManyRangeFullParser<I, F>
+impl<I, F> Parser<I> for SkipManyRangeFullParser<I, F>
   where I: Input,
-        F: FnMut() -> P,
-        P: Parser<I> {
+        F: ParserConstructor<I> {
     type Output = ();
-    type Error  = P::Error;
+    type Error  = <F::Parser as Parser<I>>::Error;
 
     #[inline]
-    fn parse(mut self, mut i: I) -> (I, Result<(), P::Error>) {
+    fn parse(mut self, mut i: I) -> (I, Result<(), <F::Parser as Parser<I>>::Error>) {
         loop {
             let m = i.mark();
 
-            match (self.f)().parse(i) {
+            match (self.f).new_parser().parse(i) {
                 (b, Ok(_))  => i = b,
                 (b, Err(_)) => {
                     i = b.restore(m);
@@ -545,10 +560,9 @@ impl<I, F, P> Parser<I> for SkipManyRangeFullParser<I, F>
     }
 }
 
-impl<I, F, P> SkipMany<I, F, P::Error> for RangeFull
+impl<I, F> SkipMany<I, F> for RangeFull
   where I: Input,
-        F: FnMut() -> P,
-        P: Parser<I> {
+        F: ParserConstructor<I> {
     type SkipManyParser = SkipManyRangeFullParser<I, F>;
 
     #[inline]
@@ -585,15 +599,14 @@ many_till_iter! {
     }
 }
 
-impl<I: Input, F, G, P, Q, T> ManyTill<I, F, G, T, P::Error> for RangeFull
+impl<I: Input, F, G, T> ManyTill<I, F, G, T> for RangeFull
   where I: Input,
-        F: FnMut() -> P,
-        G: FnMut() -> Q,
-        P: Parser<I>,
-        Q: Parser<I, Error=P::Error>,
-        T: FromIterator<P::Output> {
+        F: ParserConstructor<I>,
+        G: ParserConstructor<I>,
+        G::Parser: Parser<I, Error=<F::Parser as Parser<I>>::Error>,
+        T: FromIterator<<F::Parser as Parser<I>>::Output> {
     /// The parser type returned by `many_till`.
-    type ManyTillParser = ManyTillRangeFullParser<I, F, G, P, Q, T>;
+    type ManyTillParser = ManyTillRangeFullParser<I, F, G, T>;
 
     #[inline]
     fn many_till(self, f: F, g: G) -> Self::ManyTillParser {
@@ -602,8 +615,6 @@ impl<I: Input, F, G, P, Q, T> ManyTill<I, F, G, T, P::Error> for RangeFull
             q_ctor: g,
             data:   (),
             _i:     PhantomData,
-            _p:     PhantomData,
-            _q:     PhantomData,
             _t:     PhantomData,
         }
     }
@@ -640,12 +651,11 @@ many_iter!{
     }
 }
 
-impl<I, F, T, P> Many<I, F, T, P::Error> for RangeTo<usize>
+impl<I, F, T> Many<I, F, T> for RangeTo<usize>
   where I: Input,
-        F: FnMut() -> P,
-        T: FromIterator<P::Output>,
-        P: Parser<I> {
-    type ManyParser = ManyRangeToParser<I, F, P, T>;
+        F: ParserConstructor<I>,
+        T: FromIterator<<F::Parser as Parser<I>>::Output> {
+    type ManyParser = ManyRangeToParser<I, F, T>;
 
     #[inline]
     fn many(self, f: F) -> Self::ManyParser {
@@ -655,7 +665,6 @@ impl<I, F, T, P> Many<I, F, T, P::Error> for RangeTo<usize>
             data:        self.end.saturating_sub(1),
             _i:          PhantomData,
             _t:          PhantomData,
-            _p:          PhantomData,
         }
     }
 }
@@ -668,15 +677,14 @@ pub struct SkipManyRangeToParser<I, F> {
     _i:  PhantomData<I>
 }
 
-impl<I, F, P> Parser<I> for SkipManyRangeToParser<I, F>
+impl<I, F> Parser<I> for SkipManyRangeToParser<I, F>
   where I: Input,
-        F: FnMut() -> P,
-        P: Parser<I> {
+        F: ParserConstructor<I> {
     type Output = ();
-    type Error  = P::Error;
+    type Error  = <F::Parser as Parser<I>>::Error;
 
     #[inline]
-    fn parse(mut self, mut i: I) -> (I, Result<(), P::Error>) {
+    fn parse(mut self, mut i: I) -> (I, Result<(), <F::Parser as Parser<I>>::Error>) {
         loop {
             if self.max == 0 {
                 break;
@@ -684,7 +692,7 @@ impl<I, F, P> Parser<I> for SkipManyRangeToParser<I, F>
 
             let m = i.mark();
 
-            match (self.f)().parse(i) {
+            match (self.f).new_parser().parse(i) {
                 (b, Ok(_))    => {
                     self.max -= 1;
 
@@ -703,10 +711,9 @@ impl<I, F, P> Parser<I> for SkipManyRangeToParser<I, F>
     }
 }
 
-impl<I, F, P> SkipMany<I, F, P::Error> for RangeTo<usize>
+impl<I, F> SkipMany<I, F> for RangeTo<usize>
   where I: Input,
-        F: FnMut() -> P,
-        P: Parser<I> {
+        F: ParserConstructor<I> {
     type SkipManyParser = SkipManyRangeToParser<I, F>;
 
     #[inline]
@@ -735,7 +742,7 @@ many_till_iter! {
                 let i = self.buf.take().expect("Iter.buf was None");
                 let m = i.mark();
 
-                match (self.data, (self.end)().parse(i)) {
+                match (self.data, (self.end).new_parser().parse(i)) {
                     // We can always end
                     (_, (b, Ok(_)))  => {
                         self.buf   = Some(b);
@@ -768,15 +775,14 @@ many_till_iter! {
     }
 }
 
-impl<I: Input, F, G, P, Q, T> ManyTill<I, F, G, T, P::Error> for RangeTo<usize>
+impl<I: Input, F, G, T> ManyTill<I, F, G, T> for RangeTo<usize>
   where I: Input,
-        F: FnMut() -> P,
-        G: FnMut() -> Q,
-        P: Parser<I>,
-        Q: Parser<I, Error=P::Error>,
-        T: FromIterator<P::Output> {
+        F: ParserConstructor<I>,
+        G: ParserConstructor<I>,
+        G::Parser: Parser<I, Error=<F::Parser as Parser<I>>::Error>,
+        T: FromIterator<<F::Parser as Parser<I>>::Output> {
     /// The parser type returned by `many_till`.
-    type ManyTillParser = ManyTillRangeToParser<I, F, G, P, Q, T>;
+    type ManyTillParser = ManyTillRangeToParser<I, F, G, T>;
 
     #[inline]
     fn many_till(self, f: F, g: G) -> Self::ManyTillParser {
@@ -786,8 +792,6 @@ impl<I: Input, F, G, P, Q, T> ManyTill<I, F, G, T, P::Error> for RangeTo<usize>
             // [0, self.end)
             data:   self.end.saturating_sub(1),
             _i:     PhantomData,
-            _p:     PhantomData,
-            _q:     PhantomData,
             _t:     PhantomData,
         }
     }
@@ -823,12 +827,11 @@ many_iter!{
     }
 }
 
-impl<I, F, T, P> Many<I, F, T, P::Error> for usize
+impl<I, F, T> Many<I, F, T> for usize
   where I: Input,
-        F: FnMut() -> P,
-        T: FromIterator<P::Output>,
-        P: Parser<I> {
-    type ManyParser = ManyExactParser<I, F, P, T>;
+        F: ParserConstructor<I>,
+        T: FromIterator<<F::Parser as Parser<I>>::Output> {
+    type ManyParser = ManyExactParser<I, F, T>;
 
     #[inline]
     fn many(self, f: F) -> Self::ManyParser {
@@ -838,7 +841,6 @@ impl<I, F, T, P> Many<I, F, T, P::Error> for usize
             data:        self,
             _i:          PhantomData,
             _t:          PhantomData,
-            _p:          PhantomData,
         }
     }
 }
@@ -851,21 +853,20 @@ pub struct SkipManyExactParser<I, F> {
     _i:  PhantomData<I>
 }
 
-impl<I, F, P> Parser<I> for SkipManyExactParser<I, F>
+impl<I, F> Parser<I> for SkipManyExactParser<I, F>
   where I: Input,
-        F: FnMut() -> P,
-        P: Parser<I> {
+        F: ParserConstructor<I> {
     type Output = ();
-    type Error  = P::Error;
+    type Error  = <F::Parser as Parser<I>>::Error;
 
     #[inline]
-    fn parse(mut self, mut i: I) -> (I, Result<(), P::Error>) {
+    fn parse(mut self, mut i: I) -> (I, Result<(), <F::Parser as Parser<I>>::Error>) {
         loop {
             if self.n == 0 {
                 break;
             }
 
-            match (self.f)().parse(i) {
+            match (self.f).new_parser().parse(i) {
                 (b, Ok(_))    => {
                     self.n -= 1;
 
@@ -884,10 +885,9 @@ impl<I, F, P> Parser<I> for SkipManyExactParser<I, F>
     }
 }
 
-impl<I, F, P> SkipMany<I, F, P::Error> for usize
+impl<I, F> SkipMany<I, F> for usize
   where I: Input,
-        F: FnMut() -> P,
-        P: Parser<I> {
+        F: ParserConstructor<I> {
     type SkipManyParser = SkipManyExactParser<I, F>;
 
     #[inline]
@@ -917,7 +917,7 @@ many_till_iter! {
                     // TODO: Remove the branches here (ie. take + unwrap)
                     let i = self.buf.take().expect("Iter.buf was None");
 
-                    match (self.end)().parse(i) {
+                    match (self.end).new_parser().parse(i) {
                         (b, Ok(_)) => {
                             self.buf   = Some(b);
                             self.state = EndStateTill::EndSuccess;
@@ -949,15 +949,14 @@ many_till_iter! {
     }
 }
 
-impl<I: Input, F, G, P, Q, T> ManyTill<I, F, G, T, P::Error> for usize
+impl<I: Input, F, G, T> ManyTill<I, F, G, T> for usize
   where I: Input,
-        F: FnMut() -> P,
-        G: FnMut() -> Q,
-        P: Parser<I>,
-        Q: Parser<I, Error=P::Error>,
-        T: FromIterator<P::Output> {
+        F: ParserConstructor<I>,
+        G: ParserConstructor<I>,
+        G::Parser: Parser<I, Error=<F::Parser as Parser<I>>::Error>,
+        T: FromIterator<<F::Parser as Parser<I>>::Output> {
     /// The parser type returned by `many_till`.
-    type ManyTillParser = ManyTillExactParser<I, F, G, P, Q, T>;
+    type ManyTillParser = ManyTillExactParser<I, F, G, T>;
 
     #[inline]
     fn many_till(self, f: F, g: G) -> Self::ManyTillParser {
@@ -966,15 +965,13 @@ impl<I: Input, F, G, P, Q, T> ManyTill<I, F, G, T, P::Error> for usize
             q_ctor: g,
             data:   self,
             _i:     PhantomData,
-            _p:     PhantomData,
-            _q:     PhantomData,
             _t:     PhantomData,
         }
     }
 }
 
-/// Applies the parser `F` multiple times until it fails or the maximum value of the range has
-/// been reached, collecting the successful values into a `T: FromIterator`.
+/// Applies the parser constructed by `F` multiple times until it fails or the maximum value of the
+/// range has been reached, collecting the successful values into a `T: FromIterator`.
 ///
 /// Propagates errors if the minimum number of iterations has not been met
 ///
@@ -989,17 +986,16 @@ impl<I: Input, F, G, P, Q, T> ManyTill<I, F, G, T, P::Error> for usize
 /// * Will never yield fewer items than the lower bound of the range.
 /// * Will only call the parser-constructor `F` once for each iteration, in order
 #[inline]
-pub fn many<I, F, P, T, R>(r: R, f: F) -> R::ManyParser
+pub fn many<I, F, T, R>(r: R, f: F) -> R::ManyParser
   where I: Input,
-        F: FnMut() -> P,
-        P: Parser<I>,
-        T: FromIterator<P::Output>,
-        R: Many<I, F, T, P::Error> {
+        F: ParserConstructor<I>,
+        T: FromIterator<<F::Parser as Parser<I>>::Output>,
+        R: Many<I, F, T> {
     Many::many(r, f)
 }
 
-/// Applies the parser `F` multiple times until it fails or the maximum value of the range has
-/// been reached, throwing away any produced value.
+/// Applies the parser constructed by `F` multiple times until it fails or the maximum value of the
+/// range has been reached, throwing away any produced value.
 ///
 /// Propagates errors if the minimum number of iterations has not been met
 ///
@@ -1013,17 +1009,17 @@ pub fn many<I, F, P, T, R>(r: R, f: F) -> R::ManyParser
 /// * Will never parse fewer items than the lower bound of the range.
 /// * Will only call the parser-constructor `F` once for each iteration, in order
 #[inline]
-pub fn skip_many<I, F, P, R>(r: R, f: F) -> R::SkipManyParser
+pub fn skip_many<I, F, R>(r: R, f: F) -> R::SkipManyParser
   where I: Input,
-        F: FnMut() -> P,
-        P: Parser<I>,
-        R: SkipMany<I, F, P::Error> {
+        F: ParserConstructor<I>,
+        R: SkipMany<I, F> {
     SkipMany::skip_many(r, f)
 }
 
-/// Applies the parser `F` multiple times until the parser `G` succeeds, collecting the values
-/// from `F` into a `T: FromIterator` Consumes the matched part of `G`. If `F` does not
-/// succeed within the given range `R` this combinator will propagate any failure from `G`.
+/// Applies the parser constructed by `F` multiple times until the parser constructed by `G`
+/// succeeds, collecting the values from `F` into a `T: FromIterator`. Consumes the matched
+/// part of `G`. If `F` does not succeed within the given range `R` this combinator will
+/// propagate any failure from `G`.
 ///
 /// # Panics
 ///
@@ -1036,21 +1032,21 @@ pub fn skip_many<I, F, P, R>(r: R, f: F) -> R::SkipManyParser
 /// * Will never yield fewer items than the lower bound of the range.
 /// * Use `combinators::bounded::many_till` instead of calling this trait method directly.
 #[inline]
-pub fn many_till<I, F, G, P, Q, T, R>(r: R, p: F, end: G) -> R::ManyTillParser
+pub fn many_till<I, F, G, T, R>(r: R, p: F, end: G) -> R::ManyTillParser
   where I: Input,
         //E: From<N>,
-        F: FnMut() -> P,
-        G: FnMut() -> Q,
-        P: Parser<I>,
-        Q: Parser<I, Error=P::Error>,
-        T: FromIterator<P::Output>,
-        R: ManyTill<I, F, G, T, P::Error> {
+        F: ParserConstructor<I>,
+        G: ParserConstructor<I>,
+        G::Parser: Parser<I, Error=<F::Parser as Parser<I>>::Error>,
+        T: FromIterator<<F::Parser as Parser<I>>::Output>,
+        R: ManyTill<I, F, G, T> {
     ManyTill::many_till(r, p, end)
 }
 
-/// Applies the parser `p` multiple times, separated by the parser `sep` and returns a value
-/// populated with the values yielded by `p`. If the number of items yielded by `p` does not fall
-/// into the range `r` and the separator or parser registers error failure is propagated.
+/// Applies the parser constructed by `F` multiple times, separated by the parser constructed by
+/// `G` and collects the values matched by `F` into a `T: FromIterator`. If the number of items
+/// matched by `F` does not fall into the range `R` then the separator `G` or parser `F` error
+/// is propagated.
 ///
 /// # Panics
 ///
@@ -1062,15 +1058,14 @@ pub fn many_till<I, F, G, P, Q, T, R>(r: R, p: F, end: G) -> R::ManyTillParser
 /// * Will never yield more items than the upper bound of the range.
 #[inline]
 // TODO: look at the From<N>
-pub fn sep_by<I, T, F, G, P, Q, R>(r: R, f: F, sep: G) -> R::ManyParser
+pub fn sep_by<I, T, F, G, R>(r: R, f: F, sep: G) -> R::ManyParser
   where I: Input,
-        T: FromIterator<P::Output>,
-        F: FnMut() -> P,
-        G: FnMut() -> Q,
         // E: From<N>,
-        P: Parser<I>,
-        Q: Parser<I, Error=P::Error>,
-        R: Many<I, SepByInnerParserCtor<I, F, G>, T, P::Error> {
+        F: ParserConstructor<I>,
+        G: ParserConstructor<I>,
+        G::Parser: Parser<I, Error=<F::Parser as Parser<I>>::Error>,
+        T: FromIterator<<F::Parser as Parser<I>>::Output>,
+        R: Many<I, SepByInnerParserCtor<I, F, G>, T> {
     Many::many(r, SepByInnerParserCtor {
         item: false,
         f:    f,
@@ -1086,7 +1081,6 @@ pub fn sep_by<I, T, F, G, P, Q, R>(r: R, f: F, sep: G) -> R::ManyParser
 // Due to the requirement of Many to be able to specify a concrete type for the function (F)
 // parameter we need to have a type we can describe and not a closure for the type of the sep-by
 // inner parser
-// TODO: Implement as a trait for `ParserConstructor`?
 #[derive(Debug)]
 pub struct SepByInnerParserCtor<I, F, S> {
     item: bool,
@@ -1095,34 +1089,22 @@ pub struct SepByInnerParserCtor<I, F, S> {
     _i:   PhantomData<I>,
 }
 
-impl<I, F, S, P, Q> FnOnce<()> for SepByInnerParserCtor<I, F, S>
+impl<I, F, S> ParserConstructor<I> for SepByInnerParserCtor<I, F, S>
   where I: Input,
-        F: FnMut() -> P,
-        S: FnMut() -> Q,
-        P: Parser<I>,
-        Q: Parser<I, Error=P::Error> {
-    type Output = ThenParser<I, MaybeAParser<Q>, P>;
+        F: ParserConstructor<I>,
+        S: ParserConstructor<I>,
+        S::Parser: Parser<I, Error=<F::Parser as Parser<I>>::Error> {
+    type Parser = ThenParser<I, MaybeAParser<S::Parser>, F::Parser>;
 
-    extern "rust-call" fn call_once(self, _: ()) -> Self::Output {
-        unimplemented!()
-    }
-}
-
-impl<I, F, S, P, Q> FnMut<()> for SepByInnerParserCtor<I, F, S>
-  where I: Input,
-        F: FnMut() -> P,
-        S: FnMut() -> Q,
-        P: Parser<I>,
-        Q: Parser<I, Error=P::Error> {
-    extern "rust-call" fn call_mut(&mut self, _: ()) -> Self::Output {
+    fn new_parser(&mut self) -> Self::Parser {
         if self.item {
-            MaybeAParser::parser((self.sep)())
+            MaybeAParser::parser((self.sep).new_parser())
         }
         else {
             self.item = true;
 
             MaybeAParser::none()
-        }.then((self.f)())
+        }.then((self.f).new_parser())
     }
 }
 

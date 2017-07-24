@@ -15,36 +15,32 @@ macro_rules! many_iter {
         }
     ) => {
         $(#[$attr])*
-        pub struct $name<I, F, P, T>
+        pub struct $name<I, F, T>
           where I: Input,
-                F: FnMut() -> P,
-                T: FromIterator<P::Output>,
-                P: Parser<I> {
+                F: ParserConstructor<I>,
+                T: FromIterator<<F::Parser as Parser<I>>::Output> {
             /// Parser to execute once for each iteration
             parser_ctor: F,
             /// Nested state
             data:      $data_ty,
             _i:        PhantomData<I>,
             _t:        PhantomData<T>,
-            _p:        PhantomData<P>,
         }
 
-        impl<I, F, P, T> Parser<I> for $name<I, F, P, T>
+        impl<I, F, T> Parser<I> for $name<I, F, T>
           where I: Input,
-                F: FnMut() -> P,
-                P: Parser<I>,
-                T: FromIterator<P::Output> {
+                F: ParserConstructor<I>,
+                T: FromIterator<<F::Parser as Parser<I>>::Output> {
             type Output = T;
-            type Error  = P::Error;
+            type Error  = <F::Parser as Parser<I>>::Error;
 
             #[inline]
-            fn parse(self, i: I) -> (I, Result<T, P::Error>) {
+            fn parse(self, i: I) -> (I, Result<T, <F::Parser as Parser<I>>::Error>) {
                 /// Iterator used to run the parser multiple times
-                struct ParserIterator<I: Input, F, P>
-                  where F: FnMut() -> P,
-                        P: Parser<I> {
+                struct ParserIterator<I: Input, F>
+                  where F: ParserConstructor<I> {
                     /// Last state of the parser
-                    state:  Option<P::Error>,
+                    state:  Option<<F::Parser as Parser<I>>::Error>,
                     /// Parser constructor function to execute once for each iteration to obtain
                     /// a new parser to run for each iteration
                     parser_ctor: F,
@@ -57,23 +53,20 @@ macro_rules! many_iter {
                     /// Nested state
                     data:   $data_ty,
                     _i:     PhantomData<I>,
-                    _p:     PhantomData<P>,
                 }
 
-                impl<I: Input, F, P> ParserIterator<I, F, P>
-                  where F: FnMut() -> P,
-                        P: Parser<I> {
+                impl<I: Input, F> ParserIterator<I, F>
+                  where F: ParserConstructor<I> {
                     #[inline]
-                    fn end_state(self) -> (I, $data_ty, I::Marker, Option<P::Error>) {
+                    fn end_state(self) -> (I, $data_ty, I::Marker, Option<<F::Parser as Parser<I>>::Error>) {
                         // TODO: Avoid branch, check if this can be guaranteed to always be Some(T)
                         (self.buf.expect("ParserIterator.buf was None"), self.data, self.mark, self.state)
                     }
                 }
 
-                impl<I: Input, F, P> Iterator for ParserIterator<I, F, P>
-                  where F: FnMut() -> P,
-                        P: Parser<I> {
-                    type Item = P::Output;
+                impl<I: Input, F> Iterator for ParserIterator<I, F>
+                  where F: ParserConstructor<I> {
+                    type Item = <F::Parser as Parser<I>>::Output;
 
                     #[inline]
                     fn size_hint(&$size_hint_self) -> (usize, Option<usize>) {
@@ -90,7 +83,7 @@ macro_rules! many_iter {
                         // TODO: Any way to prevent marking here since it is not used at all times?
                         $next_self.mark = i.mark();
 
-                        match ($next_self.parser_ctor)().parse(i) {
+                        match ($next_self.parser_ctor).new_parser().parse(i) {
                             (b, Ok(v)) => {
                                 $next_self.buf = Some(b);
 
@@ -118,7 +111,6 @@ macro_rules! many_iter {
                     mark:        mark,
                     data:        self.data,
                     _i:          PhantomData,
-                    _p:          PhantomData,
                 };
 
                 let $result: T = FromIterator::from_iter(iter.by_ref());
@@ -150,13 +142,12 @@ macro_rules! many_till_iter {
         }
     ) => {
         $(#[$attr])*
-        pub struct $name<I, F, G, P, Q, T>
+        pub struct $name<I, F, G, T>
           where I: Input,
-                F: FnMut() -> P,
-                G: FnMut() -> Q,
-                P: Parser<I>,
-                Q: Parser<I, Error=P::Error>,
-                T: FromIterator<P::Output> {
+                F: ParserConstructor<I>,
+                G: ParserConstructor<I>,
+                G::Parser: Parser<I, Error=<F::Parser as Parser<I>>::Error>,
+                T: FromIterator<<F::Parser as Parser<I>>::Output> {
             /// Parser constructor to repeat
             p_ctor: F,
             /// Parser constructor for the end
@@ -164,23 +155,20 @@ macro_rules! many_till_iter {
             /// Nested state
             data:   $data_ty,
             _i: PhantomData<I>,
-            _p: PhantomData<P>,
-            _q: PhantomData<Q>,
             _t: PhantomData<T>,
         }
 
-        impl<I, F, G, P, Q, T> Parser<I> for $name<I, F, G, P, Q, T>
+        impl<I, F, G, T> Parser<I> for $name<I, F, G, T>
           where I: Input,
-                F: FnMut() -> P,
-                G: FnMut() -> Q,
-                P: Parser<I>,
-                Q: Parser<I, Error=P::Error>,
-                T: FromIterator<P::Output> {
+                F: ParserConstructor<I>,
+                G: ParserConstructor<I>,
+                G::Parser: Parser<I, Error=<F::Parser as Parser<I>>::Error>,
+                T: FromIterator<<F::Parser as Parser<I>>::Output> {
             type Output = T;
-            type Error  = P::Error;
+            type Error  = <F::Parser as Parser<I>>::Error;
 
             #[inline]
-            fn parse(self, i: I) -> (I, Result<T, P::Error>) {
+            fn parse(self, i: I) -> (I, Result<T, <F::Parser as Parser<I>>::Error>) {
                 enum EndStateTill<E> {
                     Error(E),
                     Incomplete,
@@ -188,14 +176,13 @@ macro_rules! many_till_iter {
                 }
 
                 /// Iterator used by `many_till` and `many1`.
-                struct ParserIterator<I, F, G, P, Q>
+                struct ParserIterator<I, F, G>
                   where I: Input,
-                        F: FnMut() -> P,
-                        G: FnMut() -> Q,
-                        P: Parser<I>,
-                        Q: Parser<I, Error=P::Error> {
+                        F: ParserConstructor<I>,
+                        G: ParserConstructor<I>,
+                        G::Parser: Parser<I, Error=<F::Parser as Parser<I>>::Error> {
                     /// Last state of the parser
-                    state:  EndStateTill<P::Error>,
+                    state:  EndStateTill<<F::Parser as Parser<I>>::Error>,
                     /// Parser to repeat
                     parser: F,
                     /// Parser to end
@@ -207,32 +194,28 @@ macro_rules! many_till_iter {
                     /// Nested state
                     data:   $data_ty,
                     _i: PhantomData<I>,
-                    _p: PhantomData<P>,
-                    _q: PhantomData<Q>,
                 }
 
-                impl<I, F, G, P, Q> ParserIterator<I, F, G, P, Q>
+                impl<I, F, G> ParserIterator<I, F, G>
                   where I: Input,
-                        F: FnMut() -> P,
-                        G: FnMut() -> Q,
-                        P: Parser<I>,
-                        Q: Parser<I, Error=P::Error> {
+                        F: ParserConstructor<I>,
+                        G: ParserConstructor<I>,
+                        G::Parser: Parser<I, Error=<F::Parser as Parser<I>>::Error> {
                     /// Destructures the iterator returning the position just after the last successful parse as
                     /// well as the state of the last attempt to parse data.
                     #[inline]
-                    fn end_state(self) -> (I, $data_ty, EndStateTill<P::Error>) {
+                    fn end_state(self) -> (I, $data_ty, EndStateTill<<F::Parser as Parser<I>>::Error>) {
                         // TODO: Avoid branch, check if this can be guaranteed to always be Some(T)
                         (self.buf.expect("Iter.buf was None"), self.data, self.state)
                     }
                 }
 
-                impl<I, F, G, P, Q> Iterator for ParserIterator<I, F, G, P, Q>
+                impl<I, F, G> Iterator for ParserIterator<I, F, G>
                   where I: Input,
-                        F: FnMut() -> P,
-                        G: FnMut() -> Q,
-                        P: Parser<I>,
-                        Q: Parser<I, Error=P::Error> {
-                    type Item = P::Output;
+                        F: ParserConstructor<I>,
+                        G: ParserConstructor<I>,
+                        G::Parser: Parser<I, Error=<F::Parser as Parser<I>>::Error> {
+                    type Item = <F::Parser as Parser<I>>::Output;
 
                     #[inline]
                     fn size_hint(&$size_hint_self) -> (usize, Option<usize>) {
@@ -246,7 +229,7 @@ macro_rules! many_till_iter {
                         // TODO: Remove the branches here (ie. take + unwrap)
                         let i = $next_self.buf.take().expect("Iter.buf was None");
 
-                        match ($next_self.parser)().parse(i) {
+                        match ($next_self.parser).new_parser().parse(i) {
                             (b, Ok(v)) => {
                                 $next_self.buf = Some(b);
 
@@ -271,8 +254,6 @@ macro_rules! many_till_iter {
                     buf:    Some(i),
                     data:   self.data,
                     _i:     PhantomData,
-                    _p:     PhantomData,
-                    _q:     PhantomData,
                 };
 
                 let $result: T = FromIterator::from_iter(iter.by_ref());
@@ -298,7 +279,7 @@ macro_rules! iter_till_end_test {
         let i = $the_self.buf.take().expect("Iter.buf was None");
         let m = i.mark();
 
-        match ($the_self.end)().parse(i) {
+        match ($the_self.end).new_parser().parse(i) {
             (b, Ok(_)) => {
                 $the_self.buf   = Some(b);
                 $the_self.state = EndStateTill::EndSuccess;

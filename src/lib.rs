@@ -202,7 +202,7 @@
 //!    The built-in `chomp::parsers::Error` type is zero-sized and carry no error-information. This
 //!    increases performance somewhat.
 
-#![feature(conservative_impl_trait, unboxed_closures, fn_traits)]
+#![feature(conservative_impl_trait)]
 #![warn(missing_docs,
         missing_debug_implementations,
         missing_copy_implementations,
