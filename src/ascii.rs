@@ -382,8 +382,7 @@ pub fn string_ci<I: Input<Token=u8>>(mut i: I, s: &'static [u8]) -> SimpleResult
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use super::{compare_ci, to_decimal, string_ci};
+    use super::{compare_ci, float, match_float, to_decimal, string_ci};
     use parsers::Error;
     use primitives::IntoInner;
 
