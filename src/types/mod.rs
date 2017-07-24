@@ -1,8 +1,12 @@
 //! Types which facillitates the chaining of parsers and their results.
 
+mod iterator;
+
 pub mod numbering;
 #[cfg(feature = "tendril")]
 pub mod tendril;
+
+pub use self::iterator::IteratorInput;
 
 use primitives::{Guard, IntoInner};
 
