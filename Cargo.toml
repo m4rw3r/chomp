@@ -31,7 +31,7 @@ tendril    = { version = "0.2.2", optional = true }
 
 # Technically a dev-dependency, but dev-dependencies are not allowed to be optional,
 # compiletest_rs fails to compile on stable and beta
-compiletest_rs = { version = "0.2.1", optional = true }
+compiletest_rs = { version = "0.2.8", optional = true }
 clippy         = { version = ">0.0.1", optional = true }
 
 [build-dependencies]
