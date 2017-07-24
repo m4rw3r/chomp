@@ -6,6 +6,7 @@ use primitives::IntoInner;
 use buffer::{
     Buffer,
     DataSource,
+    RWDataSource,
     FixedSizeBuffer,
     InputBuf,
     Stream,
@@ -52,6 +53,22 @@ impl<R: io::Read, B: Buffer<u8>> Source<ReadDataSource<R>, B> {
     #[inline]
     pub fn from_read(source: R, buffer: B) -> Self {
         Self::with_buffer(ReadDataSource::new(source), buffer)
+    }
+}
+
+impl<RW: io::Read + io::Write> Source<RWDataSource<RW>, FixedSizeBuffer<u8>> {
+    /// Creates a new `Source` from `Read`+`Write` with the default `FixedSizeBuffer` settings.
+    #[inline]
+    pub fn new_rw(rwsource: RW) -> Self {
+        Self::with_buffer(RWDataSource::new(rwsource), FixedSizeBuffer::new())
+    }
+}
+
+impl<RW: io::Read + io::Write, B: Buffer<u8>> Source<RWDataSource<RW>, B> {
+    /// Creates a new `Source` from `Read`+`Write` and buffer instances.
+    #[inline]
+    pub fn from_read_write(source: RW, buffer: B) -> Self {
+        Self::with_buffer(RWDataSource::new(source), buffer)
     }
 }
 
@@ -194,6 +211,17 @@ impl<S: DataSource<Item=u8>, B: Buffer<u8>> io::BufRead for Source<S, B> {
     #[inline]
     fn consume(&mut self, num: usize) {
         self.buffer.consume(num)
+    }
+}
+
+impl<RW: io::Read + io::Write, B: Buffer<u8>> io::Write for Source<RWDataSource<RW>, B> {
+    #[inline]
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.source.write(buf)
+    }
+    #[inline]
+    fn flush(&mut self) -> io::Result<()> {
+        self.source.flush()
     }
 }
 
