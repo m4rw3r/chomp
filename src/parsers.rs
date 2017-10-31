@@ -381,22 +381,34 @@ pub fn string<T: Copy + PartialEq, I: Input<Token=T>>(mut i: I, s: &[T])
     let len   = s.len();
 
     // TODO: There has to be some more efficient way here
-    let b = i.consume_while(|c| {
-        if n >= len || c != s[n] {
-            false
-        }
-        else {
-            n += 1;
+    // mark for later; we'll need to reset the input and use consume to get the return value out.
+    // this is because we cannot use consume_while here: consume_while first reads a `T` and then
+    // checks whether it needs it, which forces unneccessary stream `read`s in some situations.
+    let m = i.mark();
 
-            true
+    while n < len {
+        let t = match i.pop() {
+            Some(t) => t,
+            _ => {
+                let mut old_i = i.restore(m);
+                old_i.consume(n);
+                return old_i.err(Error::expected(s[n]));
+            },
+        };
+        if t != s[n] {
+            let mut old_i = i.restore(m);
+            old_i.consume(n);
+            return old_i.err(Error::expected(s[n]));
         }
-    });
 
-    if n >= len {
-        i.ret(b)
-    } else {
-        i.err(Error::expected(s[n]))
+        n += 1;
     }
+
+    // we need to return the matched buffer, which we just took part by part and cannot rebuild, so
+    // restore the input to the original position now that we know it matches
+    let mut old_i = i.restore(m);
+    let r = old_i.consume(n).unwrap();
+    old_i.ret(r)
 }
 
 /// Matches the end of the input.
