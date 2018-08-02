@@ -297,7 +297,7 @@ impl<'a, I: Copy + PartialEq> Input for &'a [I] {
     }
 
     #[inline]
-    fn _consume_while<F>(&mut self, _g: Guard, mut f: F) -> Self::Buffer
+    fn _consume_while<F>(&mut self, g: Guard, mut f: F) -> Self::Buffer
       where F: FnMut(Self::Token) -> bool {
         if let Some(n) = self.iter().position(|c| !f(*c)) {
             let b = &self[..n];
@@ -306,11 +306,7 @@ impl<'a, I: Copy + PartialEq> Input for &'a [I] {
 
             b
         }  else {
-            let b = &self[..];
-
-            *self = &self[..0];
-
-            b
+            self._consume_remaining(g)
         }
     }
 
@@ -323,7 +319,7 @@ impl<'a, I: Copy + PartialEq> Input for &'a [I] {
     fn _consume_remaining(&mut self, _g: Guard) -> Self::Buffer {
         let b = &self[..];
 
-        *self = &self[..0];
+        *self = &self[b.len()..];
 
         b
     }
@@ -356,7 +352,7 @@ impl<'a> Input for &'a str {
         iter.next().map(|(_, c)| {
             match iter.next().map(|(p, _)| p) {
                 Some(n) => *self = &self[n..],
-                None    => *self = &self[..0],
+                None    => *self = &self[self.len()..],
             }
 
             c
@@ -364,7 +360,7 @@ impl<'a> Input for &'a str {
     }
 
     #[inline]
-    fn _consume(&mut self, _g: Guard, n: usize) -> Option<Self::Buffer> {
+    fn _consume(&mut self, g: Guard, n: usize) -> Option<Self::Buffer> {
         match self.char_indices().enumerate().take(n + 1).last() {
             // num always equal to n if self contains more than n characters
             Some((num, (pos, _))) if n == num => {
@@ -376,18 +372,14 @@ impl<'a> Input for &'a str {
             },
             // num always equal to n - 1 if self contains exactly n characters
             Some((num, _)) if n == num + 1 => {
-                let b = &self[..];
-
-                *self = &self[..0];
-
-                Some(b)
+                Some(self._consume_remaining(g))
             },
             _ => None,
         }
     }
 
     #[inline]
-    fn _consume_while<F>(&mut self, _g: Guard, mut f: F) -> Self::Buffer
+    fn _consume_while<F>(&mut self, g: Guard, mut f: F) -> Self::Buffer
       where F: FnMut(Self::Token) -> bool {
         // We need to find the character following the one which did not match
         if let Some((pos, _)) = self.char_indices().skip_while(|&(_, c)| f(c)).next() {
@@ -397,11 +389,7 @@ impl<'a> Input for &'a str {
 
             b
         } else {
-            let b = &self[..];
-
-            *self = &self[..0];
-
-            b
+            self._consume_remaining(g)
         }
     }
 
@@ -414,7 +402,7 @@ impl<'a> Input for &'a str {
     fn _consume_remaining(&mut self, _g: Guard) -> Self::Buffer {
         let b = &self[..];
 
-        *self = &self[..0];
+        *self = &self[b.len()..];
 
         b
     }
@@ -797,6 +785,54 @@ pub mod test {
 
         assert_eq!((lhs.0, lhs.1), (&b"test"[..], Ok(124)));
         assert_eq!((rhs.0, rhs.1), (&b"test"[..], Ok(124)));
+    }
+
+    #[test]
+    fn test_consuming_whole_slice_does_not_reset_the_pointer() {
+        use primitives::Primitives;
+
+        let slice: &[u8] = b"abc";
+        let mut b = slice;
+        b.consume(1);
+        b.consume_while(|_| true);
+        let consumed = b.as_ptr() as usize - slice.as_ptr() as usize;
+        assert_eq!(consumed, 3);
+
+        let mut b = slice;
+        b.consume(3);
+        let consumed = b.as_ptr() as usize - slice.as_ptr() as usize;
+        assert_eq!(consumed, 3);
+
+        let mut b = slice;
+        b.pop();
+        b.pop();
+        b.pop();
+        let consumed = b.as_ptr() as usize - slice.as_ptr() as usize;
+        assert_eq!(consumed, 3);
+    }
+
+    #[test]
+    fn test_consuming_whole_str_does_not_reset_the_pointer() {
+        use primitives::Primitives;
+
+        let slice: &str = "abc";
+        let mut b = slice;
+        b.consume(1);
+        b.consume_while(|_| true);
+        let consumed = b.as_ptr() as usize - slice.as_ptr() as usize;
+        assert_eq!(consumed, 3);
+
+        let mut b = slice;
+        b.consume(3);
+        let consumed = b.as_ptr() as usize - slice.as_ptr() as usize;
+        assert_eq!(consumed, 3);
+
+        let mut b = slice;
+        b.pop();
+        b.pop();
+        b.pop();
+        let consumed = b.as_ptr() as usize - slice.as_ptr() as usize;
+        assert_eq!(consumed, 3);
     }
 
     #[test]
