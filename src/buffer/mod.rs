@@ -198,7 +198,7 @@ impl<'a, I: Copy + PartialEq> Input for InputBuf<'a, I> {
 
         let b = self.1;
 
-        self.1 = &self.1[..0];
+        self.1 = &self.1[b.len()..];
 
         b
     }
@@ -641,5 +641,15 @@ mod test {
         assert_eq!(b.is_incomplete(), true);
         assert_eq!(b.len(), 0);
         assert_eq!(b.is_empty(), true);
+    }
+
+    #[test]
+    fn test_consuming_whole_buffer_does_not_reset_the_pointer() {
+        let slice = b"abc";
+        let mut b = InputBuf::new(slice);
+        b.consume(1);
+        b.consume_while(|_| true);
+        let consumed = b.1.as_ptr() as usize - slice.as_ptr() as usize;
+        assert_eq!(consumed, 3);
     }
 }
